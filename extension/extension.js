@@ -156,6 +156,7 @@ function recordClick() {
   // a click is worth 50x an impression (local UI counter; server mode settles
   // the real click via the /clicks/intent + /go redirect, not the event batch)
   ctx.globalState.update("bb.earnings", s.earnings + perImpressionNet() * 50);
+  trackEvent("clicks");
 }
 
 // escape untrusted ad text before putting it in the webview HTML
