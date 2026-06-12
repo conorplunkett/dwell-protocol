@@ -1,11 +1,11 @@
-# FreeAI.fyi — Chrome extension 🤑
+# FreeAI.fyi — Chrome extension
 
-> Make money while you use **ChatGPT, Claude, and Gemini**. You keep **90%**.
+> Get **Claude** for free with ads while you use **ChatGPT, Claude, and Gemini**. **50%** of the revenue comes back as Claude credits.
 
 While the assistant is thinking/streaming, FreeAI shows one subtle, clickable
-sponsored line near the composer — and pays you 90% of the revenue. It reads
-none of your prompts or the model's output, only the on/off "is it generating"
-state.
+sponsored line near the composer — and 50% of the revenue becomes credits you
+redeem for Claude. It reads none of your prompts or the model's output, only the
+on/off "is it generating" state.
 
 ## Install & test it live (developer mode)
 
@@ -33,7 +33,7 @@ Then verify it two ways:
   generic `aria-label*="stop"` catch-all), an `aria-busy` region, or a streaming
   marker — and shows the sponsored bar only while the assistant is working.
 - Every 5 seconds served is one **impression**; a click is worth **50×** an
-  impression. Earnings accrue at your **90%** revenue share, stored locally
+  impression. Credits accrue at your **50%** revenue share, stored locally
   (`chrome.storage`), shown live in the popup.
 - **Test mode** shows a labelled mock ad continuously and keeps its counts
   separate, so you can confirm rendering, placement, and click-through on any
@@ -63,7 +63,7 @@ Detection selectors live at the top of `src/content.js`.
 ## Tests
 
 ```bash
-npm test    # detection on ChatGPT/Claude/Gemini, test mode, 90% math
+npm test    # detection on ChatGPT/Claude/Gemini, test mode, 50% math
 npm run lint
 ```
 
