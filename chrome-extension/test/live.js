@@ -52,12 +52,24 @@ const PAGE = `<!doctype html><html><body>
     // test page hook: toggle a ChatGPT-style stop button on demand
     window.setGenerating = (on) => {
       let b = document.querySelector('[data-testid="stop-button"]');
-      if (on && !b) {
-        b = document.createElement("button");
-        b.setAttribute("data-testid", "stop-button");
-        b.textContent = "Stop";
-        document.getElementById("composer").appendChild(b);
-      } else if (!on && b) b.remove();
+      let m = document.querySelector('[data-message-author-role="assistant"]');
+      if (on) {
+        if (!b) {
+          b = document.createElement("button");
+          b.setAttribute("data-testid", "stop-button");
+          b.textContent = "Stop";
+          document.getElementById("composer").appendChild(b);
+        }
+        if (!m) {
+          // the streaming assistant reply — what the bar should anchor to
+          m = document.createElement("div");
+          m.setAttribute("data-message-author-role", "assistant");
+          m.textContent = "Thinking…";
+          document.getElementById("messages").appendChild(m);
+        }
+      } else {
+        if (b) b.remove();
+      }
     };
   </script>
 </body></html>`;
@@ -113,6 +125,17 @@ async function main() {
       assert.strictEqual(isTest, false, "real flow must not be tagged as test");
     });
 
+    await check("bar is anchored inline at the streaming reply, not fixed at the bottom", async () => {
+      const placed = await page.$eval(".bb-bar", (el) => ({
+        inline: el.classList.contains("bb-inline"),
+        inReply: !!el.closest('[data-message-author-role="assistant"]'),
+        position: getComputedStyle(el).position,
+      }));
+      assert.ok(placed.inline, "bar missing bb-inline");
+      assert.ok(placed.inReply, "bar not inside the assistant's reply");
+      assert.notStrictEqual(placed.position, "fixed", "bar still fixed-positioned");
+    });
+
     await check("bar is actually rendered (visible, has ad copy)", async () => {
       const info = await page.$eval(".bb-bar", (el) => {
         const r = el.getBoundingClientRect();
@@ -137,9 +160,16 @@ async function main() {
       await page.waitForFunction(() => !document.querySelector(".bb-bar.bb-show"), { timeout: 5000 });
     });
 
-    await check("Test Mode ⇒ labelled mock ad renders with no stop button", async () => {
+    await check("Test Mode without generation ⇒ bar stays hidden", async () => {
       await setState({ testMode: true });
       await refreshTab();
+      await sleep(1200);
+      const shown = await page.$(".bb-bar.bb-show");
+      assert.strictEqual(shown, null, "test-mode ad must also wait for generation");
+    });
+
+    await check("Test Mode while generating ⇒ labelled mock ad renders", async () => {
+      await page.evaluate(() => window.setGenerating(true));
       await page.waitForSelector(".bb-bar.bb-show.bb-test", { timeout: 5000 });
       const tag = await page.$eval(".bb-bar .bb-tag", (el) => el.textContent);
       assert.match(tag, /TEST AD/);
