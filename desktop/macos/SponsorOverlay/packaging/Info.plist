@@ -22,5 +22,13 @@
   <dict>
     <key>NSAllowsLocalNetworking</key>   <true/>
   </dict>
+  <!-- Sparkle auto-update. Replace SUPublicEDKey with the real public key from
+       `generate_keys` (Sparkle) before shipping, and host the appcast at the
+       SUFeedURL. Automatic checks stay off until then; "Check for Updates…"
+       works manually. -->
+  <key>SUFeedURL</key>                   <string>https://freeai.fyi/appcast.xml</string>
+  <key>SUPublicEDKey</key>               <string>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</string>
+  <key>SUEnableAutomaticChecks</key>     <false/>
+  <key>SUAutomaticallyUpdate</key>       <false/>
 </dict>
 </plist>

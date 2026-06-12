@@ -51,6 +51,18 @@ done
 iconutil -c icns "$ICONSET" -o "$RES_DIR/AppIcon.icns"
 rm -rf "$ICONSET"
 
+echo "==> embedding Sparkle.framework"
+SPARKLE_FW=".build/release/Sparkle.framework"
+if [ -d "$SPARKLE_FW" ]; then
+  mkdir -p "$APP/Contents/Frameworks"
+  cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/"
+  # The SwiftPM executable resolves the framework via an rpath into the build
+  # dir; add a bundle-relative rpath so the shipped app finds the embedded copy.
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$APP_NAME" 2>/dev/null || true
+else
+  echo "    WARNING: $SPARKLE_FW not found — did 'swift build -c release' resolve Sparkle?" >&2
+fi
+
 echo "==> codesign (identity: $SIGN_IDENTITY)"
 if [ "$SIGN_IDENTITY" = "-" ]; then
   # Ad-hoc: no timestamp, no hardened runtime (neither is valid without a cert).

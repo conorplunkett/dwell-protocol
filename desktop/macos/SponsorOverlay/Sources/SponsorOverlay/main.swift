@@ -13,8 +13,14 @@
 // console instead of POSTed.
 
 import AppKit
+import Sparkle
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    // Reads SUFeedURL / SUPublicEDKey from Info.plist and manages background
+    // update checks; wired to the "Check for Updates…" menu item below.
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+
     private let demoMode = ProcessInfo.processInfo.environment["FREEAI_DEMO"] == "1"
     // FREEAI_PROBE=1: every 2s, dump the labeled elements of Claude's focused
     // window and the generating verdict. Run it, trigger a generation in
@@ -247,6 +253,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dash = NSMenuItem(title: "Why am I seeing this?", action: #selector(openPrivacy), keyEquivalent: "")
         dash.target = self
         menu.addItem(dash)
+        let updates = NSMenuItem(title: "Check for Updates…",
+                                 action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+                                 keyEquivalent: "")
+        updates.target = updaterController
+        menu.addItem(updates)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem.menu = menu
