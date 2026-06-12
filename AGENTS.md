@@ -1,5 +1,7 @@
 # AGENTS.md
 
+> **Agents must always read the instructions below before working on this repo.**
+
 Conventions for agents and contributors working in this repo.
 
 ## What FreeAI is
@@ -9,6 +11,29 @@ Gemini) is thinking, and returns **50% of the revenue to the user as Claude
 credits**. The product surface is a **Chrome extension**; a Node + Postgres
 backend runs the ad auction, an append-only credit ledger, and gift-card
 redemption.
+
+## Tech stack
+
+- **Landing page + user portal** (`index.html`, `redeem.html`, `styles.css`,
+  `theme.css`, `script.js`, `redeem.js`): plain static HTML/CSS/vanilla JS. No
+  framework, no build step, no bundler. Served as static files.
+- **Backend** (`server/`): Node.js (>= 20) on plain `node:http` — no web
+  framework. One runtime dependency: `pg`. Dependency-injected for testing.
+  Deployed on **Fly.io** (`server/fly.toml`).
+- **Database**: **Postgres** — **Supabase** in production. Connected via a single
+  `DATABASE_URL` (`server/src/boot.js`). Schema in `server/db/schema.sql`,
+  applied with `npm run migrate`. The local `docker-compose.yml` is only a dev
+  convenience; production is Supabase, not Docker.
+- **Payments in**: **Stripe** Checkout (advertiser bids). Stripe Connect payout
+  code exists but is parked in favor of gift-card credits.
+- **Email**: pluggable mailer (`server/src/mailer.js`) — console transport in
+  dev/CI, **Resend** in production.
+- **Chrome extension** (`chrome-extension/`): Manifest V3, vanilla JS service
+  worker + content script. Ships its own synced copy of `theme.css`.
+- **macOS app** (`desktop/macos/`): Swift.
+- **Tests**: Node's built-in runner conventions over `node:assert` — no test
+  framework. Server tests run real routes against a real Postgres; extension
+  tests run against a mock DOM.
 
 ## Where features live (read before adding UI)
 
