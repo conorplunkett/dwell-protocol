@@ -90,21 +90,29 @@ a { color: inherit; text-decoration: none; }
   position: absolute; top: -20px; right: 30px; z-index: 0;
   transition: right 1.2s cubic-bezier(.5, 1.5, .4, 1), top .6s ease;
 }
-.claude-guy.cg-duck { top: 14px; }
-.cg-body {
-  width: 26px; height: 26px; background: var(--orange);
-  border-radius: 8px 8px 4px 4px;
-  display: flex; align-items: center; justify-content: center; gap: 5px;
-  animation: cg-bob 2.6s ease-in-out infinite;
+.claude-guy.cg-duck { top: 16px; }
+.cg-sprite {
+  display: block;
+  image-rendering: pixelated;
+  /* steps() so the idle bob jumps a whole pixel at a time — keeps him 8-bit */
+  animation: cg-bob 1.4s steps(1, end) infinite;
 }
-.claude-guy.cg-hop .cg-body { animation: cg-hop .55s ease; }
-.cg-eye {
-  width: 4px; height: 6px; background: #1b1e25; border-radius: 2px;
-  margin-top: -8px; animation: cg-blink 3.4s infinite;
-}
+.claude-guy.cg-hop .cg-sprite { animation: cg-hop .55s steps(1, end); }
+.cg-eye, .cg-spark { transform-box: fill-box; transform-origin: center; }
+.cg-eye { animation: cg-blink 3.4s steps(1, end) infinite; }
+.cg-spark { animation: cg-twinkle 2.2s steps(1, end) infinite; }
 @keyframes cg-bob { 0%, 100% { transform: translateY(3px); } 50% { transform: translateY(0); } }
-@keyframes cg-hop { 0%, 100% { transform: translateY(3px); } 40% { transform: translateY(-8px); } }
-@keyframes cg-blink { 0%, 91%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.12); } }
+@keyframes cg-hop {
+  0%, 100% { transform: translateY(3px); }
+  25% { transform: translateY(-3px); }
+  50% { transform: translateY(-9px); }
+  75% { transform: translateY(-3px); }
+}
+@keyframes cg-blink { 0%, 90%, 100% { transform: scaleY(1); } 93%, 97% { transform: scaleY(.15); } }
+@keyframes cg-twinkle {
+  0%, 100% { transform: none; opacity: 1; }
+  50% { transform: rotate(90deg); opacity: .75; }
+}
 .demo-label {
   display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em;
   text-transform: uppercase; color: #6e7585; margin-bottom: 16px;
