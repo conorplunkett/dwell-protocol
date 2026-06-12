@@ -47,6 +47,11 @@
         "category": "Betterbacks"
       },
       {
+        "command": "betterbacks.redeemGiftCard",
+        "title": "Betterbacks: Redeem earnings for a Claude gift card",
+        "category": "Betterbacks"
+      },
+      {
         "command": "betterbacks.openCurrentAd",
         "title": "Betterbacks: Open the currently shown ad",
         "category": "Betterbacks"
