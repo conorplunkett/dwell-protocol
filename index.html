@@ -202,7 +202,7 @@
       <p class="install-lead">
         Add the Chrome extension, then open <strong>ChatGPT</strong>, <strong>Claude</strong>,
         or <strong>Gemini</strong> and ask anything. A sponsored line appears while it thinks —
-        and 50% of the revenue becomes Claude credits. Flip on <strong>Test mode</strong> in the popup to see the mock ad right away.
+        and 50% of the revenue becomes Claude credits, redeemable for Claude Pro or Max.
       </p>
       <div class="install-actions">
         <a href="https://chromewebstore.google.com/" class="btn-green">Add to Chrome</a>
@@ -218,9 +218,10 @@
     <p class="fdim tiny">Not affiliated with Anthropic, OpenAI, or Google.</p>
   </footer>
 
-  <!-- To go live, point the bid form + leaderboard at the API:
-       <meta name="freeai-api" content="https://api.freeai.fyi"> in <head>,
-       or set window.FREEAI_API. With neither, the page runs in demo mode. -->
+  <!-- This is the live public page. Keep it production-only: no test mode,
+       demo-mode messaging, mock seeds, or debugging affordances in the user-facing
+       copy. Point the bid form + leaderboard at the API via
+       <meta name="freeai-api" content="https://api.freeai.fyi"> or window.FREEAI_API. -->
   <script src="script.js"></script>
 </body>
 </html>
