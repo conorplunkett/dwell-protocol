@@ -1,4 +1,4 @@
-// Betterbacks Sponsor Overlay — menu bar shell (Milestone 1 + 2 rough-out).
+// FreeAI Sponsor Overlay — menu bar shell (Milestone 1 + 2 rough-out).
 //
 // Responsibilities of this shell, by design, are dumb: read platform signals,
 // hand them to the decision logic (overlay-core, ../../core — to be linked as
@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openDashboard() {
-        NSWorkspace.shared.open(URL(string: "https://betterbacks.ai/dashboard")!)
+        NSWorkspace.shared.open(URL(string: "https://freeai.fyi/dashboard")!)
     }
 
     private func requestAccessibilityIfNeeded() {

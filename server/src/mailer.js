@@ -14,7 +14,7 @@ function createMailer(config) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: config.mailFrom || "Betterbacks <hello@betterbacks.ai>",
+          from: config.mailFrom || "FreeAI <hello@freeai.fyi>",
           to,
           subject,
           html: htmlBody,
@@ -24,14 +24,14 @@ function createMailer(config) {
       return;
     }
     // console transport
-    console.log(`[betterbacks][mail] to=${to} subject="${subject}"`);
+    console.log(`[freeai][mail] to=${to} subject="${subject}"`);
   }
 
   async function sendVerifyEmail(to, link) {
     await send(
       to,
       "Verify your email to get paid",
-      `<p>Confirm this address to start receiving Betterbacks payouts.</p>
+      `<p>Confirm this address to start receiving FreeAI payouts.</p>
        <p><a href="${link}">Verify my email</a></p>
        <p>This link expires in 30 minutes. If you didn't request it, ignore this email.</p>`
     );
@@ -44,7 +44,7 @@ function createMailer(config) {
     await send(
       to,
       `Gift card redemption: ${months} month${months > 1 ? "s" : ""} of ${planName}`,
-      `<p>A Betterbacks user redeemed their credits for a Claude gift card.</p>
+      `<p>A FreeAI user redeemed their credits for a Claude gift card.</p>
        <ul>
          <li><strong>Plan:</strong> ${planName}</li>
          <li><strong>Duration:</strong> ${months} month${months > 1 ? "s" : ""}</li>

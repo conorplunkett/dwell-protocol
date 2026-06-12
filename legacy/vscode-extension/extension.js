@@ -1,9 +1,9 @@
-// Betterbacks.ai — VS Code extension
+// FreeAI.fyi — VS Code extension
 // Turns the Claude Code / Codex loading spinner into a tiny ad marketplace.
 // You keep 90% of the revenue.
 //
 // What this does, concretely:
-//  - While your agent is "thinking" (a spinner is running), Betterbacks shows ONE
+//  - While your agent is "thinking" (a spinner is running), FreeAI shows ONE
 //    subtle, clickable sponsored line via the active ad surface adapters
 //    (today: the status bar — see src/adapters/).
 //  - Every 5 seconds it serves is one "impression" — but only if the VS Code
@@ -35,16 +35,16 @@ const WORDS = [
 // In production these are fetched from the auction; bundled here so the extension
 // works fully offline and you can see exactly what would serve.
 const ADS = [
-  { brand: "Fluidstack", line: "Fluidstack — building 10GW of compute. Join us.", url: "https://betterbacks.ai/go/fluidstack", cat: "infra" },
-  { brand: "Ramp", line: "Ramp · save time and money", url: "https://betterbacks.ai/go/ramp", cat: "finance" },
-  { brand: "Linear", line: "Linear — issue tracking built for speed", url: "https://betterbacks.ai/go/linear", cat: "devtools" },
-  { brand: "Tuple", line: "Pair with Tuple — how developers build taste", url: "https://betterbacks.ai/go/tuple", cat: "devtools" },
-  { brand: "Vercel", line: "Vercel · ship your agent to prod", url: "https://betterbacks.ai/go/vercel", cat: "infra" },
-  { brand: "Neon", line: "Neon · Postgres your agent can branch", url: "https://betterbacks.ai/go/neon", cat: "infra" },
-  { brand: "Resend", line: "Resend — email for developers", url: "https://betterbacks.ai/go/resend", cat: "devtools" },
-  { brand: "querybear", line: "querybear.com — Talk to your database with MCP.", url: "https://betterbacks.ai/go/querybear", cat: "devtools" },
-  { brand: "Solo", line: "Solo — a better place to run your agents", url: "https://betterbacks.ai/go/solo", cat: "infra" },
-  { brand: "Liner", line: "Liner Search — The most performant & affordable", url: "https://betterbacks.ai/go/liner", cat: "ai" },
+  { brand: "Fluidstack", line: "Fluidstack — building 10GW of compute. Join us.", url: "https://freeai.fyi/go/fluidstack", cat: "infra" },
+  { brand: "Ramp", line: "Ramp · save time and money", url: "https://freeai.fyi/go/ramp", cat: "finance" },
+  { brand: "Linear", line: "Linear — issue tracking built for speed", url: "https://freeai.fyi/go/linear", cat: "devtools" },
+  { brand: "Tuple", line: "Pair with Tuple — how developers build taste", url: "https://freeai.fyi/go/tuple", cat: "devtools" },
+  { brand: "Vercel", line: "Vercel · ship your agent to prod", url: "https://freeai.fyi/go/vercel", cat: "infra" },
+  { brand: "Neon", line: "Neon · Postgres your agent can branch", url: "https://freeai.fyi/go/neon", cat: "infra" },
+  { brand: "Resend", line: "Resend — email for developers", url: "https://freeai.fyi/go/resend", cat: "devtools" },
+  { brand: "querybear", line: "querybear.com — Talk to your database with MCP.", url: "https://freeai.fyi/go/querybear", cat: "devtools" },
+  { brand: "Solo", line: "Solo — a better place to run your agents", url: "https://freeai.fyi/go/solo", cat: "infra" },
+  { brand: "Liner", line: "Liner Search — The most performant & affordable", url: "https://freeai.fyi/go/liner", cat: "ai" },
 ];
 
 let adapters = [];
@@ -79,7 +79,7 @@ function getState() {
   };
 }
 function cfg() {
-  return vscode.workspace.getConfiguration("betterbacks");
+  return vscode.workspace.getConfiguration("freeai");
 }
 function sharePct() {
   return Math.round(cfg().get("revenueShare", 0.9) * 100);
@@ -97,7 +97,7 @@ function currentAds() {
 }
 
 // ---- server mode (optional) ----
-// When betterbacks.serverUrl is set, ads come from the live auction and
+// When freeai.serverUrl is set, ads come from the live auction and
 // impressions/clicks are batched to the API so real money settles. With no
 // server (or offline), the bundled inventory keeps everything working locally.
 let serverAds = null;
@@ -280,7 +280,7 @@ function renderActiveFrame() {
 // ---- A "thinking" window: animate spinner + serve ads + count impressions ----
 function startThinking(durationMs) {
   if (!cfg().get("enabled", true)) {
-    vscode.window.showInformationMessage("Betterbacks is disabled. Enable it to earn while you wait.");
+    vscode.window.showInformationMessage("FreeAI is disabled. Enable it to earn while you wait.");
     return;
   }
   if (!servingAllowed) return; // server killswitch — stay idle
@@ -317,8 +317,8 @@ function stopThinking() {
 // ---- Earnings dashboard webview ----
 function showEarnings() {
   const panel = vscode.window.createWebviewPanel(
-    "betterbacksEarnings",
-    "Betterbacks — Earnings",
+    "freeaiEarnings",
+    "FreeAI — Earnings",
     vscode.ViewColumn.Active,
     { enableScripts: false }
   );
@@ -351,7 +351,7 @@ function showEarnings() {
     .brand { text-align: right; color: var(--vscode-descriptionForeground); }
   </style></head><body>
     <h1>🤑 You keep ${share}%.</h1>
-    <p class="muted">Betterbacks pays the developer who watches the spinner. Earnings settle weekly via Stripe.</p>
+    <p class="muted">FreeAI pays the developer who watches the spinner. Earnings settle weekly via Stripe.</p>
     <div class="cards">
       <div class="card accent"><div class="n">$${s.earnings.toFixed(2)}</div><div class="l">earned (your ${share}%)</div></div>
       <div class="card"><div class="n">${s.impressions.toLocaleString()}</div><div class="l">impressions</div></div>
@@ -391,8 +391,8 @@ async function showRedeemGiftCard() {
   const balance = serverBalance != null ? serverBalance : getState().earnings;
 
   const panel = vscode.window.createWebviewPanel(
-    "betterbacksRedeem",
-    "Betterbacks — Redeem",
+    "freeaiRedeem",
+    "FreeAI — Redeem",
     vscode.ViewColumn.Active,
     { enableScripts: true }
   );
@@ -401,7 +401,7 @@ async function showRedeemGiftCard() {
     if (!msg || msg.type !== "redeem") return;
     const url = serverUrl();
     if (!url || !deviceCreds) {
-      panel.webview.postMessage({ type: "result", ok: false, error: "Set betterbacks.serverUrl and earn online to redeem — local demo earnings can't be redeemed." });
+      panel.webview.postMessage({ type: "result", ok: false, error: "Set freeai.serverUrl and earn online to redeem — local demo earnings can't be redeemed." });
       return;
     }
     try {
@@ -419,9 +419,9 @@ async function showRedeemGiftCard() {
         return;
       }
       panel.webview.postMessage({ type: "result", ok: true, balanceUsd: data.balanceUsd });
-      vscode.window.showInformationMessage(`Betterbacks: gift card redeemed 🎁 — it'll arrive at ${msg.email} within 48 hours.`);
+      vscode.window.showInformationMessage(`FreeAI: gift card redeemed 🎁 — it'll arrive at ${msg.email} within 48 hours.`);
     } catch (_) {
-      panel.webview.postMessage({ type: "result", ok: false, error: "Couldn't reach the Betterbacks server. Try again." });
+      panel.webview.postMessage({ type: "result", ok: false, error: "Couldn't reach the FreeAI server. Try again." });
     }
   });
 
@@ -458,7 +458,7 @@ async function showRedeemGiftCard() {
   <div class="wrap">
     <div class="left">
       <h1>Give the gift of Claude</h1>
-      <p class="sub">Every plan includes Claude Code, unlimited projects, and access to the latest models. Redeem your Betterbacks earnings — your gift card email arrives within 48 hours.</p>
+      <p class="sub">Every plan includes Claude Code, unlimited projects, and access to the latest models. Redeem your FreeAI earnings — your gift card email arrives within 48 hours.</p>
       <p class="balance">Your balance: <strong>$${balance.toFixed(2)}</strong>${serverBalance == null ? " (local demo)" : ""}</p>
 
       <div class="q">Which plan?</div>
@@ -583,29 +583,29 @@ function activate(context) {
   }
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("betterbacks.toggle", async () => {
+    vscode.commands.registerCommand("freeai.toggle", async () => {
       const c = cfg();
       const now = !c.get("enabled", true);
       await c.update("enabled", now, vscode.ConfigurationTarget.Global);
       if (!now) stopThinking();
       else renderIdle();
       vscode.window.showInformationMessage(
-        `Betterbacks ${now ? "enabled — earning while you wait 🤑" : "disabled."}`
+        `FreeAI ${now ? "enabled — earning while you wait 🤑" : "disabled."}`
       );
     }),
-    vscode.commands.registerCommand("betterbacks.simulateAgent", () => {
-      vscode.window.showInformationMessage("Betterbacks: serving sponsored lines for 30s — watch the status bar.");
+    vscode.commands.registerCommand("freeai.simulateAgent", () => {
+      vscode.window.showInformationMessage("FreeAI: serving sponsored lines for 30s — watch the status bar.");
       startThinking(30000);
     }),
-    vscode.commands.registerCommand("betterbacks.showEarnings", showEarnings),
-    vscode.commands.registerCommand("betterbacks.redeemGiftCard", showRedeemGiftCard),
-    vscode.commands.registerCommand("betterbacks.openCurrentAd", openCurrentAd),
-    vscode.commands.registerCommand("betterbacks.resetEarnings", async () => {
+    vscode.commands.registerCommand("freeai.showEarnings", showEarnings),
+    vscode.commands.registerCommand("freeai.redeemGiftCard", showRedeemGiftCard),
+    vscode.commands.registerCommand("freeai.openCurrentAd", openCurrentAd),
+    vscode.commands.registerCommand("freeai.resetEarnings", async () => {
       await context.globalState.update("bb.impressions", 0);
       await context.globalState.update("bb.clicks", 0);
       await context.globalState.update("bb.earnings", 0);
       renderIdle();
-      vscode.window.showInformationMessage("Betterbacks earnings reset.");
+      vscode.window.showInformationMessage("FreeAI earnings reset.");
     })
   );
 

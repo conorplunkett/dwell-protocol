@@ -1,4 +1,4 @@
-# Betterbacks Desktop — Sponsor Overlay for Claude Desktop (macOS)
+# FreeAI Desktop — Sponsor Overlay for Claude Desktop (macOS)
 
 Rough-out of the PRD: a menu bar companion app that floats a small sponsor
 card over Claude Desktop while it's generating, and credits the user for
