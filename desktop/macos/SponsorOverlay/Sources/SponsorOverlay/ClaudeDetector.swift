@@ -11,6 +11,7 @@ struct ClaudeState {
     var running = false
     var focused = false
     var generating = false
+    var minimized = false
     var windowBounds: CGRect?
 }
 
@@ -43,6 +44,7 @@ final class ClaudeDetector {
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         enableElectronAccessibility(axApp, pid: app.processIdentifier)
         guard let window = focusedWindow(of: axApp) else { return state }
+        state.minimized = isMinimized(window)
         state.windowBounds = frame(of: window)
         state.generating = looksGenerating(window: window)
         return state
@@ -53,6 +55,16 @@ final class ClaudeDetector {
         let err = AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &value)
         guard err == .success else { return nil }
         return (value as! AXUIElement)
+    }
+
+    /// A minimized window is reported by AX with `AXMinimized == true`; we hide
+    /// the overlay in that case rather than tracking an off-screen sliver.
+    private func isMinimized(_ window: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &value) == .success else {
+            return false
+        }
+        return (value as? Bool) ?? false
     }
 
     private func frame(of window: AXUIElement) -> CGRect? {
