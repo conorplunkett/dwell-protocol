@@ -153,6 +153,24 @@ Distribute the stapled `.dmg` from the site. **Mac App Store is not a viable
 channel**: sandboxed apps can't use the Accessibility API to read another app's
 window, which is how Claude detection works — Developer ID distribution is the path.
 
+### Auto-update (Sparkle)
+
+The app links [Sparkle](https://sparkle-project.org); `bundle.sh` embeds
+`Sparkle.framework` into the app and adds the bundle-relative rpath. The menu
+has a working **Check for Updates…** item; automatic background checks are off
+in `Info.plist` until a real feed exists. To go live:
+
+1. `generate_keys` (from Sparkle) once — keep the private key in your Keychain,
+   put the printed public key in `Info.plist` as `SUPublicEDKey` (replacing the
+   placeholder), and set `SUEnableAutomaticChecks` to `true`.
+2. Host `appcast.xml` at the `SUFeedURL` (`https://freeai.fyi/appcast.xml`).
+3. For each release, sign the zip/dmg with `sign_update` and add the resulting
+   `<enclosure …>` entry to the appcast.
+
+For Developer ID builds, Sparkle's nested helpers must be signed with the
+hardened runtime; `bundle.sh`'s `codesign --deep --options runtime` covers
+them, but verify with `codesign --verify --deep --strict` before notarizing.
+
 ## Still to do
 
 1. Validate Claude's real bundle id + whether its Electron AX tree exposes
