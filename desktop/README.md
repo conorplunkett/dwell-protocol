@@ -79,6 +79,26 @@ the console after the 5-second timer. Watch with
 `log stream --predicate 'eventMessage CONTAINS "freeai"'` or just the
 terminal output.
 
+**Probe mode — verify generation detection against your Claude build:**
+```sh
+FREEAI_PROBE=1 swift run SponsorOverlay
+```
+Claude Desktop is Electron, so its web contents are invisible to the AX API
+until a client sets `AXManualAccessibility` — probe mode (and the real
+detector) set it, then dump every labeled element/button in Claude's focused
+window every 2s plus a `generating=true/false` verdict. Focus Claude, start a
+generation, and watch the terminal: a "Stop …" button appearing while
+streaming means detection works.
+
+**Window-tracking gates — manual checks (demo mode or real Claude):**
+```sh
+FREEAI_DEMO=1 swift run SponsorOverlay    # or plain `swift run` with Claude open
+```
+- *Minimized*: minimize the tracked window → card hides; restore → card returns.
+- *Usable bounds*: shrink the window below 360×300 → card hides; enlarge → returns.
+- *Move/resize dedupe*: drag or resize the window → card follows; once you stop,
+  the panel frame is no longer reset on every 500ms tick.
+
 **Against the real thing:**
 ```sh
 swift run SponsorOverlay                  # uses FREEAI_API_URL or the default API

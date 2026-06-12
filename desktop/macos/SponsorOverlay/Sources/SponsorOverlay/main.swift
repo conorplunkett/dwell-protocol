@@ -16,6 +16,10 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let demoMode = ProcessInfo.processInfo.environment["FREEAI_DEMO"] == "1"
+    // FREEAI_PROBE=1: every 2s, dump the labeled elements of Claude's focused
+    // window and the generating verdict. Run it, trigger a generation in
+    // Claude, and read the terminal. Diagnostic only; nothing leaves the Mac.
+    private let probeMode = ProcessInfo.processInfo.environment["FREEAI_PROBE"] == "1"
 
     private let detector = ClaudeDetector()
     private let overlay = OverlayPanelController()
@@ -27,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var balanceItem: NSMenuItem!
     private var pollTimer: Timer?
     private var adsPaused = false
+    /// Last Claude bounds the overlay was positioned over, for move/resize
+    /// deduplication (spec `lastBounds`).
+    private var lastShownBounds: CGRect?
 
     private var credentials: DeviceCredentials?
     private var ads: [Ad] = []
@@ -35,6 +42,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpMenuBar()
         requestAccessibilityIfNeeded()
+
+        if probeMode {
+            print("probe: dumping Claude's AX tree every 2s — focus Claude and start a generation (Ctrl+C to quit)")
+            Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+                self?.detector.probeDump()
+            }
+            return
+        }
+
         bootstrap()
 
         overlay.onClick = { [weak self] card in self?.handleClick(campaignId: card.campaignID) }
@@ -142,12 +158,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             adsPaused: adsPaused
         )
 
-        let shouldShow = state.focused && state.generating && !adsPaused && currentAd != nil
+        // Spec trackability gates: Claude must be focused, not minimized, and
+        // its window large enough to be worth following.
+        let usableBounds = state.windowBounds.map(Self.isUsableBounds) ?? false
+        let shouldShow = state.focused && state.generating && !state.minimized
+            && usableBounds && !adsPaused && currentAd != nil
         if shouldShow, let bounds = state.windowBounds {
-            overlay.show(over: bounds)
+            // Only re-position on a real move/resize; otherwise we'd setFrame
+            // every tick. Always (re)show when the panel is currently hidden.
+            if !overlay.isShown || !Self.boundsEqual(lastShownBounds, bounds) {
+                overlay.show(over: bounds)
+                lastShownBounds = bounds
+            }
         } else {
             if overlay.isShown { rotateAd() } // hidden -> next show re-arms with a fresh ad
             overlay.hide()
+            lastShownBounds = nil
         }
 
         engine.tick(signals: signals) { [weak self] visibilityMs in
@@ -155,6 +181,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if let credentials { store.flush(client: client, credentials: credentials) }
+    }
+
+    // MARK: spec window-trackability gates
+
+    /// Spec `isUsableBounds`: a Claude window smaller than this is treated as
+    /// not trackable, so the overlay hides rather than clinging to a sliver.
+    static func isUsableBounds(_ b: CGRect) -> Bool {
+        b.width >= 360 && b.height >= 300
+    }
+
+    /// Spec `boundsEqual`: dedupe so we only reposition on real geometry changes.
+    static func boundsEqual(_ a: CGRect?, _ b: CGRect) -> Bool {
+        guard let a else { return false }
+        return a == b
     }
 
     private func handleQualifiedImpression(visibilityMs: UInt64) {
