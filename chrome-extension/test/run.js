@@ -207,16 +207,34 @@ function makeChrome(stateRef, sentRef) {
   bg.BB_ADS = sandbox.BB_ADS;
   bg.BB_MOCK_AD = sandbox.BB_MOCK_AD;
   const store = {};
+  bg.crypto = require("node:crypto"); // randomUUID for event batch keys
   bg.chrome = {
     runtime: { onInstalled: { addListener: () => {} }, onMessage: { addListener: (fn) => { bg._onMessage = fn; } } },
+    alarms: { create: () => {}, onAlarm: { addListener: () => {} } },
     storage: { local: {
       get: async (keys) => { const o = {}; (Array.isArray(keys) ? keys : [keys]).forEach((k) => { if (k in store) o[k] = store[k]; }); return o; },
       set: async (obj) => { Object.assign(store, obj); },
     } },
   };
+  // Fake prod backend — records every call so the wiring can be asserted.
+  const fetches = [];
+  bg.fetch = async (url, options = {}) => {
+    const u = String(url);
+    fetches.push({ url: u, options });
+    const ok = (body) => ({ ok: true, status: 200, json: async () => body });
+    if (u.endsWith("/v1/devices/register")) return ok({ deviceId: "dev-1", deviceKey: "key-1" });
+    if (u.endsWith("/v1/config")) return ok({ serving: true, revenueShare: 0.5 });
+    if (u.endsWith("/v1/ads")) return ok({ revenueShare: 0.5, ads: [] });
+    if (u.endsWith("/v1/events")) return ok({ ok: true, creditedMillicents: 0 });
+    if (u.endsWith("/v1/clicks/intent")) return ok({ trackingUrl: "https://api.freeai.fyi/v1/go/tok123" });
+    if (u.includes("/v1/go/")) return ok({});
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
   const bgCtx = vm.createContext(bg);
   vm.runInContext(read("src/background.js"), bgCtx);
   const msg = (m) => new Promise((res) => bg._onMessage(m, {}, res));
+  // Drain the fire-and-forget network side effects (register/flush/click report).
+  const settle = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 1)); };
 
   await check("real impression earns 50% of the per-impression gross", async () => {
     const s = await msg({ type: "BB_IMPRESSION", mock: false });
@@ -250,7 +268,56 @@ function makeChrome(stateRef, sentRef) {
     assert.strictEqual(s.testClicks, 0);
   });
 
-  console.log(`\nall ${pass} checks passed — detection, test mode, and the 50% split verified.`);
+  // ---------- prod backend wiring ----------
+  await settle(); // let earlier fire-and-forget flushes finish
+
+  await check("a real impression registers a device and is persisted", async () => {
+    assert.ok(store.deviceId && store.deviceKey, "device credentials not persisted");
+    assert.ok(fetches.some((f) => f.url.endsWith("/v1/devices/register")), "never registered a device");
+  });
+
+  await check("BB_GET_ADS prefers cached live inventory over the bundled list", async () => {
+    store.liveAds = [
+      { id: "c1", brand: "Acme", chip: "A", color: "#111", ink: "#fff", line: "Acme — live ad", url: "https://acme.example", cat: "devtools" },
+    ];
+    const ads = await msg({ type: "BB_GET_ADS" });
+    assert.ok(Array.isArray(ads) && ads.length === 1, "did not return the live list");
+    assert.strictEqual(ads[0].line, "Acme — live ad");
+  });
+
+  await check("a real impression reports to the prod ledger with a batch key", async () => {
+    store.pendingImpressions = 0;
+    fetches.length = 0;
+    await msg({ type: "BB_IMPRESSION", mock: false });
+    await settle();
+    const ev = fetches.find((f) => f.url.endsWith("/v1/events"));
+    assert.ok(ev, "no /v1/events POST");
+    const body = JSON.parse(ev.options.body);
+    assert.ok(body.batchKey, "missing idempotency batchKey");
+    assert.ok(body.events[0].impressions >= 1, "impressions not reported");
+    assert.strictEqual(body.deviceId, "dev-1", "events not authed with the device");
+  });
+
+  await check("mock impressions and clicks never reach the network", async () => {
+    fetches.length = 0;
+    await msg({ type: "BB_IMPRESSION", mock: true });
+    await msg({ type: "BB_CLICK", mock: true });
+    await settle();
+    assert.ok(!fetches.some((f) => f.url.endsWith("/v1/events")), "mock impression hit the ledger");
+    assert.ok(!fetches.some((f) => f.url.endsWith("/v1/clicks/intent")), "mock click requested a token");
+  });
+
+  await check("a live-ad click requests a single-use forgery-proof token", async () => {
+    fetches.length = 0;
+    await msg({ type: "BB_CLICK", mock: false, campaignId: "c1" });
+    await settle();
+    const intent = fetches.find((f) => f.url.endsWith("/v1/clicks/intent"));
+    assert.ok(intent, "no /v1/clicks/intent POST");
+    assert.strictEqual(JSON.parse(intent.options.body).campaignId, "c1");
+    assert.ok(fetches.some((f) => f.url.includes("/v1/go/")), "tracking token was not redeemed");
+  });
+
+  console.log(`\nall ${pass} checks passed — detection, test mode, the 50% split, and prod wiring verified.`);
 })().catch((err) => {
   console.error("\n✗ FAILED:", err.stack || err.message);
   process.exit(1);

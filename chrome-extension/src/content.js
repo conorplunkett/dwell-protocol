@@ -107,7 +107,9 @@
   bar.addEventListener("click", async () => {
     const ad = currentAd();
     if (!ad) return;
-    await send({ type: "BB_CLICK", mock: !!ad.mock });
+    // Live ads carry a campaign id so the click is recorded server-side through
+    // a single-use token; mock/bundled ads have none and just open the URL.
+    await send({ type: "BB_CLICK", mock: !!ad.mock, campaignId: ad.id });
     window.open(ad.url, "_blank", "noopener");
   });
 
@@ -302,7 +304,8 @@
   // ---------- bootstrap ----------
   async function bootstrap() {
     const state = await send({ type: "BB_GET_STATE" });
-    enabled = state ? state.enabled !== false : true;
+    // Honour both the user toggle and the server killswitch (state.serving).
+    enabled = state ? state.enabled !== false && state.serving !== false : true;
     testMode = state ? !!state.testMode : false;
     ads = (await send({ type: "BB_GET_ADS" })) || self.BB_ADS || [];
     if (state && state.mockAd) mockAd = state.mockAd;
