@@ -13,7 +13,7 @@ handles the ad auction, an append-only ledger, and gift-card redemption.
 | --- | --- |
 | `chrome-extension/` | **The product.** MV3 extension for ChatGPT / Claude / Gemini. Load-unpacked instructions + Test mode in its README. |
 | `server/` | Ad auction, 50/50 ledger (millicents), Stripe Checkout, Claude gift-card redemption, killswitch. |
-| `index.html` · `styles.css` · `script.js` | Marketing site. |
+| `index.html` · `styles.css` · `script.js` | Marketing site. Live by default (points at `https://api.freeai.fyi`); append **`?dev=1`** to the URL for a sticky mock-data developer mode (`?dev=0` exits). |
 | `legacy/vscode-extension/` | Archived. The original VS Code spinner extension — no longer the product. |
 
 ## Quick start

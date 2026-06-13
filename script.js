@@ -154,15 +154,45 @@ document.querySelectorAll(".copy-btn").forEach((btn) => {
 });
 
 // --- API wiring ---------------------------------------------------------
-// Set window.FREEAI_API (or a <meta name="freeai-api">) to point the
-// bid form and leaderboard at the live backend. With no API configured, the
-// page stays in its self-contained demo mode (hardcoded leaderboard, no
-// network) so it works anywhere.
-const API_BASE = (
-  window.FREEAI_API ||
-  document.querySelector('meta[name="freeai-api"]')?.content ||
-  ""
-).replace(/\/+$/, "");
+// In production the leaderboard + advertiser checkout point at the live backend
+// (set via <meta name="freeai-api"> in index.html, or window.FREEAI_API).
+//
+// Developer mode: append ?dev=1 to the URL to flip the lander into its
+// self-contained mock-data mode (hardcoded leaderboard/ticker/hero, no network);
+// it sticks via localStorage, and ?dev=0 turns it back off. A small badge makes
+// the mode obvious. This is the "easy on-switch" for showing mock data on the
+// lander without touching prod.
+const DEV_MODE = (() => {
+  const flag = new URLSearchParams(location.search).get("dev");
+  try {
+    if (flag === "1") { localStorage.setItem("freeai_dev", "1"); return true; }
+    if (flag === "0") { localStorage.removeItem("freeai_dev"); return false; }
+    return localStorage.getItem("freeai_dev") === "1";
+  } catch (_) {
+    return flag === "1";
+  }
+})();
+
+// In dev mode we deliberately drop the API base so loadLeaderboard() and the bid
+// form fall back to the page's built-in mock data (no network calls at all).
+const API_BASE = DEV_MODE
+  ? ""
+  : (
+      window.FREEAI_API ||
+      document.querySelector('meta[name="freeai-api"]')?.content ||
+      ""
+    ).replace(/\/+$/, "");
+
+if (DEV_MODE) {
+  const badge = document.createElement("div");
+  badge.textContent = "DEV · mock data";
+  badge.title = "Developer mode — mock data, no live API. Append ?dev=0 to exit.";
+  badge.style.cssText =
+    "position:fixed;bottom:14px;left:14px;z-index:99999;background:#1b1e25;color:#ffd54a;" +
+    "font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:8px 12px;border-radius:999px;" +
+    "border:1px solid #ffd54a;box-shadow:0 4px 16px rgba(0,0,0,.25);letter-spacing:.02em;";
+  (document.body || document.documentElement).appendChild(badge);
+}
 
 const escapeHtml = (s) =>
   String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>

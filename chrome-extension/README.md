@@ -42,6 +42,12 @@ Then verify it two ways:
 - **Test mode** swaps in a labelled mock ad — shown under the same
   only-while-generating rule — and keeps its counts separate, so you can
   confirm rendering, placement, and click-through without real earnings.
+- **Live backend (`https://api.freeai.fyi`).** On first run the service worker
+  registers an anonymous device, pulls the live ad inventory from the auction
+  (`/v1/ads`, falling back to the bundled list when offline), reports impressions
+  to the ledger in idempotent batches (`/v1/events`), records clicks through
+  single-use forgery-proof tokens (`/v1/clicks/intent`), and honours the server
+  killswitch (`/v1/config`). Test-mode (mock) events never touch the network.
 
 ## Supported sites
 
@@ -59,7 +65,7 @@ Detection selectors live at the top of `src/content.js`.
 | `src/ads.js` | Shared ad inventory + the Test-Mode mock ad. |
 | `src/content.js` | Detects "generating", injects the sponsored bar, Test mode. |
 | `src/inject.css` | Styling for the injected bar (incl. the test badge). |
-| `src/background.js` | Service worker — earnings state, revenue math, test counters. |
+| `src/background.js` | Service worker — earnings state, revenue math, test counters, and all prod backend calls (device register, live ads, event/click reporting). |
 | `popup/*` | Earnings dashboard, enable + test toggles, demo, bid market. |
 | `icons/*` | 16 / 48 / 128 px icons. |
 | `test/run.js` | Headless harness (mock DOM + chrome) — `npm test`. |
