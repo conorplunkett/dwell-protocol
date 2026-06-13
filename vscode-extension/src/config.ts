@@ -94,7 +94,7 @@ export function ensureConfigFile(): string {
   return p;
 }
 
-const DEFAULT_BACKEND_BASE = "https://api.freeai.fyi";
+const DEFAULT_BACKEND_BASE = "https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/api";
 
 /** Resolve the effective backend base URL: config file > env > default.
  *  Non-loopback HTTP is refused at the call site in extension.ts (this fn

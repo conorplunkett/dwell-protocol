@@ -27,9 +27,18 @@ redemption.
 - **Landing page + user portal** (`index.html`, `redeem.html`, `styles.css`,
   `theme.css`, `script.js`, `redeem.js`): plain static HTML/CSS/vanilla JS. No
   framework, no build step, no bundler. Served as static files.
-- **Backend** (`server/`): Node.js (>= 20) on plain `node:http` — no web
-  framework. One runtime dependency: `pg`. Dependency-injected for testing.
-  Deployed on **Fly.io** (`server/fly.toml`).
+- **Backend** — the production API is the **Supabase Edge Function** in
+  `supabase/functions/api/` (Deno), a full port of the original `node:http`
+  server. It runs on the same platform as the database and deploys via the
+  Supabase MCP/CLI. The function is served under the slug `api`
+  (`https://<ref>.supabase.co/functions/v1/api`); the website/extension/macOS
+  clients point there via the `freeai-api` meta tag / `API_BASE`.
+  - `server/` is the **original Node implementation, kept as the tested
+    reference + rollback** (its `npm test` suite still runs in CI). The Edge
+    Function mirrors its routes and SQL verbatim. Fly.io deploy configs were
+    removed in the migration. See `supabase/functions/README.md` for the port's
+    structure and the two runtime differences (no in-memory rate limiter; the
+    killswitch toggle is per-isolate).
 - **Database**: **Postgres** — **Supabase** in production. Connected via a single
   `DATABASE_URL` (`server/src/boot.js`). Schema in `server/db/schema.sql`,
   applied with `npm run migrate`. The local `docker-compose.yml` is only a dev
