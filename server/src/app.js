@@ -114,7 +114,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
   });
 
   route("GET", "/v1/go/:token", async (req, res, body, rawBody, query, p) => {
-    const result = await repo.redeemClickToken(p.token, config.revenueShare);
+    const result = await repo.redeemClickToken(p.token, config.revenueShare, config.dailyClickCap);
     redirect(res, result?.url || config.siteUrl);
   });
 
@@ -389,7 +389,8 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
       const gu = await uiRes.json();
       if (!gu.email) throw new Error("no email from Google");
       const { sessionToken } = await repo.upsertUserByOAuth(
-        { email: gu.email, googleId: gu.sub, referralCode: oauthState.ref },
+        { email: gu.email, googleId: gu.sub, referralCode: oauthState.ref,
+          emailVerified: gu.email_verified === true || gu.email_verified === "true" },
         config.webSessionTtlMs
       );
       redirect(res, `${config.siteUrl}/redeem.html#session=${sessionToken}`);
@@ -440,7 +441,8 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
       const claims = decodeJwtPayload(tokens.id_token);
       if (!claims?.sub) throw new Error("no sub in Apple id_token");
       const { sessionToken } = await repo.upsertUserByOAuth(
-        { email: claims.email || null, appleId: claims.sub, referralCode: oauthState.ref },
+        { email: claims.email || null, appleId: claims.sub, referralCode: oauthState.ref,
+          emailVerified: claims.email_verified === true || claims.email_verified === "true" },
         config.webSessionTtlMs
       );
       redirect(res, `${config.siteUrl}/redeem.html#session=${sessionToken}`);
