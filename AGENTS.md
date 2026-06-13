@@ -4,6 +4,16 @@
 
 Conventions for agents and contributors working in this repo.
 
+## Convenience commands
+
+A root `Makefile` wraps the common local tasks — run `make` (or `make help`) for
+the full self-documenting list. The day-to-day ones: `make server-up` (db +
+migrate + API), `make site`, `make test-server`, `make test-ext`, `make test-mac`
+(Rust core, any OS), `make mac-demo` / `make mac-run` / `make mac-bundle`, and
+`make test` for everything. The per-component READMEs stay the source of truth;
+when you change how something is built, run, or tested, update the matching
+target's `## name: description` comment so `make help` stays accurate.
+
 ## What FreeAI is
 
 FreeAI shows one subtle sponsored line while a web AI assistant (ChatGPT, Claude,
