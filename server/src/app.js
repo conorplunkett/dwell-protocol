@@ -492,6 +492,53 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     json(res, 200, { email: user.email, balanceUsd: bal.balanceMillicents / 100000 });
   });
 
+  // Earnings dashboard: lifetime / today / month-to-date credit totals plus a
+  // time-bucketed series for the activity chart. ?window=24h|7d|30d selects the
+  // chart window (24h is hourly buckets; 7d/30d are daily). Cards are
+  // window-independent; the front end re-fetches only to change the chart.
+  route("GET", "/v1/web/earnings", async (req, res, body, rawBody, query) => {
+    const user = await repo.userForSession(sessionFrom(req, body, query));
+    if (!user) return json(res, 401, { error: "not signed in" });
+
+    const window = ({ "24h": "24h", "7d": "7d", "30d": "30d" })[query.get("window")] || "7d";
+    const bucket = window === "24h" ? "hour" : "day";
+    const sinceMs = window === "24h" ? 24 * 3600e3 : (window === "7d" ? 7 : 30) * 86400e3;
+    const since = new Date(Date.now() - sinceMs);
+
+    const e = await repo.earningsForUser(user.id);
+    const series = await repo.earningsSeriesForUser(user.id, { bucket, since });
+    json(res, 200, {
+      todayUsd: e.todayMillicents / 100000,
+      monthUsd: e.monthMillicents / 100000,
+      lifetimeUsd: e.lifetimeMillicents / 100000,
+      balanceUsd: e.balanceMillicents / 100000,
+      redeemedUsd: e.redeemedMillicents / 100000,
+      window,
+      series: series.map((b) => ({ t: b.t, usd: b.millicents / 100000, count: b.count })),
+    });
+  });
+
+  // Activity ledger: the user's most recent credited events (impressions,
+  // clicks, referral bonuses), newest first. Searching and filtering happen
+  // client-side over the returned rows.
+  route("GET", "/v1/web/activity", async (req, res, body, rawBody, query) => {
+    const user = await repo.userForSession(sessionFrom(req, body, query));
+    if (!user) return json(res, 401, { error: "not signed in" });
+
+    const rows = await repo.recentCreditsForUser(user.id, query.get("limit") || 200);
+    json(res, 200, {
+      count: rows.length,
+      rows: rows.map((r) => ({
+        id: String(r.id),
+        createdAt: r.createdAt,
+        type: r.entryType,
+        amountUsd: r.amountMillicents / 100000,
+        advertiser: r.advertiser,
+        meta: r.meta,
+      })),
+    });
+  });
+
   // The user's referral dashboard: their shareable link/code, the reward terms,
   // and progress toward the cap. Refer a friend; when they redeem their first
   // gift card, you earn the bonus.

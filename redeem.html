@@ -155,6 +155,82 @@
     </header>
 
     <main class="redeem">
+      <section class="redeem-card" id="earnings-view">
+        <span class="eyebrow">Earnings</span>
+        <h2 class="earn-title">How much you've made with FreeAI</h2>
+        <p class="redeem-lead">
+          Every ad the extension serves returns 50% of the revenue to you as
+          Claude credits. Here's what you've earned.
+        </p>
+
+        <div class="earn-stats">
+          <div class="earn-stat">
+            <span class="es-label">Today</span>
+            <span class="es-num" id="earn-today">$0.00</span>
+            <span class="es-sub">credited today</span>
+          </div>
+          <div class="earn-stat">
+            <span class="es-label">This month</span>
+            <span class="es-num" id="earn-month">$0.00</span>
+            <span class="es-sub">month-to-date</span>
+          </div>
+          <div class="earn-stat">
+            <span class="es-label">Lifetime</span>
+            <span class="es-num" id="earn-lifetime">$0.00</span>
+            <span class="es-sub">all-time credit</span>
+          </div>
+        </div>
+
+        <div class="earn-chart-card">
+          <div class="ecc-head">
+            <div>
+              <h3 class="ecc-title">Earnings activity</h3>
+              <p class="ecc-sub">Credit grouped over the selected window.</p>
+            </div>
+            <div class="earn-window" id="earn-window" role="group" aria-label="Chart window">
+              <button class="ew-btn" data-window="24h" type="button">24h</button>
+              <button class="ew-btn active" data-window="7d" type="button">7d</button>
+              <button class="ew-btn" data-window="30d" type="button">30d</button>
+            </div>
+          </div>
+          <div class="earn-chart" id="earn-chart"><!-- SVG drawn by redeem.js --></div>
+          <p class="earn-chart-foot" id="earn-chart-foot">$0.00 across 0 events</p>
+        </div>
+      </section>
+
+      <section class="redeem-card" id="activity-view">
+        <div class="act-head">
+          <div>
+            <span class="eyebrow">Activity ledger</span>
+            <h2 class="earn-title">Your credited events</h2>
+            <p class="redeem-lead">
+              Credited events from this account, retrieved on demand. Search and
+              filter happen locally on the retrieved rows.
+            </p>
+          </div>
+          <span class="act-status" id="act-status">Not retrieved</span>
+        </div>
+
+        <div class="act-controls">
+          <input type="text" id="act-search" class="act-search"
+                 placeholder="Search advertiser, event id, event type…" disabled />
+          <select id="act-filter" class="act-filter" disabled>
+            <option value="all">All events</option>
+            <option value="impression_credit">Impressions</option>
+            <option value="click_credit">Clicks</option>
+            <option value="referral_credit">Referral bonus</option>
+          </select>
+          <span class="act-count" id="act-count">0 of 0 rows</span>
+        </div>
+
+        <div class="act-body" id="act-body">
+          <div class="act-empty" id="act-empty">
+            <p>No activity loaded. Retrieving checks the last 200 credited events for this account.</p>
+            <button class="btn-green" id="act-retrieve" type="button">Retrieve activity</button>
+          </div>
+        </div>
+      </section>
+
       <section class="redeem-card" id="redeem-view">
         <div class="balance-row">
           <div>

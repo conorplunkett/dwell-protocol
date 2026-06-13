@@ -520,6 +520,61 @@ const fakeMailer = {
     assert.strictEqual(capRefBal.balanceMillicents, 0);
   });
 
+  // ---------- earnings dashboard + activity ledger ----------
+  await check("web earnings endpoint reports today / month / lifetime and a chart series", async () => {
+    const sess = await loginVia("earn@example.com");
+    const uid = await userId("earn@example.com");
+
+    // seed credits at known times: today, earlier this month, and last month.
+    // last-month must be in this user's *month* window only if same month — pick
+    // a date guaranteed to be a prior month via interval math so the test is
+    // stable regardless of when it runs.
+    await poolNs.query(
+      `insert into ledger (entry_type, amount_millicents, user_id, created_at) values
+         ('impression_credit', 1000000, $1, now()),
+         ('click_credit',       500000, $1, date_trunc('month', now())),
+         ('referral_credit',   2000000, $1, date_trunc('month', now()) - interval '5 days')`,
+      [uid]);
+
+    const e = await api("GET", "/v1/web/earnings?window=30d", undefined, { Authorization: `Bearer ${sess}` });
+    assert.strictEqual(e.status, 200);
+    // today = the now() impression only ($10.00)
+    assert.strictEqual(e.body.todayUsd, 10);
+    // month-to-date = impression (now) + click (start of month) = $15.00
+    assert.strictEqual(e.body.monthUsd, 15);
+    // lifetime = all three credits = $35.00
+    assert.strictEqual(e.body.lifetimeUsd, 35);
+    assert.strictEqual(e.body.window, "30d");
+    assert.ok(Array.isArray(e.body.series));
+    // at least the now() bucket carries credit within the 30d window
+    assert.ok(e.body.series.some((b) => b.usd > 0), "series has a non-zero bucket");
+
+    // window defaults to 7d and switches bucket granularity
+    const def = await api("GET", "/v1/web/earnings", undefined, { Authorization: `Bearer ${sess}` });
+    assert.strictEqual(def.body.window, "7d");
+    assert.strictEqual((await api("GET", "/v1/web/earnings")).status, 401);
+  });
+
+  await check("web activity ledger lists credited events newest-first, excluding debits", async () => {
+    const sess = await loginVia("act@example.com");
+    const uid = await userId("act@example.com");
+    await poolNs.query(
+      `insert into ledger (entry_type, amount_millicents, user_id, created_at) values
+         ('impression_credit', 1000000, $1, now() - interval '2 hours'),
+         ('referral_credit',   2000000, $1, now() - interval '1 hour'),
+         ('gift_redemption_debit', -500000, $1, now())`,
+      [uid]);
+
+    const act = await api("GET", "/v1/web/activity", undefined, { Authorization: `Bearer ${sess}` });
+    assert.strictEqual(act.status, 200);
+    assert.strictEqual(act.body.count, 2, "only the two credits, not the debit");
+    assert.strictEqual(act.body.rows[0].type, "referral_credit", "newest first");
+    assert.strictEqual(act.body.rows[0].amountUsd, 20);
+    assert.strictEqual(act.body.rows[1].type, "impression_credit");
+    assert.ok(act.body.rows.every((r) => r.type !== "gift_redemption_debit"));
+    assert.strictEqual((await api("GET", "/v1/web/activity")).status, 401);
+  });
+
   // ---------- rejection + refund ----------
   await check("rejecting a reviewed campaign refunds via Stripe and posts a refund entry", async () => {
     const r = await api("POST", "/v1/checkout", { email: "spam@x.io", adLine: "questionable ad copy here", url: "https://x.io/", brand: "X", pricePerBlock: 3, blocks: 1 });
