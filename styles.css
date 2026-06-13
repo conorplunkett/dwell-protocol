@@ -63,6 +63,7 @@ a { color: inherit; text-decoration: none; }
   background: #fff; transition: border-color .15s, background .15s;
 }
 .navbtn:hover { border-color: #cfd4dc; background: #fafbfc; }
+.nav-short { display: none; }
 
 /* HERO */
 .hero { max-width: 920px; margin: 0 auto; padding: 56px 32px 24px; text-align: center; }
@@ -349,10 +350,64 @@ a { color: inherit; text-decoration: none; }
   .adv-card h2 { font-size: 26px; }
   .nav { padding: 14px 18px; }
 }
-@media (max-width: 560px) {
-  .grid2 { grid-template-columns: 1fr; }
-  .install-title { font-size: 16px; }
-  .navbtn { padding: 7px 12px; font-size: 13px; }
+/* MOBILE */
+@media (max-width: 600px) {
+  /* ticker */
+  .ticker { height: 34px; }
+  .tick { padding: 0 18px; font-size: 11.5px; }
+
+  /* nav — swap to short labels so everything fits a 360px viewport */
+  .nav { padding: 12px 14px; }
+  .nav-btns { gap: 6px; }
+  .navbtn { padding: 10px 12px; font-size: 13px; }
+  .nav-long { display: none; }
+  .nav-short { display: inline; }
+  .brand-name { font-size: 15px; }
+
+  /* hero — let the headline wrap at a real headline size */
+  .hero { padding: 36px 20px 20px; }
+  .hero h1 { white-space: normal; font-size: clamp(30px, 9.6vw, 38px); line-height: 1.08; }
+  .sub { font-size: 16.5px; margin-bottom: 32px; }
+  .hero-note { margin-bottom: 40px; }
+
+  /* demo */
   .demo { grid-template-columns: 1fr; gap: 8px; }
   .demo-chevs { transform: rotate(90deg); justify-self: center; }
+  .demo-card { padding: 18px 16px; }
+  .demo-line { font-size: 14.5px; flex-wrap: wrap; }
+  .claude-guy { right: 16px; }
+
+  /* install card */
+  .install-card { flex-wrap: wrap; padding: 18px 20px; gap: 12px; }
+  .install-title { font-size: 16px; }
+
+  /* sections */
+  .advertisers, .leaderboard, .trust, .install-section, .footer { padding-left: 20px; padding-right: 20px; }
+  .adv-card { padding: 26px 18px; }
+
+  /* form — 16px inputs so iOS Safari doesn't zoom on focus */
+  .grid2 { grid-template-columns: 1fr; }
+  .adform input { font-size: 16px; }
+  .est-total { font-size: 28px; }
+  .stripe-btn { min-height: 48px; }
+
+  /* leaderboard */
+  .board li { gap: 10px; font-size: 14px; align-items: flex-start; }
+  .rk { line-height: 1.55; }
+
+  /* install CTAs stack as full-width buttons */
+  .install-actions { flex-direction: column; align-items: stretch; }
+  .btn-green, .btn-outline { min-height: 48px; display: inline-grid; place-items: center; }
+
+  /* redeem page */
+  .redeem { padding: 24px 14px 0; }
+  .redeem-card { padding: 24px 18px; }
+  .balance { font-size: 36px; }
+  .gift-cells { grid-template-columns: repeat(2, 1fr); }
+  .gift-cell { padding: 14px 6px; }
+  .recipient input { font-size: 16px; }
+  .redeem-foot .btn-green { justify-self: stretch; }
+}
+@media (max-width: 380px) {
+  .brand-name { display: none; }
 }

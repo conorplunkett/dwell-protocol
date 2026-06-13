@@ -11,6 +11,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   min-height: 100vh;
+  min-height: 100dvh; /* stable height under iOS Safari's collapsing URL bar */
 }
 
 /* ── Left column — hero ── */
@@ -354,6 +355,11 @@
   gap: 10px;
 }
 
+/* display:flex above would otherwise override the hidden attribute */
+#auth-step-sent[hidden] {
+  display: none;
+}
+
 .auth-sent-icon {
   font-size: 38px;
   text-align: center;
@@ -411,5 +417,19 @@
   .portal-right {
     padding: 28px 16px 40px;
     align-items: flex-start;
+  }
+
+  .portal-nav {
+    padding-top: 20px;
+  }
+
+  /* 16px input so iOS Safari doesn't zoom on focus */
+  .auth-input {
+    font-size: 16px;
+  }
+
+  .auth-btn-primary,
+  .auth-btn-secondary {
+    min-height: 48px;
   }
 }
