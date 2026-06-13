@@ -29,7 +29,14 @@ redemption.
   framework, no build step, no bundler. Served as static files.
 - **Backend** (`server/`): Node.js (>= 20) on plain `node:http` — no web
   framework. One runtime dependency: `pg`. Dependency-injected for testing.
-  Deployed on **Fly.io** (`server/fly.toml`).
+  Deployed on **Fly.io** (`server/fly.toml`). This is still the production API.
+  - **Spike — Supabase Edge Functions** (`supabase/functions/`): an in-progress
+    evaluation of moving the backend off Fly.io onto Supabase Edge Functions
+    (Deno), so the API lives on the same platform as the DB and is deployable via
+    the Supabase MCP/CLI. `web-referrals/` is a POC port of `GET
+    /v1/web/referrals` proving Edge→pooled-Postgres access with our verbatim SQL.
+    Not wired into production. See `supabase/functions/README.md` for the full
+    migration plan and the one real rearchitecture (the in-memory rate limiter).
 - **Database**: **Postgres** — **Supabase** in production. Connected via a single
   `DATABASE_URL` (`server/src/boot.js`). Schema in `server/db/schema.sql`,
   applied with `npm run migrate`. The local `docker-compose.yml` is only a dev
