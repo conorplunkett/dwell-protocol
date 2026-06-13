@@ -18,10 +18,29 @@ handles the ad auction, an append-only ledger, and gift-card redemption.
 
 ## Quick start
 
+Run `make` (or `make help`) for a list of every convenience command with a
+one-line description. The common ones:
+
+| Command | What it does |
+| --- | --- |
+| `make site` | Serve the static site at http://localhost:8000 |
+| `make server-up` | Start Postgres, migrate, and run the API on :8787 |
+| `make server` | Start just the API (db already up) |
+| `make test-server` | Server end-to-end tests against the local DB |
+| `make test-ext` | Chrome extension headless tests |
+| `make test-mac` | Rust `overlay-core` tests (any OS) |
+| `make mac-demo` | Run the macOS app in demo mode (no server/Claude) |
+| `make mac-run` | Build & run the macOS app against the real API |
+| `make mac-bundle` / `make mac-open` | Package then open `SponsorOverlay.app` |
+| `make test` | Every test suite |
+
+These wrap the per-component READMEs, which stay the source of truth:
+
 - **Extension:** see [`chrome-extension/README.md`](chrome-extension/README.md).
   Load unpacked, flip on **Test mode**, open ChatGPT/Claude/Gemini → the mock ad
   shows immediately. `cd chrome-extension && npm test` runs the headless checks.
 - **Backend:** see [`server/README.md`](server/README.md).
+- **macOS app:** see [`desktop/README.md`](desktop/README.md).
 
 ## How it works
 
