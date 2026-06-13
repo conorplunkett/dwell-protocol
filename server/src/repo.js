@@ -248,16 +248,16 @@ function createRepo(pool) {
     // One batch = { batchKey, events: [{ campaignId, impressions, clicks }] }.
     // A click bills the campaign at 50x an impression. The user's share
     // (revenueShare, 0.5 by default) credits the device; the rest is the platform fee.
-    async ingestBatch({ deviceId, batchKey, events, revenueShare, dailyCap }) {
+    async ingestBatch({ deviceId, batchKey, events, revenueShare, dailyCap, ipHash, ipDailyCap }) {
       return tx(async (c) => {
         const claimedImpressions = events.reduce((n, e) => n + (e.impressions || 0), 0);
         const claimedClicks = events.reduce((n, e) => n + (e.clicks || 0), 0);
 
         // idempotency: replays of the same batch are acknowledged, not re-paid
         const ins = await c.query(
-          `insert into event_batches (device_id, batch_key, impressions, clicks)
-           values ($1,$2,$3,$4) on conflict (batch_key) do nothing returning id`,
-          [deviceId, batchKey, claimedImpressions, claimedClicks]
+          `insert into event_batches (device_id, batch_key, impressions, clicks, ip_hash)
+           values ($1,$2,$3,$4,$5) on conflict (batch_key) do nothing returning id`,
+          [deviceId, batchKey, claimedImpressions, claimedClicks, ipHash || null]
         );
         if (!ins.rows[0]) return { duplicate: true, creditedMillicents: 0 };
 
@@ -271,6 +271,24 @@ function createRepo(pool) {
           const err = new Error("daily impression cap exceeded");
           err.code = "CAP_EXCEEDED";
           throw err;
+        }
+
+        // fraud cap: impressions per source IP per UTC day. Devices are free and
+        // anonymous, so the per-device cap alone doesn't stop one host minting
+        // many devices — this bounds the whole IP. Hashed, fail-open (skipped
+        // when no IP is known), and disabled when ipDailyCap is not positive so
+        // operators with large shared-NAT/CGNAT audiences can opt out.
+        if (ipHash && Number.isFinite(ipDailyCap) && ipDailyCap > 0) {
+          const ipCap = await c.query(
+            `select coalesce(sum(impressions), 0)::bigint as n from event_batches
+              where ip_hash = $1 and created_at >= date_trunc('day', now())`,
+            [ipHash]
+          );
+          if (Number(ipCap.rows[0].n) > ipDailyCap) {
+            const err = new Error("daily ip impression cap exceeded");
+            err.code = "CAP_EXCEEDED";
+            throw err;
+          }
         }
 
         let credited = 0n;
@@ -660,6 +678,86 @@ function createRepo(pool) {
         redeemedMillicents: -redeemed,
         balanceMillicents: earned + paidOut + redeemed,
       };
+    },
+
+    // Earnings tracking for the web dashboard. Lifetime / today / month-to-date
+    // credit totals plus the same balance math as balanceForUser, in one pass.
+    // "Today" and "this month" are bucketed in UTC (date_trunc on now()).
+    async earningsForUser(userId) {
+      const { rows } = await pool.query(
+        `select
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit') and created_at >= date_trunc('day', now())), 0)::bigint as today,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit') and created_at >= date_trunc('month', now())), 0)::bigint as month,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed
+         from ledger
+         where user_id = $1
+            or device_id in (select id from devices where user_id = $1)`,
+        [userId]
+      );
+      const earned = Number(rows[0].earned);
+      const today = Number(rows[0].today);
+      const month = Number(rows[0].month);
+      const paidOut = Number(rows[0].paid_out); // negative
+      const redeemed = Number(rows[0].redeemed); // negative
+      return {
+        lifetimeMillicents: earned,
+        todayMillicents: today,
+        monthMillicents: month,
+        redeemedMillicents: -redeemed,
+        paidOutMillicents: -paidOut,
+        balanceMillicents: earned + paidOut + redeemed,
+      };
+    },
+
+    // Time-bucketed credit totals for the earnings chart. `bucket` is 'hour' or
+    // 'day'; only buckets with activity at/after `since` are returned (the caller
+    // fills the gaps to a continuous axis). Ordered oldest-first.
+    async earningsSeriesForUser(userId, { bucket, since }) {
+      const unit = bucket === "hour" ? "hour" : "day";
+      const { rows } = await pool.query(
+        `select
+           date_trunc($2, created_at) as t,
+           coalesce(sum(amount_millicents), 0)::bigint as millicents,
+           count(*)::int as count
+         from ledger
+         where (user_id = $1 or device_id in (select id from devices where user_id = $1))
+           and entry_type in ('impression_credit','click_credit','referral_credit')
+           and created_at >= $3
+         group by 1
+         order by 1 asc`,
+        [userId, unit, since]
+      );
+      return rows.map((r) => ({
+        t: r.t,
+        millicents: Number(r.millicents),
+        count: r.count,
+      }));
+    },
+
+    // Recent credited ledger rows for the activity ledger (newest first). Credits
+    // only — redemptions/payouts are excluded. `limit` is clamped to [1, 200].
+    async recentCreditsForUser(userId, limit) {
+      const n = Math.max(1, Math.min(200, parseInt(limit, 10) || 200));
+      const { rows } = await pool.query(
+        `select l.id, l.created_at, l.entry_type, l.amount_millicents, l.meta, c.brand
+           from ledger l
+           left join campaigns c on c.id = l.campaign_id
+          where (l.user_id = $1 or l.device_id in (select id from devices where user_id = $1))
+            and l.entry_type in ('impression_credit','click_credit','referral_credit')
+          order by l.created_at desc
+          limit $2`,
+        [userId, n]
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        createdAt: r.created_at,
+        entryType: r.entry_type,
+        amountMillicents: Number(r.amount_millicents),
+        advertiser: r.brand || null,
+        meta: r.meta || {},
+      }));
     },
 
     // User-scoped gift redemption (website flow). Re-checks the user's balance

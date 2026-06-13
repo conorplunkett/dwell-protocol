@@ -84,12 +84,16 @@ function showRedeemPage(email) {
 
 // ---- authed sub-views: Redeem vs Referrals ----
 function showRedeemView() {
+  $("earnings-view").hidden = false;
+  $("activity-view").hidden = false;
   $("redeem-view").hidden = false;
   $("referrals-view").hidden = true;
   $("nav-redeem").classList.add("active");
   $("nav-referrals").classList.remove("active");
 }
 function showReferralsView() {
+  $("earnings-view").hidden = true;
+  $("activity-view").hidden = true;
   $("redeem-view").hidden = true;
   $("referrals-view").hidden = false;
   $("nav-redeem").classList.remove("active");
@@ -344,6 +348,183 @@ $("redeem-btn").addEventListener("click", async () => {
   }
 });
 
+// ---- earnings dashboard ----
+let earnWindow = "7d";
+
+async function loadEarnings(window = earnWindow) {
+  earnWindow = window;
+  const { status, body } = await apiGet(`/v1/web/earnings?window=${window}`);
+  if (status === 401) { localStorage.removeItem(SESSION_KEY); location.reload(); return; }
+  if (status !== 200) return;
+  $("earn-today").textContent = usd(body.todayUsd || 0);
+  $("earn-month").textContent = usd(body.monthUsd || 0);
+  $("earn-lifetime").textContent = usd(body.lifetimeUsd || 0);
+  renderChart(body.series || [], window);
+}
+
+// Snap a Date to the start of its hour/day bucket (local time) for axis fill.
+function bucketStart(d, unit) {
+  const x = new Date(d);
+  x.setMinutes(0, 0, 0);
+  if (unit === "day") x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+// Build a continuous, gap-filled axis from the sparse server series so the
+// chart shows zero-credit periods too (mirrors the activity chart in the spec).
+function fillSeries(series, window) {
+  const unit = window === "24h" ? "hour" : "day";
+  const points = window === "24h" ? 24 : window === "7d" ? 7 : 30;
+  const stepMs = unit === "hour" ? 3600e3 : 86400e3;
+  const byKey = new Map();
+  for (const b of series) byKey.set(bucketStart(b.t, unit).getTime(), b);
+  const end = bucketStart(Date.now(), unit).getTime();
+  const out = [];
+  for (let i = points - 1; i >= 0; i--) {
+    const t = end - i * stepMs;
+    const hit = byKey.get(t);
+    out.push({ t: new Date(t), usd: hit ? hit.usd : 0, count: hit ? hit.count : 0 });
+  }
+  return out;
+}
+
+function renderChart(series, window) {
+  const host = $("earn-chart");
+  const pts = fillSeries(series, window);
+  const totalUsd = pts.reduce((s, p) => s + p.usd, 0);
+  const totalEvents = pts.reduce((s, p) => s + p.count, 0);
+  $("earn-chart-foot").textContent =
+    `${usd(totalUsd)} across ${totalEvents.toLocaleString()} event${totalEvents === 1 ? "" : "s"}`;
+
+  const W = 720, H = 220, padL = 8, padR = 8, padT = 14, padB = 26;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const max = Math.max(...pts.map((p) => p.usd), 0);
+  const baseY = padT + innerH;
+  const xAt = (i) => padL + (pts.length === 1 ? innerW / 2 : (i / (pts.length - 1)) * innerW);
+  const yAt = (v) => (max <= 0 ? baseY : baseY - (v / max) * innerH);
+
+  // baseline grid + faint horizontal rules
+  const grid = [0, 0.5, 1].map((f) => {
+    const y = padT + innerH - f * innerH;
+    return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" class="ec-grid" />`;
+  }).join("");
+
+  const linePts = pts.map((p, i) => `${xAt(i).toFixed(1)},${yAt(p.usd).toFixed(1)}`).join(" ");
+  const areaPts = `${padL},${baseY} ${linePts} ${(W - padR)},${baseY}`;
+
+  // sparse x labels: ~every Nth bucket
+  const labelEvery = Math.ceil(pts.length / 8);
+  const labels = pts.map((p, i) => {
+    if (i % labelEvery !== 0 && i !== pts.length - 1) return "";
+    const txt = window === "24h"
+      ? p.t.toLocaleTimeString(undefined, { hour: "numeric" })
+      : p.t.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return `<text x="${xAt(i).toFixed(1)}" y="${H - 8}" class="ec-xlabel">${txt}</text>`;
+  }).join("");
+
+  const dots = max > 0
+    ? pts.map((p, i) => p.usd > 0
+        ? `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(p.usd).toFixed(1)}" r="2.6" class="ec-dot" />`
+        : "").join("")
+    : "";
+
+  host.innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="ec-svg" role="img" aria-label="Earnings over time">` +
+    grid +
+    `<polygon points="${areaPts}" class="ec-area" />` +
+    `<polyline points="${linePts}" class="ec-line" />` +
+    dots + labels +
+    `</svg>`;
+}
+
+$("earn-window").addEventListener("click", (e) => {
+  const btn = e.target.closest(".ew-btn");
+  if (!btn) return;
+  $("earn-window").querySelectorAll(".ew-btn").forEach((b) => b.classList.remove("active"));
+  btn.classList.add("active");
+  loadEarnings(btn.dataset.window);
+});
+
+// ---- activity ledger ----
+let activityRows = null;
+
+const ACT_LABEL = {
+  impression_credit: "Impression",
+  click_credit: "Click",
+  referral_credit: "Referral bonus",
+};
+
+async function retrieveActivity() {
+  const btn = $("act-retrieve");
+  if (btn) { btn.disabled = true; btn.textContent = "Retrieving…"; }
+  const { status, body } = await apiGet("/v1/web/activity?limit=200");
+  if (status === 401) { localStorage.removeItem(SESSION_KEY); location.reload(); return; }
+  if (status !== 200) {
+    if (btn) { btn.disabled = false; btn.textContent = "Retrieve activity"; }
+    return;
+  }
+  activityRows = body.rows || [];
+  $("act-status").textContent = "Retrieved";
+  $("act-status").classList.add("ok");
+  $("act-search").disabled = false;
+  $("act-filter").disabled = false;
+  renderActivity();
+}
+
+function filteredActivity() {
+  if (!activityRows) return [];
+  const q = ($("act-search").value || "").trim().toLowerCase();
+  const type = $("act-filter").value;
+  return activityRows.filter((r) => {
+    if (type !== "all" && r.type !== type) return false;
+    if (!q) return true;
+    const hay = `${r.advertiser || ""} ${r.id} ${r.type} ${ACT_LABEL[r.type] || ""}`.toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+function renderActivity() {
+  const body = $("act-body");
+  const rows = filteredActivity();
+  $("act-count").textContent = `${rows.length} of ${activityRows.length} rows`;
+
+  if (!activityRows.length) {
+    body.innerHTML = `<div class="act-empty"><p>No credited events yet. Use the extension while you chat to start earning.</p></div>`;
+    return;
+  }
+  if (!rows.length) {
+    body.innerHTML = `<div class="act-empty"><p>No events match your search.</p></div>`;
+    return;
+  }
+
+  const head =
+    `<div class="act-row act-row-head">` +
+    `<span>Event</span><span>Advertiser</span><span>When</span><span class="act-amt">Credit</span>` +
+    `</div>`;
+  const items = rows.map((r) => {
+    const when = r.createdAt ? new Date(r.createdAt).toLocaleString() : "";
+    const label = ACT_LABEL[r.type] || r.type;
+    return (
+      `<div class="act-row">` +
+      `<span class="act-type ${r.type}">${label}</span>` +
+      `<span class="act-adv">${r.advertiser ? escapeHtml(r.advertiser) : "—"}</span>` +
+      `<span class="act-when">${when}</span>` +
+      `<span class="act-amt">${usd(r.amountUsd)}</span>` +
+      `</div>`
+    );
+  }).join("");
+  body.innerHTML = head + items;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+$("act-retrieve")?.addEventListener("click", retrieveActivity);
+$("act-search").addEventListener("input", renderActivity);
+$("act-filter").addEventListener("change", renderActivity);
+
 // ---- boot ----
 async function boot() {
   showStep("providers"); // default card state
@@ -362,6 +543,7 @@ async function boot() {
   balanceUsd = me.body.balanceUsd || 0;
   $("balance").textContent = usd(balanceUsd);
   showRedeemPage(me.body.email);
+  loadEarnings("7d");
   const cat = await apiGet("/v1/giftcards");
   if (cat.status === 200) { catalog = cat.body; renderMenu(); updateSummary(); }
 }

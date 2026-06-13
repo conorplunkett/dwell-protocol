@@ -60,7 +60,7 @@ const fakeMailer = {
   await poolNs.query(fs.readFileSync(path.join(__dirname, "..", "db", "schema.sql"), "utf8"));
 
   const config = {
-    revenueShare: 0.9, dailyImpressionCap: 5000, dailyClickCap: 5, payoutThresholdCents: 1000,
+    revenueShare: 0.9, dailyImpressionCap: 5000, ipDailyImpressionCap: 0, dailyClickCap: 5, payoutThresholdCents: 1000,
     referralRewardCents: 2000, referralCap: 10,
     stripeWebhookSecret: WEBHOOK_SECRET, siteUrl: "https://freeai.fyi",
     apiBaseUrl: "", corsOrigin: "https://freeai.fyi", adminKey: "test-admin",
@@ -107,6 +107,8 @@ const fakeMailer = {
     const r = await fetch(base + "/v1/ads", { method: "OPTIONS" });
     assert.strictEqual(r.status, 204);
     assert.strictEqual(r.headers.get("access-control-allow-origin"), "https://freeai.fyi");
+    // authed web endpoints send a Bearer token, so the preflight must allow it
+    assert.ok(/authorization/i.test(r.headers.get("access-control-allow-headers")), "Authorization not in allowed headers");
   });
 
   // ---------- checkout + validation ----------
@@ -267,6 +269,32 @@ const fakeMailer = {
     assert.strictEqual(after.redeemedUsd, 20, "only one $20 gift was charged");
     assert.strictEqual(after.balanceUsd, 4.75);
     assert.ok(after.balanceUsd >= 0, "balance never goes negative");
+  });
+
+  await check("per-IP daily impression cap bounds farming across many anonymous devices", async () => {
+    const camp = await api("POST", "/v1/checkout", {
+      email: "adv@ipcap.co", adLine: "ip cap regression campaign", url: "https://ipcap.example/",
+      brand: "IPCap", pricePerBlock: 5, blocks: 50,
+    });
+    await payWebhook(camp.body.campaignId);
+    await approve(camp.body.campaignId);
+
+    // second app instance with a low per-IP cap; all test traffic shares 127.0.0.1
+    const cfgIp = { ...config, ipDailyImpressionCap: 1500 };
+    const { server: s3 } = createApp({ repo, stripe, mailer: fakeMailer, rateLimiter: bigLimiter, config: cfgIp });
+    await new Promise((r) => s3.listen(0, r));
+    const b3 = `http://127.0.0.1:${s3.address().port}`;
+    const post = (p, b) => fetch(b3 + p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+    const d1 = (await post("/v1/devices/register", {})).body;
+    const d2 = (await post("/v1/devices/register", {})).body;
+    // d1 is under both caps and credits normally
+    const r1 = await post("/v1/events", { ...d1, batchKey: "ip-a", events: [{ campaignId: camp.body.campaignId, impressions: 1000, clicks: 0 }] });
+    assert.strictEqual(r1.status, 200);
+    // d2 is well under ITS OWN device cap (5000) but tips the shared IP past 1500 → 429
+    const r2 = await post("/v1/events", { ...d2, batchKey: "ip-b", events: [{ campaignId: camp.body.campaignId, impressions: 1000, clicks: 0 }] });
+    assert.strictEqual(r2.status, 429);
+    s3.close();
   });
 
   // ---------- email-gated payouts ----------
@@ -492,6 +520,61 @@ const fakeMailer = {
     assert.strictEqual(capStatus, "capped");
     const capRefBal = await repo.balanceForUser(await userId("cap-er@example.com"));
     assert.strictEqual(capRefBal.balanceMillicents, 0);
+  });
+
+  // ---------- earnings dashboard + activity ledger ----------
+  await check("web earnings endpoint reports today / month / lifetime and a chart series", async () => {
+    const sess = await loginVia("earn@example.com");
+    const uid = await userId("earn@example.com");
+
+    // seed credits at known times: today, earlier this month, and last month.
+    // last-month must be in this user's *month* window only if same month — pick
+    // a date guaranteed to be a prior month via interval math so the test is
+    // stable regardless of when it runs.
+    await poolNs.query(
+      `insert into ledger (entry_type, amount_millicents, user_id, created_at) values
+         ('impression_credit', 1000000, $1, now()),
+         ('click_credit',       500000, $1, date_trunc('month', now())),
+         ('referral_credit',   2000000, $1, date_trunc('month', now()) - interval '5 days')`,
+      [uid]);
+
+    const e = await api("GET", "/v1/web/earnings?window=30d", undefined, { Authorization: `Bearer ${sess}` });
+    assert.strictEqual(e.status, 200);
+    // today = the now() impression only ($10.00)
+    assert.strictEqual(e.body.todayUsd, 10);
+    // month-to-date = impression (now) + click (start of month) = $15.00
+    assert.strictEqual(e.body.monthUsd, 15);
+    // lifetime = all three credits = $35.00
+    assert.strictEqual(e.body.lifetimeUsd, 35);
+    assert.strictEqual(e.body.window, "30d");
+    assert.ok(Array.isArray(e.body.series));
+    // at least the now() bucket carries credit within the 30d window
+    assert.ok(e.body.series.some((b) => b.usd > 0), "series has a non-zero bucket");
+
+    // window defaults to 7d and switches bucket granularity
+    const def = await api("GET", "/v1/web/earnings", undefined, { Authorization: `Bearer ${sess}` });
+    assert.strictEqual(def.body.window, "7d");
+    assert.strictEqual((await api("GET", "/v1/web/earnings")).status, 401);
+  });
+
+  await check("web activity ledger lists credited events newest-first, excluding debits", async () => {
+    const sess = await loginVia("act@example.com");
+    const uid = await userId("act@example.com");
+    await poolNs.query(
+      `insert into ledger (entry_type, amount_millicents, user_id, created_at) values
+         ('impression_credit', 1000000, $1, now() - interval '2 hours'),
+         ('referral_credit',   2000000, $1, now() - interval '1 hour'),
+         ('gift_redemption_debit', -500000, $1, now())`,
+      [uid]);
+
+    const act = await api("GET", "/v1/web/activity", undefined, { Authorization: `Bearer ${sess}` });
+    assert.strictEqual(act.status, 200);
+    assert.strictEqual(act.body.count, 2, "only the two credits, not the debit");
+    assert.strictEqual(act.body.rows[0].type, "referral_credit", "newest first");
+    assert.strictEqual(act.body.rows[0].amountUsd, 20);
+    assert.strictEqual(act.body.rows[1].type, "impression_credit");
+    assert.ok(act.body.rows.every((r) => r.type !== "gift_redemption_debit"));
+    assert.strictEqual((await api("GET", "/v1/web/activity")).status, 401);
   });
 
   // ---------- rejection + refund ----------

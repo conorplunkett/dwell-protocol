@@ -42,6 +42,7 @@ function loadConfig() {
     revenueShare: parseFloat(env("REVENUE_SHARE", "0.5")),
     grossCpmCents: parseInt(env("GROSS_CPM_CENTS", "1200"), 10),
     dailyImpressionCap: parseInt(env("DAILY_IMPRESSION_CAP", "5000"), 10),
+    ipDailyImpressionCap: parseInt(env("IP_DAILY_IMPRESSION_CAP", "5000"), 10), // per source IP per UTC day; 0 disables
     dailyClickCap: parseInt(env("DAILY_CLICK_CAP", "100"), 10),
     payoutThresholdCents: parseInt(env("PAYOUT_THRESHOLD_CENTS", "1000"), 10),
     referralRewardCents: parseInt(env("REFERRAL_REWARD_CENTS", "2000"), 10),
@@ -394,14 +395,14 @@ function createRepo(pool: any) {
       );
       return !!rows[0];
     },
-    async ingestBatch({ deviceId, batchKey, events, revenueShare, dailyCap }: any) {
+    async ingestBatch({ deviceId, batchKey, events, revenueShare, dailyCap, ipHash, ipDailyCap }: any) {
       return tx(async (c: any) => {
         const claimedImpressions = events.reduce((n: number, e: any) => n + (e.impressions || 0), 0);
         const claimedClicks = events.reduce((n: number, e: any) => n + (e.clicks || 0), 0);
         const ins = await c.query(
-          `insert into event_batches (device_id, batch_key, impressions, clicks)
-           values ($1,$2,$3,$4) on conflict (batch_key) do nothing returning id`,
-          [deviceId, batchKey, claimedImpressions, claimedClicks]
+          `insert into event_batches (device_id, batch_key, impressions, clicks, ip_hash)
+           values ($1,$2,$3,$4,$5) on conflict (batch_key) do nothing returning id`,
+          [deviceId, batchKey, claimedImpressions, claimedClicks, ipHash || null]
         );
         if (!ins.rows[0]) return { duplicate: true, creditedMillicents: 0 };
         const cap = await c.query(
@@ -413,6 +414,20 @@ function createRepo(pool: any) {
           const err: any = new Error("daily impression cap exceeded");
           err.code = "CAP_EXCEEDED";
           throw err;
+        }
+        // fraud cap: impressions per source IP per UTC day (hashed, fail-open,
+        // disabled when ipDailyCap <= 0).
+        if (ipHash && Number.isFinite(ipDailyCap) && ipDailyCap > 0) {
+          const ipCap = await c.query(
+            `select coalesce(sum(impressions), 0)::bigint as n from event_batches
+              where ip_hash = $1 and created_at >= date_trunc('day', now())`,
+            [ipHash]
+          );
+          if (Number(ipCap.rows[0].n) > ipDailyCap) {
+            const err: any = new Error("daily ip impression cap exceeded");
+            err.code = "CAP_EXCEEDED";
+            throw err;
+          }
         }
         let credited = 0n;
         for (const ev of events) {
@@ -704,6 +719,59 @@ function createRepo(pool: any) {
       const redeemed = Number(rows[0].redeemed);
       return { earnedMillicents: earned, paidOutMillicents: -paidOut, redeemedMillicents: -redeemed, balanceMillicents: earned + paidOut + redeemed };
     },
+    async earningsForUser(userId: string) {
+      const { rows } = await pool.query(
+        `select
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit') and created_at >= date_trunc('day', now())), 0)::bigint as today,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit') and created_at >= date_trunc('month', now())), 0)::bigint as month,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed
+         from ledger where user_id = $1 or device_id in (select id from devices where user_id = $1)`,
+        [userId]
+      );
+      const earned = Number(rows[0].earned);
+      const today = Number(rows[0].today);
+      const month = Number(rows[0].month);
+      const paidOut = Number(rows[0].paid_out);
+      const redeemed = Number(rows[0].redeemed);
+      return {
+        lifetimeMillicents: earned, todayMillicents: today, monthMillicents: month,
+        redeemedMillicents: -redeemed, paidOutMillicents: -paidOut,
+        balanceMillicents: earned + paidOut + redeemed,
+      };
+    },
+    async earningsSeriesForUser(userId: string, { bucket, since }: any) {
+      const unit = bucket === "hour" ? "hour" : "day";
+      const { rows } = await pool.query(
+        `select date_trunc($2, created_at) as t,
+                coalesce(sum(amount_millicents), 0)::bigint as millicents,
+                count(*)::int as count
+         from ledger
+         where (user_id = $1 or device_id in (select id from devices where user_id = $1))
+           and entry_type in ('impression_credit','click_credit','referral_credit')
+           and created_at >= $3
+         group by 1 order by 1 asc`,
+        [userId, unit, since]
+      );
+      return rows.map((r: any) => ({ t: r.t, millicents: Number(r.millicents), count: r.count }));
+    },
+    async recentCreditsForUser(userId: string, limit: any) {
+      const n = Math.max(1, Math.min(200, parseInt(limit, 10) || 200));
+      const { rows } = await pool.query(
+        `select l.id, l.created_at, l.entry_type, l.amount_millicents, l.meta, c.brand
+           from ledger l
+           left join campaigns c on c.id = l.campaign_id
+          where (l.user_id = $1 or l.device_id in (select id from devices where user_id = $1))
+            and l.entry_type in ('impression_credit','click_credit','referral_credit')
+          order by l.created_at desc limit $2`,
+        [userId, n]
+      );
+      return rows.map((r: any) => ({
+        id: r.id, createdAt: r.created_at, entryType: r.entry_type,
+        amountMillicents: Number(r.amount_millicents), advertiser: r.brand || null, meta: r.meta || {},
+      }));
+    },
     async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, recipientEmail, referralRewardMillicents, referralCap }: any) {
       return tx(async (c: any) => {
         await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, `user:${userId}`]);
@@ -848,6 +916,15 @@ function sessionFrom(ctx: any) {
   const bearer = h.startsWith("Bearer ") ? h.slice(7) : null;
   return bearer || ctx.body?.session || ctx.query.get("session") || null;
 }
+// Client IP from the proxy header. Used — hashed, never stored raw — for the
+// per-IP fraud cap.
+function clientIp(ctx: any) {
+  return (ctx.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "";
+}
+function hashIp(ctx: any) {
+  const ip = clientIp(ctx);
+  return ip ? crypto.createHmac("sha256", config.adminKey || "ip-salt").update(ip).digest("hex") : null;
+}
 
 // ── health & catalog ──
 route("GET", "/healthz", async () => json(200, { ok: true }));
@@ -872,6 +949,7 @@ route("POST", "/v1/events", async (ctx: any) => {
     const result = await repo.ingestBatch({
       deviceId: device.id, batchKey: body.batchKey, events: body.events,
       revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
+      ipHash: hashIp(ctx), ipDailyCap: config.ipDailyImpressionCap,
     });
     return json(200, { ok: true, ...result });
   } catch (err: any) {
@@ -1144,6 +1222,34 @@ route("GET", "/v1/web/me", async (ctx: any) => {
   if (!user) return json(401, { error: "not signed in" });
   const bal = await repo.balanceForUser(user.id);
   return json(200, { email: user.email, balanceUsd: bal.balanceMillicents / 100000 });
+});
+route("GET", "/v1/web/earnings", async (ctx: any) => {
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  const window = ({ "24h": "24h", "7d": "7d", "30d": "30d" } as any)[ctx.query.get("window")] || "7d";
+  const bucket = window === "24h" ? "hour" : "day";
+  const sinceMs = window === "24h" ? 24 * 3600e3 : (window === "7d" ? 7 : 30) * 86400e3;
+  const since = new Date(Date.now() - sinceMs);
+  const e = await repo.earningsForUser(user.id);
+  const series = await repo.earningsSeriesForUser(user.id, { bucket, since });
+  return json(200, {
+    todayUsd: e.todayMillicents / 100000, monthUsd: e.monthMillicents / 100000,
+    lifetimeUsd: e.lifetimeMillicents / 100000, balanceUsd: e.balanceMillicents / 100000,
+    redeemedUsd: e.redeemedMillicents / 100000, window,
+    series: series.map((b: any) => ({ t: b.t, usd: b.millicents / 100000, count: b.count })),
+  });
+});
+route("GET", "/v1/web/activity", async (ctx: any) => {
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  const rows = await repo.recentCreditsForUser(user.id, ctx.query.get("limit") || 200);
+  return json(200, {
+    count: rows.length,
+    rows: rows.map((r: any) => ({
+      id: String(r.id), createdAt: r.createdAt, type: r.entryType,
+      amountUsd: r.amountMillicents / 100000, advertiser: r.advertiser, meta: r.meta,
+    })),
+  });
 });
 route("GET", "/v1/web/referrals", async (ctx: any) => {
   const user = await repo.userForSession(sessionFrom(ctx));
