@@ -91,11 +91,21 @@ built in:
   `batchKey`; replays are acknowledged, never re-paid.
 - **Daily device cap** — default 5,000 impressions/day (~7h of serving);
   excess batches get `429`.
+- **Clicks are token-only** — `POST /v1/events` bills impressions *only*. A
+  click bills 50x, so self-reported click counts (which would also dodge the
+  impression cap) are never credited; genuine clicks earn solely through the
+  single-use, forgery-proof token path (`/v1/clicks/intent` → `/v1/go`).
+- **Daily click cap** — default 100 verified clicks/device/day; past it the
+  `/v1/go` redirect still works but credits nothing, so the 50x path can't be
+  looped to drain a budget.
 - **Budget locks** — campaigns are row-locked on billing and can never be
   billed past `impressions_remaining`; they flip to `exhausted` atomically.
+- **No double-spend on redeem** — concurrent gift redemptions serialize on a
+  per-balance advisory lock, so the in-transaction balance check can't be raced
+  into an overdraft.
 - **Held payouts** — the $10 threshold + weekly sweep gives a review window.
 - Next (not built): only count impressions while a real agent process is
-  attached, per-IP device limits, click-rate anomaly detection.
+  attached, per-IP device limits.
 
 ## Run it
 

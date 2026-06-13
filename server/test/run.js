@@ -60,7 +60,7 @@ const fakeMailer = {
   await poolNs.query(fs.readFileSync(path.join(__dirname, "..", "db", "schema.sql"), "utf8"));
 
   const config = {
-    revenueShare: 0.9, dailyImpressionCap: 5000, payoutThresholdCents: 1000,
+    revenueShare: 0.9, dailyImpressionCap: 5000, dailyClickCap: 5, payoutThresholdCents: 1000,
     referralRewardCents: 2000, referralCap: 10,
     stripeWebhookSecret: WEBHOOK_SECRET, siteUrl: "https://freeai.fyi",
     apiBaseUrl: "", corsOrigin: "https://freeai.fyi", adminKey: "test-admin",
@@ -177,13 +177,20 @@ const fakeMailer = {
 
   // ---------- devices & ledger ----------
   let device;
-  await check("device registers and earns exactly 90% (click = 50x)", async () => {
+  await check("device registers and earns exactly 90% on impressions (events never bill self-reported clicks)", async () => {
     device = (await api("POST", "/v1/devices/register")).body;
     assert.ok(device.deviceId && device.deviceKey);
-    // 100 impressions + 1 click on campA ($5 block): (100 + 50)*500/1000 = 75c -> 67.5c
-    const r = await api("POST", "/v1/events", { ...device, batchKey: "b1", events: [{ campaignId: campA, impressions: 100, clicks: 1 }] });
-    assert.strictEqual(r.body.creditedMillicents, 67500);
-    assert.strictEqual((await api("GET", `/v1/me/earnings?deviceId=${device.deviceId}&deviceKey=${device.deviceKey}`)).body.earnedUsd, 0.675);
+    // 100 impressions on campA ($5 block): 100*500/1000 = 50c -> 45c. The clicks
+    // field is IGNORED for billing — genuine clicks go through the token path —
+    // so a forged clicks count mints nothing.
+    const r = await api("POST", "/v1/events", { ...device, batchKey: "b1", events: [{ campaignId: campA, impressions: 100, clicks: 9999 }] });
+    assert.strictEqual(r.body.creditedMillicents, 45000);
+    assert.strictEqual((await api("GET", `/v1/me/earnings?deviceId=${device.deviceId}&deviceKey=${device.deviceKey}`)).body.earnedUsd, 0.45);
+
+    // a clicks-only batch credits nothing at all (and can't bypass the daily cap)
+    const clicksOnly = await api("POST", "/v1/events", { ...device, batchKey: "b1-clicks", events: [{ campaignId: campA, impressions: 0, clicks: 100000 }] });
+    assert.strictEqual(clicksOnly.body.creditedMillicents, 0);
+    assert.strictEqual((await api("GET", `/v1/me/earnings?deviceId=${device.deviceId}&deviceKey=${device.deviceKey}`)).body.earnedUsd, 0.45);
   });
 
   await check("replayed batch never double-pays; bad creds 401; cap 429", async () => {
@@ -212,6 +219,54 @@ const fakeMailer = {
 
   await check("click intent for an inactive campaign is 404", async () => {
     assert.strictEqual((await api("POST", "/v1/clicks/intent", { ...clickDevice, campaignId: campA && "00000000-0000-0000-0000-000000000000" })).status, 404);
+  });
+
+  await check("verified clicks are capped per device per day (50x path can't be looped to drain a budget)", async () => {
+    // dedicated, well-funded campaign so the cap (not the budget) is what bites
+    const camp = await api("POST", "/v1/checkout", {
+      email: "adv@clickcap.co", adLine: "click cap regression campaign", url: "https://clickcap.example/",
+      brand: "ClickCap", pricePerBlock: 2, blocks: 5,
+    });
+    await payWebhook(camp.body.campaignId);
+    await approve(camp.body.campaignId);
+    const capDev = (await api("POST", "/v1/devices/register")).body;
+
+    // fire 7 clicks; dailyClickCap is 5, so only 5 may credit
+    for (let i = 0; i < 7; i++) {
+      const intent = await api("POST", "/v1/clicks/intent", { ...capDev, campaignId: camp.body.campaignId });
+      const go = await api("GET", `/v1/go/${intent.body.trackingUrl.split("/v1/go/")[1]}`);
+      assert.strictEqual(go.status, 302); // over-cap clicks still redirect cleanly
+      assert.strictEqual(go.headers.get("location"), "https://clickcap.example/");
+    }
+    // 5 clicks × ($2 block → 200mc × 50 = 10000mc gross × 90% = 9000mc) = 45000mc = $0.45
+    const e = await api("GET", `/v1/me/earnings?deviceId=${capDev.deviceId}&deviceKey=${capDev.deviceKey}`);
+    assert.strictEqual(e.body.earnedUsd, 0.45);
+  });
+
+  await check("concurrent gift redemptions can't double-spend the same balance", async () => {
+    const camp = await api("POST", "/v1/checkout", {
+      email: "adv@race.co", adLine: "double spend regression campaign", url: "https://race.example/",
+      brand: "Race", pricePerBlock: 110, blocks: 1,
+    });
+    await payWebhook(camp.body.campaignId);
+    await approve(camp.body.campaignId);
+
+    // earn $24.75 — enough for exactly one $20 Pro month, not two
+    const raceDev = (await api("POST", "/v1/devices/register")).body;
+    await api("POST", "/v1/events", { ...raceDev, batchKey: "brace", events: [{ campaignId: camp.body.campaignId, impressions: 250, clicks: 0 }] });
+    assert.strictEqual((await api("GET", `/v1/me/earnings?deviceId=${raceDev.deviceId}&deviceKey=${raceDev.deviceKey}`)).body.balanceUsd, 24.75);
+
+    // fire two identical redemptions at once: exactly one settles, the ledger never overdraws
+    const [a, b] = await Promise.all([
+      api("POST", "/v1/redemptions", { ...raceDev, plan: "pro", months: 1, recipientEmail: "race@example.com" }),
+      api("POST", "/v1/redemptions", { ...raceDev, plan: "pro", months: 1, recipientEmail: "race@example.com" }),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    assert.deepStrictEqual(statuses, [200, 403], "exactly one redemption should succeed");
+    const after = (await api("GET", `/v1/me/earnings?deviceId=${raceDev.deviceId}&deviceKey=${raceDev.deviceKey}`)).body;
+    assert.strictEqual(after.redeemedUsd, 20, "only one $20 gift was charged");
+    assert.strictEqual(after.balanceUsd, 4.75);
+    assert.ok(after.balanceUsd >= 0, "balance never goes negative");
   });
 
   // ---------- email-gated payouts ----------

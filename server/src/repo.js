@@ -15,6 +15,11 @@ function generateReferralCode(len = 8) {
   return out;
 }
 
+// Advisory-lock namespace (classid) for redemption serialization. Concurrent
+// redeems that draw on the same balance take pg_advisory_xact_lock under this
+// class so the in-transaction balance check can't be raced into an overdraft.
+const LOCK_REDEEM = 0x52454431; // "RED1"
+
 function createRepo(pool) {
   async function tx(fn) {
     const client = await pool.connect();
@@ -271,8 +276,12 @@ function createRepo(pool) {
         let credited = 0n;
         for (const ev of events) {
           const imp = Math.max(0, ev.impressions | 0);
-          const clk = Math.max(0, ev.clicks | 0);
-          const billable = imp + clk * 50; // clicks bill at 50x
+          // Clicks are NOT billed here. Self-reported click counts are
+          // unverifiable, bill at 50x, and would bypass the daily cap (which is
+          // keyed on impressions) — so a direct API caller could mint unlimited
+          // credit. Genuine clicks are credited only through the single-use,
+          // forgery-proof token path (/v1/clicks/intent -> /v1/go/:token).
+          const billable = imp;
           if (!billable) continue;
 
           // lock the campaign row; never bill past its remaining budget
@@ -300,12 +309,10 @@ function createRepo(pool) {
           const fee = gross - dev;
           credited += dev;
 
-          const isClickHeavy = clk > 0;
           await c.query(
             `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
-             values ($1, $2, $3, $4, $5)`,
-            [isClickHeavy ? "click_credit" : "impression_credit", dev.toString(),
-             deviceId, ev.campaignId, JSON.stringify({ impressions: imp, clicks: clk, billed })]
+             values ('impression_credit', $1, $2, $3, $4)`,
+            [dev.toString(), deviceId, ev.campaignId, JSON.stringify({ impressions: imp, billed })]
           );
           await c.query(
             `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
@@ -402,7 +409,7 @@ function createRepo(pool) {
 
     // Redeem a click token exactly once: bill the campaign 50x an impression,
     // credit the device its share, return the destination URL to redirect to.
-    async redeemClickToken(token, revenueShare) {
+    async redeemClickToken(token, revenueShare, dailyClickCap) {
       return tx(async (c) => {
         const t = await c.query(
           `update click_tokens set used_at = now()
@@ -412,13 +419,29 @@ function createRepo(pool) {
         );
         if (!t.rows[0]) return null;
         const { campaign_id, device_id } = t.rows[0];
+
+        // Per-device daily click cap. A click bills 50x an impression, so an
+        // uncapped click path lets one device drain a campaign's budget and mint
+        // credit in a loop. Past the cap we still 302 the user onward (clean UX)
+        // but credit nothing — the analogue of the impression daily cap.
+        let overCap = false;
+        if (Number.isFinite(dailyClickCap)) {
+          const used = await c.query(
+            `select count(*)::int as n from ledger
+              where device_id = $1 and entry_type = 'click_credit'
+                and created_at >= date_trunc('day', now())`,
+            [device_id]
+          );
+          if (used.rows[0].n >= dailyClickCap) overCap = true;
+        }
+
         const camp = await c.query(
           `select url, price_per_block_cents, impressions_remaining from campaigns
             where id = $1 and status = 'active' for update`,
           [campaign_id]
         );
         if (!camp.rows[0]) return null;
-        const billed = Math.min(50, camp.rows[0].impressions_remaining); // a click = 50 impressions
+        const billed = overCap ? 0 : Math.min(50, camp.rows[0].impressions_remaining); // a click = 50 impressions
         if (billed > 0) {
           await c.query(
             `update campaigns set
@@ -485,6 +508,13 @@ function createRepo(pool) {
     // redemption id, or null if the balance is insufficient.
     async recordGiftRedemption({ id, deviceId, plan, months, amountCents, recipientEmail }) {
       return tx(async (c) => {
+        // Serialize concurrent redeems on the same balance: a transaction-scoped
+        // advisory lock keyed on the owning user (or the device when unlinked)
+        // so two requests can't both pass the balance check and overdraw.
+        const link = await c.query("select user_id from devices where id = $1", [deviceId]);
+        const lockKey = link.rows[0]?.user_id ? `user:${link.rows[0].user_id}` : `device:${deviceId}`;
+        await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, lockKey]);
+
         const bal = await c.query(
           `select coalesce(sum(amount_millicents), 0)::bigint as balance from ledger
             where (device_id = $1
@@ -514,8 +544,15 @@ function createRepo(pool) {
     // Find or create a user from a Google/Apple OAuth callback, then open a
     // web session. Looks up by provider ID first, then by email. Patches any
     // missing fields on an existing account.
-    async upsertUserByOAuth({ email, googleId, appleId, referralCode }, sessionTtlMs) {
+    async upsertUserByOAuth({ email, googleId, appleId, referralCode, emailVerified }, sessionTtlMs) {
       return tx(async (c) => {
+        // Only a provider-verified email may match or merge into an existing
+        // account — otherwise an attacker who controls an OAuth identity with an
+        // unverified email claim could take over a victim's account (and its
+        // balance) by email. Unverified emails are dropped; the provider id is
+        // the only trusted key.
+        const matchEmail = emailVerified ? (email || null) : null;
+
         let found = null;
         if (googleId) {
           const r = await c.query("select id, email, google_id, apple_id from users where google_id = $1", [googleId]);
@@ -525,8 +562,8 @@ function createRepo(pool) {
           const r = await c.query("select id, email, google_id, apple_id from users where apple_id = $1", [appleId]);
           found = r.rows[0] || null;
         }
-        if (!found && email) {
-          const r = await c.query("select id, email, google_id, apple_id from users where email = $1", [email]);
+        if (!found && matchEmail) {
+          const r = await c.query("select id, email, google_id, apple_id from users where email = $1", [matchEmail]);
           found = r.rows[0] || null;
         }
 
@@ -534,7 +571,7 @@ function createRepo(pool) {
         if (found) {
           const sets = ["email_verified = true"];
           const vals = [found.id];
-          if (email && !found.email)     { sets.push(`email = $${vals.length + 1}`);     vals.push(email); }
+          if (matchEmail && !found.email)   { sets.push(`email = $${vals.length + 1}`);     vals.push(matchEmail); }
           if (googleId && !found.google_id) { sets.push(`google_id = $${vals.length + 1}`); vals.push(googleId); }
           if (appleId && !found.apple_id)   { sets.push(`apple_id = $${vals.length + 1}`);  vals.push(appleId); }
           await c.query(`update users set ${sets.join(", ")} where id = $1`, vals);
@@ -543,7 +580,7 @@ function createRepo(pool) {
           const r = await c.query(
             `insert into users (email, email_verified, google_id, apple_id)
              values ($1, true, $2, $3) returning id`,
-            [email || null, googleId || null, appleId || null]
+            [matchEmail || null, googleId || null, appleId || null]
           );
           userId = r.rows[0].id;
           await applyReferral(c, userId, referralCode); // first sign-in only
@@ -630,6 +667,10 @@ function createRepo(pool) {
     // the same credits twice. Returns the redemption id, or null if short.
     async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, recipientEmail, referralRewardMillicents, referralCap }) {
       return tx(async (c) => {
+        // Serialize concurrent redeems on this user's balance (see
+        // recordGiftRedemption) so the in-transaction check can't be overdrawn.
+        await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, `user:${userId}`]);
+
         const bal = await c.query(
           `select coalesce(sum(amount_millicents), 0)::bigint as balance from ledger
             where (user_id = $1 or device_id in (select id from devices where user_id = $1))
