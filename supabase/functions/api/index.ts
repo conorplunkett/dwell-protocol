@@ -1317,8 +1317,6 @@ async function syncServing() {
     if (typeof v === "boolean") serving = v;
   } catch { /* settings table absent / unreachable — keep current value */ }
 }
-// TEMP: capture the most recent unhandled route error for /v1/_diag.
-let lastError: any = null;
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
@@ -1391,38 +1389,6 @@ function hashIp(ctx: any) {
 
 // ── health & catalog ──
 route("GET", "/healthz", async () => json(200, { ok: true }));
-// TEMP diagnostic (admin-gated): surfaces whether plain queries and
-// transactions work against the pooler, and the exact driver error if not.
-route("GET", "/v1/_diag", async (ctx: any) => {
-  if (!adminOk(ctx)) return json(403, { error: "forbidden" });
-  const out: any = {};
-  try { out.query = (await pool.query("select 1 as n")).rows[0]; }
-  catch (e: any) { out.queryErr = String(e?.stack || e?.message || e); }
-  try { out.tx = await pool.begin(async (c: any) => (await c.query("select 1 as n")).rows[0]); }
-  catch (e: any) { out.txErr = String(e?.stack || e?.message || e); }
-  try {
-    const dev = await repo.registerDevice();
-    const camp = (await pool.query("select id from campaigns where status = 'active' limit 1")).rows[0];
-    out.campId = camp?.id || null;
-    out.ingest = await repo.ingestBatch({
-      deviceId: dev.deviceId, batchKey: "_diag-" + crypto.randomBytes(6).toString("hex"),
-      events: camp ? [{ campaignId: camp.id, impressions: 1 }] : [],
-      revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
-      ipHash: null, ipDailyCap: 0,
-    });
-  } catch (e: any) { out.ingestErr = String(e?.stack || e?.message || e); }
-  try {
-    const dev = await repo.registerDevice();
-    out.ingestDemo = await repo.ingestBatch({
-      deviceId: dev.deviceId, batchKey: "_diagdemo-" + crypto.randomBytes(6).toString("hex"),
-      events: [{ campaignId: "demo", impressions: 1 }],
-      revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
-      ipHash: null, ipDailyCap: 0,
-    });
-  } catch (e: any) { out.ingestDemoErr = String(e?.stack || e?.message || e); }
-  out.lastError = lastError;
-  return json(200, out);
-});
 route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: config.revenueShare }); });
 route("GET", "/v1/ads", async () => {
   await syncServing();
@@ -2127,8 +2093,6 @@ Deno.serve(async (req: Request) => {
     return withCors(await handler(ctx));
   } catch (err: any) {
     console.error(`[freeai] ${req.method} ${path} failed:`, err?.message);
-    lastError = { at: new Date().toISOString(), method: req.method, path, message: err?.message, stack: err?.stack };
-    try { await pool.query("insert into diag_errors (method, path, message, stack) values ($1,$2,$3,$4)", [req.method, path, String(err?.message || err), String(err?.stack || "")]); } catch (_e) { /* best-effort */ }
     return withCors(json(500, { error: "internal error" }));
   } finally {
     console.log(`[freeai] ${req.method} ${path} ${Date.now() - started}ms`);
