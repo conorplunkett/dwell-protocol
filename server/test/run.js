@@ -42,6 +42,8 @@ const mailbox = [];
 const fakeMailer = {
   sendVerifyEmail: async (to, link) => { mailbox.push({ to, link }); },
   sendWebLoginEmail: async (to, link) => { mailbox.push({ to, link }); },
+  sendAdvertiserReceiptEmail: async (to, details) => { mailbox.push({ to, ...details }); },
+  sendCampaignRejectedEmail: async (to, details) => { mailbox.push({ to, ...details }); },
   sendGiftRedemptionEmail: async (to, details) => { mailbox.push({ to, ...details }); },
 };
 
@@ -138,6 +140,12 @@ const fakeMailer = {
     assert.strictEqual(ads.body.ads.length, 0);
     const wh = await payWebhook(campA);
     assert.strictEqual(wh.status, 200);
+    // the transitioning webhook emails the advertiser a receipt exactly once
+    const receipt = mailbox.find((m) => m.campaignId === campA);
+    assert.ok(receipt, "no advertiser receipt sent on payment");
+    assert.strictEqual(receipt.to, "ads@linear.app");
+    assert.strictEqual(receipt.blocks, 2);
+    assert.strictEqual(receipt.pricePerBlockCents, 500);
     ads = await api("GET", "/v1/ads");
     assert.strictEqual(ads.body.ads.length, 0, "served before moderation");
     const queue = await api("GET", "/v1/admin/campaigns", undefined, { "X-Admin-Key": "test-admin" });
@@ -584,6 +592,10 @@ const fakeMailer = {
     assert.strictEqual(st, "rejected");
     const refundEntry = await poolNs.query("select count(*)::int n from ledger where campaign_id = $1 and entry_type = 'campaign_refund'", [r.body.campaignId]);
     assert.strictEqual(refundEntry.rows[0].n, 1);
+    // the advertiser is emailed about the rejection + refund, with the note
+    const rejMail = mailbox.find((m) => m.campaignId === r.body.campaignId && m.note === "off-policy");
+    assert.ok(rejMail, "no rejection email sent");
+    assert.strictEqual(rejMail.to, "spam@x.io");
   });
 
   // ---------- XSS escaping on the admin page ----------

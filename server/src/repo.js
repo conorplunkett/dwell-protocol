@@ -171,13 +171,19 @@ function createRepo(pool) {
     // pending_payment campaign transitions. Money is now received, so the
     // funding ledger entry rides this tx — but the ad doesn't serve until a
     // human approves it (status -> pending_review).
+    // Returns the campaign + advertiser details on the first (transitioning)
+    // call so the caller can email a receipt, or false on a no-op (already paid
+    // / unknown). The receipt thus rides the same exactly-once guarantee as the
+    // funding ledger entry.
     async markCampaignPaid(campaignId, paymentIntentId) {
       return tx(async (c) => {
         const { rows } = await c.query(
-          `update campaigns set status = 'pending_review', paid_at = now(),
-                  stripe_payment_intent_id = coalesce($2, stripe_payment_intent_id)
-            where id = $1 and status = 'pending_payment'
-            returning price_per_block_cents, blocks`,
+          `update campaigns cmp set status = 'pending_review', paid_at = now(),
+                  stripe_payment_intent_id = coalesce($2, cmp.stripe_payment_intent_id)
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_payment'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line, cmp.price_per_block_cents, cmp.blocks`,
           [campaignId, paymentIntentId || null]
         );
         if (!rows[0]) return false;
@@ -187,7 +193,13 @@ function createRepo(pool) {
            values ('campaign_credit', $1, $2, $3)`,
           [funded.toString(), campaignId, JSON.stringify({ blocks: rows[0].blocks })]
         );
-        return true;
+        return {
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+        };
       });
     },
 
@@ -212,13 +224,18 @@ function createRepo(pool) {
     },
 
     // Reject -> mark rejected and post a refund ledger entry that zeroes out the
-    // funding. Returns the payment intent so the caller can issue a Stripe refund.
+    // funding. Returns the payment intent (so the caller can issue a Stripe
+    // refund) plus the advertiser + campaign details (so the caller can email
+    // the advertiser). Null on a no-op (unknown / not in review).
     async rejectCampaign(campaignId, note) {
       return tx(async (c) => {
         const { rows } = await c.query(
-          `update campaigns set status = 'rejected', review_note = $2
-            where id = $1 and status = 'pending_review'
-            returning price_per_block_cents, blocks, stripe_payment_intent_id`,
+          `update campaigns cmp set status = 'rejected', review_note = $2
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_review'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line,
+                      cmp.price_per_block_cents, cmp.blocks, cmp.stripe_payment_intent_id`,
           [campaignId, note || null]
         );
         if (!rows[0]) return null;
@@ -228,7 +245,15 @@ function createRepo(pool) {
            values ('campaign_refund', $1, $2, $3)`,
           [(-refund).toString(), campaignId, JSON.stringify({ note: note || null })]
         );
-        return { paymentIntentId: rows[0].stripe_payment_intent_id };
+        return {
+          paymentIntentId: rows[0].stripe_payment_intent_id,
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+          note: note || null,
+        };
       });
     },
 
