@@ -944,9 +944,12 @@ route("GET", "/v1/_diag", async (ctx: any) => {
   catch (e: any) { out.txErr = String(e?.stack || e?.message || e); }
   try {
     const dev = await repo.registerDevice();
+    const camp = (await pool.query("select id from campaigns where status = 'active' limit 1")).rows[0];
+    out.campId = camp?.id || null;
     out.ingest = await repo.ingestBatch({
       deviceId: dev.deviceId, batchKey: "_diag-" + crypto.randomBytes(6).toString("hex"),
-      events: [], revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
+      events: camp ? [{ campaignId: camp.id, impressions: 1 }] : [],
+      revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
       ipHash: null, ipDailyCap: 0,
     });
   } catch (e: any) { out.ingestErr = String(e?.stack || e?.message || e); }
