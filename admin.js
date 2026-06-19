@@ -47,33 +47,57 @@ function toast(msg, isErr = false) {
 
 // ── API ─────────────────────────────────────────────────────────────────────
 async function api(path, { method = "GET", body } = {}) {
+  const sentKey = getKey();
   const res = await fetch(API_BASE + path, {
     method,
-    headers: { "x-admin-key": getKey(), ...(body ? { "Content-Type": "application/json" } : {}) },
+    headers: { "x-admin-key": sentKey, ...(body ? { "Content-Type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 401) { clearKey(); showGate("Key rejected. Enter it again."); throw new Error("unauthorized"); }
+  if (res.status === 401) {
+    // Only react if the key that failed is still the active one — a stale,
+    // in-flight request from an old key must not clobber a key the user just set.
+    if (getKey() === sentKey) { clearKey(); showGate("Key rejected. Enter it again."); }
+    throw new Error("unauthorized");
+  }
   if (!res.ok) { let m = res.status; try { m = (await res.json()).error || m; } catch {} throw new Error(String(m)); }
   return res.json();
 }
 
 // ── login gate ────────────────────────────────────────────────────────────
+// Inline display is set explicitly (not just the `hidden` attribute) so a
+// stale/cached stylesheet can never leave the app shell showing behind the gate.
 function showGate(err) {
-  $("#app").hidden = true;
-  const g = $("#gate"); g.hidden = false;
+  const a = $("#app"), g = $("#gate");
+  a.hidden = true; a.style.display = "none";
+  g.hidden = false; g.style.display = "";
+  $("#view").innerHTML = ""; current = null; // drop any half-rendered tab content
   const e = $("#gate-err");
   if (err) { e.textContent = err; e.hidden = false; } else e.hidden = true;
-  $("#gate-key").focus();
+  const f = $("#gate-key"); if (err) f.value = ""; f.focus();
 }
-function showApp() { $("#gate").hidden = true; $("#app").hidden = false; }
+function showApp() {
+  const a = $("#app"), g = $("#gate");
+  g.hidden = true; g.style.display = "none";
+  a.hidden = false; a.style.display = "";
+}
+
+// Validate a key without persisting it — a wrong key must never get stored.
+async function tryKey(k) {
+  try {
+    const res = await fetch(API_BASE + "/v1/admin/overview", { headers: { "x-admin-key": k } });
+    return res.ok;
+  } catch { return false; }
+}
 
 $("#gate-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const k = $("#gate-key").value.trim();
   if (!k) return;
-  setKey(k);
-  try { await api("/v1/admin/overview"); showApp(); route(); }
-  catch { /* showGate already invoked on 401 */ }
+  const btn = ev.submitter || $("#gate-form button[type=submit]");
+  if (btn) { btn.disabled = true; btn.textContent = "Checking…"; }
+  if (await tryKey(k)) { setKey(k); showApp(); route(true); }
+  else { showGate("Key rejected. Enter it again."); }
+  if (btn) { btn.disabled = false; btn.textContent = "Unlock"; }
 });
 $("#logout").addEventListener("click", () => { clearKey(); location.hash = ""; showGate(); });
 $("#refresh").addEventListener("click", () => route(true));
@@ -545,5 +569,7 @@ function adjustForm() {
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 buildNav();
-if (getKey()) { api("/v1/admin/overview").then(() => { showApp(); route(); }).catch(() => showGate()); }
-else showGate();
+if (getKey()) {
+  const k = getKey();
+  api("/v1/admin/overview").then(() => { showApp(); route(); }).catch(() => { if (getKey() === k) showGate(); });
+} else showGate();
