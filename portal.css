@@ -144,10 +144,10 @@
   max-width: 400px;
   background: #f8f9fa;
   border-radius: 20px;
-  padding: 40px 36px;
+  padding: 44px 40px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   box-shadow:
     0 0 0 1px rgba(0,0,0,.06),
     0 4px 24px -6px rgba(0,0,0,.12);
@@ -160,7 +160,7 @@
   justify-content: center;
   gap: 10px;
   width: 100%;
-  padding: 13px 20px;
+  padding: 14px 20px;
   border-radius: 10px;
   border: 1.5px solid #e0e0e0;
   background: #fff;
@@ -239,7 +239,7 @@
   gap: 12px;
   font-size: 13px;
   color: var(--gray-2);
-  margin: 4px 0;
+  margin: 6px 0;
 }
 
 .auth-divider::before,
@@ -253,7 +253,7 @@
 /* ── Email input ── */
 .auth-input {
   width: 100%;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1.5px solid #e0e0e0;
   border-radius: 10px;
   font-family: var(--sans);
@@ -277,7 +277,7 @@
 /* ── Primary action button ── */
 .auth-btn-primary {
   width: 100%;
-  padding: 13px 20px;
+  padding: 14px 20px;
   border-radius: 10px;
   border: none;
   background: linear-gradient(180deg, var(--accent-grad-a), var(--accent-grad-b));
