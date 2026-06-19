@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FreeAI for Claude Code · Terminal install</title>
+  <meta name="description" content="Install the FreeAI terminal integration for Claude Code. A subtle sponsored line shows in the status line while Claude Code thinks — and 50% of the revenue comes back as Claude credits." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='26' fill='%23d97757'/%3E%3Ctext x='50' y='72' font-size='58' font-family='monospace' font-weight='bold' fill='white' text-anchor='middle'%3EF$%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .docs { max-width: 680px; margin: 20px auto 0; padding: 0 22px 90px; }
+    .docs .eyebrow { font-family: var(--mono); font-size: 12.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-d); font-weight: 700; }
+    .docs h1 { font-size: clamp(30px, 8vw, 40px); font-weight: 900; letter-spacing: -.03em; margin: 12px 0 8px; }
+    .docs .lead { color: var(--ink-2); font-size: 17px; line-height: 1.6; margin: 0 0 14px; }
+    .docs h2 { font-size: 21px; font-weight: 800; letter-spacing: -.02em; margin: 40px 0 12px; display: flex; align-items: baseline; gap: 10px; }
+    .docs h2 .num { font-family: var(--mono); font-size: 14px; color: var(--accent-d); font-weight: 700; }
+    .docs h3 { font-size: 15.5px; font-weight: 700; margin: 22px 0 8px; }
+    .docs p, .docs li { color: var(--ink-2); font-size: 15.5px; line-height: 1.65; }
+    .docs ul { padding-left: 20px; margin: 8px 0; }
+    .docs li { margin: 5px 0; }
+    .docs a { color: var(--green-d); }
+    .docs code { font-family: var(--mono); font-size: 13.5px; background: var(--bg-tint); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; color: var(--ink); }
+
+    /* Code blocks */
+    .docs pre { background: var(--card-dark-2); color: #e9ecf2; border-radius: 12px; padding: 16px 18px; overflow-x: auto; margin: 12px 0; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; }
+    .docs pre code { background: none; border: 0; padding: 0; color: inherit; font-size: inherit; }
+    .docs pre .c { color: #8b94a4; }            /* comment */
+    .docs pre .p { color: #e8a486; }            /* prompt marker */
+
+    /* Terminal mock — uses the shared overlay/sponsor palette */
+    .term { background: var(--ov-bar-bg); border: 1px solid var(--ov-bar-border); border-radius: 14px; padding: 0; margin: 14px 0 6px; overflow: hidden; box-shadow: 0 18px 40px rgba(20,23,28,.18); }
+    .term-bar { display: flex; align-items: center; gap: 7px; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .term-dot { width: 11px; height: 11px; border-radius: 50%; background: #3a3f48; }
+    .term-dot.r { background: #ff5f57; } .term-dot.y { background: #febc2e; } .term-dot.g { background: #28c840; }
+    .term-title { margin-left: 8px; font-family: var(--mono); font-size: 12px; color: var(--ov-dots); }
+    .term-body { padding: 14px 16px 16px; font-family: var(--mono); font-size: 13px; line-height: 1.75; color: var(--ov-text); }
+    .term-body .pr { color: #28c840; }
+    .term-body .sp { color: var(--ov-line); }
+    .term-status { margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,.08); color: var(--ov-line); }
+    .term-status .adtag { color: var(--ov-tag-text); }
+    .term-status .adurl { color: var(--ov-line); text-decoration: underline; text-underline-offset: 2px; text-decoration-style: dotted; }
+    .caption { font-size: 13px; color: var(--gray); margin: 4px 2px 0; }
+
+    .callout { border: 1px solid var(--line); background: var(--bg-tint); border-radius: 12px; padding: 14px 16px; margin: 16px 0; }
+    .callout strong { color: var(--ink); }
+    .note { font-size: 14px; color: var(--gray); }
+    .back { display: inline-block; margin-top: 36px; font-size: 14px; color: var(--green-d); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="index.html">
+      <span class="logo">F$</span>
+      <span class="brand-name">FreeAI.fyi</span>
+    </a>
+    <nav class="nav-btns"><a href="index.html" class="navbtn">Home</a></nav>
+  </header>
+
+  <main class="docs">
+    <span class="eyebrow">For Claude Code · Terminal</span>
+    <h1>Earn Claude credits from your terminal.</h1>
+    <p class="lead">
+      FreeAI adds a reversible <code>claude</code> shell alias that shows one subtle
+      sponsored line in Claude Code’s status bar <strong>only while Claude Code is
+      thinking</strong> — and returns <strong>50%</strong> of the revenue to you as
+      credits you redeem for Claude Pro or Max.
+    </p>
+
+    <div class="term" aria-hidden="true">
+      <div class="term-bar">
+        <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+        <span class="term-title">claude</span>
+      </div>
+      <div class="term-body">
+        <span class="pr">›</span> refactor the auth middleware<br />
+        <span class="sp">✳ Discombobulating…</span> (esc to interrupt)
+        <div class="term-status"><span class="adtag">ad·</span> <span class="adurl">Linear — Plan your next sprint faster</span></div>
+      </div>
+    </div>
+    <p class="caption">What it looks like: the <code>ad·</code> line is a clickable link, and it disappears the moment Claude Code stops working.</p>
+
+    <h2><span class="num">Before you start</span></h2>
+    <ul>
+      <li><strong>Claude Code installed</strong> — the real <code>claude</code> command must already be on your <code>PATH</code>. (Try <code>claude --version</code>.)</li>
+      <li><strong>Node.js 20.12 or newer</strong> — check with <code>node --version</code>.</li>
+      <li><strong>A supported shell</strong> — zsh, bash, or fish.</li>
+    </ul>
+    <p class="note">No account or sign-in is needed to start earning — a device credential is created locally on first run, the same way the browser extension works.</p>
+
+    <h2><span class="num">1</span> Install the <code>freeai</code> command</h2>
+    <p>Until the package lands on npm, install it from the repo. This puts a global <code>freeai</code> command on your <code>PATH</code> (the shell alias depends on it):</p>
+    <pre><code><span class="c"># clone and link the terminal client</span>
+git clone https://github.com/conorplunkett/freeai.fyi.git
+cd freeai.fyi/terminal
+npm link        <span class="c"># exposes the global `freeai` command</span></code></pre>
+    <p class="note">Keep the cloned folder in place — <code>npm link</code> points the global command at it. To remove it later, run <code>npm rm -g @freeai/terminal</code>.</p>
+
+    <h2><span class="num">2</span> Run setup</h2>
+    <p>This finds your real <code>claude</code>, records it, and adds a small, clearly-marked, reversible block to your shell config that aliases <code>claude</code> to the FreeAI wrapper:</p>
+    <pre><code>freeai claude setup</code></pre>
+    <p>Then restart your shell, or source your config — setup prints the exact path:</p>
+    <pre><code><span class="p">source</span> ~/.zshrc   <span class="c"># or ~/.bashrc, or ~/.config/fish/config.fish</span></code></pre>
+    <p>That’s it. Use <code>claude</code> exactly as you always have — every flag, argument, and exit code is forwarded untouched.</p>
+
+    <h2><span class="num">3</span> Verify it works</h2>
+    <p><strong>Check the wiring</strong> — <code>doctor</code> prints the resolved paths as JSON; <code>ok: true</code> means the real <code>claude</code> was found:</p>
+    <pre><code>freeai claude doctor</code></pre>
+    <pre><code>{
+  <span class="adurl">"ok"</span>: true,
+  "realClaudePath": "/usr/local/bin/claude",
+  "configPath": "~/.freeai/claude/config.json",
+  "shell": "zsh",
+  "rcPath": "~/.zshrc"
+}</code></pre>
+    <p><strong>Watch it live</strong> — open a project and ask Claude Code to do something that takes a few seconds:</p>
+    <pre><code>claude</code></pre>
+    <ul>
+      <li>While Claude Code is <strong>thinking or running tools</strong>, a subtle <code>ad·</code> line appears in the status bar.</li>
+      <li>It’s a clickable link — opening it counts as a click (worth 50× an impression).</li>
+      <li>The moment Claude Code finishes and waits for you, the line <strong>disappears</strong>.</li>
+      <li>After <strong>5 continuous seconds</strong> of activity, one impression is recorded — and 50% of its value becomes your credit balance.</li>
+    </ul>
+    <p>Redeem what you’ve earned anytime on the <a href="redeem.html">user login page</a> — the terminal client shares the same device-credit balance as the browser extension.</p>
+
+    <h2><span class="num">How it stays out of your way</span></h2>
+    <ul>
+      <li><strong>It never edits the real Claude.</strong> No changes to the <code>claude</code> binary, the npm shim, or your persistent <code>~/.claude/settings.json</code>. The ad is delivered through a per-session, temporary <code>--settings</code> file using Claude Code’s documented <code>statusLine</code> surface.</li>
+      <li><strong>It chains, never clobbers.</strong> If you already use a custom status line, yours still runs — the ad line is added above it.</li>
+      <li><strong>It fails open.</strong> If anything — network, config, ad fetch — doesn’t work, the wrapper just runs plain <code>claude</code>. You’re never blocked.</li>
+      <li><strong>It reads none of your prompts.</strong> Activity is detected only from the structure of Claude Code’s transcript (is it mid-response?), never its contents.</li>
+    </ul>
+
+    <h2><span class="num">Opt out &amp; uninstall</span></h2>
+    <p>Skip ads for a single run without uninstalling:</p>
+    <pre><code>FREEAI_DISABLE=1 claude</code></pre>
+    <p>Remove the shell alias entirely (safe to run repeatedly):</p>
+    <pre><code>freeai claude restore</code></pre>
+
+    <div class="callout">
+      <p style="margin:0"><strong>Pointing at a local backend?</strong> By default the client talks to the production FreeAI API. Override it with <code>FREEAI_BASE=http://127.0.0.1:8787</code>, or a <code>backendBaseUrl</code> entry in <code>~/.freeai/config.json</code>.</p>
+    </div>
+
+    <p class="note" style="margin-top:28px">
+      FreeAI is not affiliated with, endorsed by, or sponsored by Anthropic. “Claude” and
+      “Claude Code” are trademarks of Anthropic. By installing you agree to the
+      <a href="terms.html">Terms</a>; see how earnings are computed in the
+      <a href="https://github.com/conorplunkett/freeai.fyi" rel="noopener" target="_blank">open-source backend</a>.
+    </p>
+
+    <a class="back" href="index.html">← Back to FreeAI</a>
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 FreeAI.fyi · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+    <p class="fdim">The AI is already thinking. Might as well earn Claude.</p>
+  </footer>
+</body>
+</html>
