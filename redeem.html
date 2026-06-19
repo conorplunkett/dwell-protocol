@@ -132,18 +132,36 @@
   ══════════════════════════════════════════════════ -->
   <div id="redeem-page" hidden>
 
-    <header class="nav">
+    <header class="nav dash-nav">
       <a class="brand" href="/">
         <span class="logo">F$</span>
         <span class="brand-name">FreeAI.fyi</span>
       </a>
-      <nav class="nav-btns">
-        <button class="navbtn" id="nav-redeem" type="button">Redeem</button>
-        <button class="navbtn" id="nav-referrals" type="button">Referrals</button>
-        <a href="/" class="navbtn">Home</a>
-        <button class="navbtn" id="signout" type="button">Sign out</button>
-      </nav>
+      <div class="dash-account">
+        <a href="/" class="dash-account-link">Home</a>
+        <button class="dash-account-link dash-signout" id="signout" type="button">Sign out</button>
+      </div>
     </header>
+
+    <!-- Primary section nav — one active view at a time. -->
+    <nav class="dash-tabs" id="dash-tabs" role="tablist" aria-label="Dashboard sections">
+      <button class="dash-tab active" data-section="earnings" type="button" role="tab" aria-selected="true">
+        <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M17 8h4v4"/></svg></span>
+        <span class="dash-tab-label">Earnings</span>
+      </button>
+      <button class="dash-tab" data-section="referrals" type="button" role="tab" aria-selected="false">
+        <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.5"/><path d="M17.5 19a5 5 0 0 0-3-4.6"/></svg></span>
+        <span class="dash-tab-label">Referrals</span>
+      </button>
+      <button class="dash-tab" data-section="ledger" type="button" role="tab" aria-selected="false">
+        <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12"/><path d="M8 12h12"/><path d="M8 18h12"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg></span>
+        <span class="dash-tab-label">Ledger</span>
+      </button>
+      <button class="dash-tab" data-section="redeem" type="button" role="tab" aria-selected="false">
+        <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="9" width="17" height="11" rx="1.5"/><path d="M3.5 13h17"/><path d="M12 9v11"/><path d="M12 9C12 6.2 10.6 4.5 8.9 4.5 7.6 4.5 7 5.4 7 6.2 7 8 9 9 12 9Z"/><path d="M12 9c0-2.8 1.4-4.5 3.1-4.5 1.3 0 1.9.9 1.9 1.7C17 8 15 9 12 9Z"/></svg></span>
+        <span class="dash-tab-label">Redeem</span>
+      </button>
+    </nav>
 
     <main class="redeem">
       <section class="redeem-card" id="earnings-view">
@@ -199,7 +217,7 @@
               filter happen locally on the retrieved rows.
             </p>
           </div>
-          <span class="act-status" id="act-status">Not retrieved</span>
+          <span class="act-status" id="act-status">Loading…</span>
         </div>
 
         <div class="act-controls">
@@ -215,9 +233,9 @@
         </div>
 
         <div class="act-body" id="act-body">
-          <div class="act-empty" id="act-empty">
-            <p>No activity loaded. Retrieving checks the last 200 credited events for this account.</p>
-            <button class="btn-green" id="act-retrieve" type="button">Retrieve activity</button>
+          <div class="act-loading">
+            <div class="portal-spinner"></div>
+            <p>Loading your activity…</p>
           </div>
         </div>
       </section>
@@ -240,10 +258,18 @@
         <div class="gift-menu" id="gift-menu"><!-- rendered by redeem.js --></div>
 
         <div class="redeem-foot">
-          <label class="field recipient">
-            <span class="flabel">Gift card delivered to your account email</span>
-            <input type="email" id="recipient" readonly />
-          </label>
+          <div class="redeem-delivery">
+            <span class="rd-ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="5" width="18" height="14" rx="2.5"/>
+                <path d="m3.5 7 8.5 6 8.5-6"/>
+              </svg>
+            </span>
+            <span class="rd-text">
+              <span class="rd-label">Gift card delivered to</span>
+              <span class="rd-email" id="recipient-email"></span>
+            </span>
+          </div>
           <div class="redeem-summary" id="summary">Select a gift above to continue.</div>
           <button class="btn-green" id="redeem-btn" disabled>Redeem</button>
         </div>

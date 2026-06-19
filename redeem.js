@@ -94,32 +94,41 @@ function showRedeemPage(email) {
   $("login-page").hidden = true;
   $("redeem-page").hidden = false;
   $("balance-email").textContent = email;
-  // Gift cards are delivered to the account email; the field is read-only and
-  // the server ignores any client-supplied recipient.
-  $("recipient").value = email;
-  showRedeemView();
+  // Gift cards always go to the account email; the server ignores any
+  // client-supplied recipient, so we just display it.
+  accountEmail = email;
+  $("recipient-email").textContent = email;
+  showSection("earnings");
 }
 
-// ---- authed sub-views: Redeem vs Referrals ----
-function showRedeemView() {
-  $("earnings-view").hidden = false;
-  $("activity-view").hidden = false;
-  $("redeem-view").hidden = false;
-  $("referrals-view").hidden = true;
-  $("nav-redeem").classList.add("active");
-  $("nav-referrals").classList.remove("active");
+// ---- authed sub-views: one section visible at a time ----
+// Each dashboard tab maps to a single card; the tab bar is the primary nav and
+// Home / Sign out live separately up in the account cluster.
+const SECTION_VIEWS = {
+  earnings: "earnings-view",
+  referrals: "referrals-view",
+  ledger: "activity-view",
+  redeem: "redeem-view",
+};
+
+function showSection(name) {
+  for (const [key, id] of Object.entries(SECTION_VIEWS)) {
+    const el = $(id);
+    if (el) el.hidden = key !== name;
+  }
+  document.querySelectorAll(".dash-tab").forEach((tab) => {
+    const on = tab.dataset.section === name;
+    tab.classList.toggle("active", on);
+    tab.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  if (name === "referrals") loadReferrals();
+  if (name === "ledger" && activityRows === null) retrieveActivity();
 }
-function showReferralsView() {
-  $("earnings-view").hidden = true;
-  $("activity-view").hidden = true;
-  $("redeem-view").hidden = true;
-  $("referrals-view").hidden = false;
-  $("nav-redeem").classList.remove("active");
-  $("nav-referrals").classList.add("active");
-  loadReferrals();
-}
-$("nav-redeem").addEventListener("click", showRedeemView);
-$("nav-referrals").addEventListener("click", showReferralsView);
+
+$("dash-tabs").addEventListener("click", (e) => {
+  const tab = e.target.closest(".dash-tab");
+  if (tab) showSection(tab.dataset.section);
+});
 
 async function loadReferrals() {
   const { status, body } = await apiGet("/v1/web/referrals");
@@ -296,6 +305,7 @@ $("signout").addEventListener("click", async () => {
 let balanceUsd = 0;
 let catalog = null;
 let selected = null;
+let accountEmail = "";
 
 // ---- gift menu ----
 function renderMenu() {
@@ -358,7 +368,7 @@ function updateSummary() {
 // ---- redeem ----
 $("redeem-btn").addEventListener("click", async () => {
   if (!selected) return;
-  const recipientEmail = $("recipient").value.trim();
+  const recipientEmail = accountEmail;
   const btn = $("redeem-btn");
   btn.disabled = true;
   const old = btn.textContent;
@@ -499,18 +509,30 @@ const ACT_LABEL = {
   referral_credit: "Referral bonus",
 };
 
+function setActStatus(text, ok) {
+  const el = $("act-status");
+  el.textContent = text;
+  el.classList.toggle("ok", !!ok);
+}
+
+// Auto-loaded on sign-in (and retryable on failure): pulls the last 200 credited
+// events for this account; search + filter then run locally on the retrieved rows.
 async function retrieveActivity() {
-  const btn = $("act-retrieve");
-  if (btn) { btn.disabled = true; btn.textContent = "Retrieving…"; }
+  setActStatus("Loading…");
+  $("act-body").innerHTML =
+    `<div class="act-loading"><div class="portal-spinner"></div><p>Loading your activity…</p></div>`;
   const { status, body } = await apiGet("/v1/web/activity?limit=200");
   if (status === 401) { localStorage.removeItem(SESSION_KEY); location.reload(); return; }
   if (status !== 200) {
-    if (btn) { btn.disabled = false; btn.textContent = "Retrieve activity"; }
+    setActStatus("Failed");
+    $("act-body").innerHTML =
+      `<div class="act-empty"><p>Couldn't load your activity. Check your connection and try again.</p>` +
+      `<button class="btn-green" id="act-retry" type="button">Retry</button></div>`;
+    $("act-retry").addEventListener("click", retrieveActivity);
     return;
   }
   activityRows = body.rows || [];
-  $("act-status").textContent = "Retrieved";
-  $("act-status").classList.add("ok");
+  setActStatus("Retrieved", true);
   $("act-search").disabled = false;
   $("act-filter").disabled = false;
   renderActivity();
@@ -566,7 +588,6 @@ function escapeHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-$("act-retrieve")?.addEventListener("click", retrieveActivity);
 $("act-search").addEventListener("input", renderActivity);
 $("act-filter").addEventListener("change", renderActivity);
 
@@ -593,6 +614,7 @@ async function boot() {
   $("balance").textContent = usd(balanceUsd);
   showRedeemPage(me.body.email);
   loadEarnings("7d");
+  retrieveActivity(); // auto-load the ledger so it's ready when the tab opens
   const cat = await apiGet("/v1/giftcards");
   if (cat.status === 200) { catalog = cat.body; renderMenu(); updateSummary(); }
 }
