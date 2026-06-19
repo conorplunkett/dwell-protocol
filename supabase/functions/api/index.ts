@@ -942,6 +942,14 @@ route("GET", "/v1/_diag", async (ctx: any) => {
   catch (e: any) { out.queryErr = String(e?.stack || e?.message || e); }
   try { out.tx = await pool.begin(async (c: any) => (await c.query("select 1 as n")).rows[0]); }
   catch (e: any) { out.txErr = String(e?.stack || e?.message || e); }
+  try {
+    const dev = await repo.registerDevice();
+    out.ingest = await repo.ingestBatch({
+      deviceId: dev.deviceId, batchKey: "_diag-" + crypto.randomBytes(6).toString("hex"),
+      events: [], revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
+      ipHash: null, ipDailyCap: 0,
+    });
+  } catch (e: any) { out.ingestErr = String(e?.stack || e?.message || e); }
   return json(200, out);
 });
 route("GET", "/v1/config", async () => json(200, { serving, revenueShare: config.revenueShare }));
