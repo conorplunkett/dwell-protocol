@@ -4,8 +4,9 @@
 //
 // Faithful port: every route, the exact SQL, the millicent BigInt math, the
 // transaction-scoped advisory locks, Stripe webhook verification, and the
-// Google/Apple OAuth flows are preserved. The data layer uses npm:pg so
-// server/src/repo.js transfers almost verbatim (same Pool/client API).
+// Google/Apple OAuth flows are preserved. The data layer uses postgres.js
+// behind a node-postgres-shaped shim so server/src/repo.js transfers almost
+// verbatim (same Pool/client API).
 //
 // Routing: this function is deployed under the slug `api`, so the public base
 // is https://<ref>.supabase.co/functions/v1/api and requests arrive as
@@ -73,26 +74,25 @@ const config = loadConfig();
 // worker at boot), so we use postgres.js — the same driver web-referrals uses.
 // prepare:false is required under transaction-mode pooling.
 //
-// A thin pg-compatible shim (.query → {rows}, .connect → reservable client)
+// A thin pg-compatible shim (.query → {rows}, .begin(fn) for transactions)
 // keeps createRepo — written against node-postgres' Pool/Client API — unchanged,
-// including its transaction-scoped advisory locks. Transactions run on a single
-// reserved connection so BEGIN…COMMIT (and pg_advisory_xact_lock) stay pinned.
+// including its transaction-scoped advisory locks. Transactions use sql.begin,
+// which pins one connection for BEGIN…COMMIT (and pg_advisory_xact_lock).
 const sql = postgres(config.databaseUrl, { prepare: false });
-const pool = {
-  async query(text: string, params: any[] = []) {
-    const rows = await sql.unsafe(text, params);
+// Wrap a postgres.js handle (the pool, or a transaction handle) in the
+// node-postgres-shaped client createRepo expects: `.query(text, params)` -> {rows}.
+const clientFor = (h: any) => ({
+  query: async (text: string, params: any[] = []) => {
+    const rows = await h.unsafe(text, params);
     return { rows, rowCount: rows.length };
   },
-  async connect() {
-    const reserved = await sql.reserve();
-    return {
-      query: async (text: string, params: any[] = []) => {
-        const rows = await reserved.unsafe(text, params);
-        return { rows, rowCount: rows.length };
-      },
-      release: () => reserved.release(),
-    };
-  },
+});
+const pool = {
+  query: (text: string, params: any[] = []) => clientFor(sql).query(text, params),
+  // Transactions use postgres.js's first-class sql.begin: one pinned connection
+  // with automatic COMMIT / ROLLBACK-on-throw. This is the reliable path under
+  // transaction-mode pooling and keeps our pg_advisory_xact_lock guards correct.
+  begin: (fn: any) => sql.begin((tx: any) => fn(clientFor(tx))),
 };
 
 // ───────────────────────────── util.js ─────────────────────────────────────
@@ -246,18 +246,7 @@ const LOCK_REDEEM = 0x52454431; // "RED1"
 
 function createRepo(pool: any) {
   async function tx(fn: any) {
-    const client = await pool.connect();
-    try {
-      await client.query("begin");
-      const out = await fn(client);
-      await client.query("commit");
-      return out;
-    } catch (err) {
-      await client.query("rollback");
-      throw err;
-    } finally {
-      client.release();
-    }
+    return pool.begin(fn);
   }
 
   async function applyReferral(client: any, newUserId: string, refCode: any) {
