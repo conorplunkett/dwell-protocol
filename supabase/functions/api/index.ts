@@ -883,7 +883,7 @@ let serving = !config.killswitch;
 // TEMP: capture the most recent unhandled route error for /v1/_diag.
 let lastError: any = null;
 const CORS: Record<string, string> = {
-  "Access-Control-Allow-Origin": config.corsOrigin || "*",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type,X-Admin-Key,Authorization,apikey",
   "Access-Control-Max-Age": "86400",
@@ -1421,6 +1421,7 @@ Deno.serve(async (req: Request) => {
   } catch (err: any) {
     console.error(`[freeai] ${req.method} ${path} failed:`, err?.message);
     lastError = { at: new Date().toISOString(), method: req.method, path, message: err?.message, stack: err?.stack };
+    try { await pool.query("insert into diag_errors (method, path, message, stack) values ($1,$2,$3,$4)", [req.method, path, String(err?.message || err), String(err?.stack || "")]); } catch (_e) { /* best-effort */ }
     return json(500, { error: "internal error" });
   } finally {
     console.log(`[freeai] ${req.method} ${path} ${Date.now() - started}ms`);
