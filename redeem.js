@@ -70,11 +70,27 @@ async function apiPost(path, payload) {
 }
 
 // ---- page views ----
+// Three mutually-exclusive top-level states: loading splash, login, dashboard.
+// The inline <head> script paints the splash for returning users; once we take
+// over here we drop that gate class so the `hidden` attribute alone governs.
+function clearAuthGate() {
+  document.documentElement.classList.remove("auth-pending");
+}
+function showLoading() {
+  clearAuthGate();
+  $("portal-loading").hidden = false;
+  $("login-page").hidden = true;
+  $("redeem-page").hidden = true;
+}
 function showLoginPage() {
+  clearAuthGate();
+  $("portal-loading").hidden = true;
   $("login-page").hidden = false;
   $("redeem-page").hidden = true;
 }
 function showRedeemPage(email) {
+  clearAuthGate();
+  $("portal-loading").hidden = true;
   $("login-page").hidden = true;
   $("redeem-page").hidden = false;
   $("balance-email").textContent = email;
@@ -567,6 +583,10 @@ async function boot() {
     }
   }
   if (!getSession() || !API_BASE) return showLoginPage();
+  // Returning user: keep the splash up (login stays hidden) while we confirm the
+  // session, so there's no flash of the login form before the dashboard. A dead
+  // or revoked token falls back to login below.
+  showLoading();
   const me = await apiGet("/v1/web/me");
   if (me.status !== 200) return showLoginPage();
   balanceUsd = me.body.balanceUsd || 0;
