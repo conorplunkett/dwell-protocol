@@ -985,6 +985,298 @@ function createRepo(pool: any) {
       );
       return rows;
     },
+
+    // ────────────────────────── admin dashboard ───────────────────────────────
+    // Persistent key/value settings (e.g. the killswitch). Best-effort: callers
+    // wrap in try/catch so a missing `settings` table never breaks ad serving.
+    async getSetting(key: string) {
+      const { rows } = await pool.query("select value from settings where key = $1", [key]);
+      return rows[0] ? rows[0].value : null;
+    },
+    async setSetting(key: string, value: any) {
+      await pool.query(
+        `insert into settings (key, value, updated_at) values ($1, $2::jsonb, now())
+         on conflict (key) do update set value = excluded.value, updated_at = now()`,
+        [key, JSON.stringify(value)]
+      );
+    },
+
+    // KPI tiles + counts for the Overview tab. All money returned as raw
+    // millicents (ledger) or cents (gift_redemptions); the edge route converts.
+    async adminOverview() {
+      const money = (await pool.query(
+        `select
+           coalesce(sum(amount_millicents) filter (where entry_type='campaign_credit'),0)::bigint as campaign_credit,
+           coalesce(sum(amount_millicents) filter (where entry_type='campaign_refund'),0)::bigint as campaign_refund,
+           coalesce(sum(amount_millicents) filter (where entry_type='platform_fee'),0)::bigint as platform_fee,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit')),0)::bigint as dev_credit,
+           coalesce(sum(amount_millicents) filter (where entry_type='referral_credit'),0)::bigint as referral_credit,
+           coalesce(sum(amount_millicents) filter (where entry_type='payout_debit'),0)::bigint as payout_debit,
+           coalesce(sum(amount_millicents) filter (where entry_type='gift_redemption_debit'),0)::bigint as redemption_debit,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')),0)::bigint as admin_adjust,
+           coalesce(sum(amount_millicents) filter (where entry_type in
+             ('impression_credit','click_credit','referral_credit','admin_credit','admin_debit','payout_debit','gift_redemption_debit')),0)::bigint as liability
+         from ledger`
+      )).rows[0];
+      const counts = (await pool.query(
+        `select
+           (select count(*) from users)::int as users,
+           (select count(*) from users where email is not null)::int as users_with_email,
+           (select count(*) from devices)::int as devices,
+           (select count(*) from devices where last_seen_at >= now() - interval '1 day')::int as devices_active_1d,
+           (select count(*) from advertisers)::int as advertisers,
+           (select count(*) from campaigns)::int as campaigns,
+           (select count(*) from campaigns where status='active')::int as campaigns_active,
+           (select count(*) from campaigns where status='pending_review')::int as campaigns_pending,
+           (select count(*) from gift_redemptions)::int as redemptions,
+           (select count(*) from gift_redemptions where status='pending')::int as redemptions_pending,
+           (select coalesce(sum(amount_cents),0) from gift_redemptions where status='pending')::bigint as redemptions_pending_cents,
+           (select count(*) from referrals)::int as referrals,
+           (select coalesce(sum(impressions),0) from event_batches)::bigint as impressions,
+           (select coalesce(sum(clicks),0) from event_batches)::bigint as clicks`
+      )).rows[0];
+      const byStatus = (await pool.query(
+        "select status, count(*)::int as n from campaigns group by status order by status"
+      )).rows;
+      return { money, counts, campaignsByStatus: byStatus };
+    },
+
+    // One bucket per UTC day, merged across tables in JS by the route.
+    async adminDailyMetrics(days: number) {
+      const d = Math.max(1, Math.min(365, days || 30));
+      const events = (await pool.query(
+        `select date_trunc('day', created_at) as d, sum(impressions)::bigint as imp, sum(clicks)::bigint as clk
+           from event_batches where created_at >= now() - ($1 || ' days')::interval group by 1`, [d]
+      )).rows;
+      const ledger = (await pool.query(
+        `select date_trunc('day', created_at) as d,
+                coalesce(sum(amount_millicents) filter (where entry_type='campaign_credit'),0)::bigint as bought,
+                coalesce(sum(amount_millicents) filter (where entry_type='platform_fee'),0)::bigint as fee,
+                coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit')),0)::bigint as dev
+           from ledger where created_at >= now() - ($1 || ' days')::interval group by 1`, [d]
+      )).rows;
+      const users = (await pool.query(
+        `select date_trunc('day', created_at) as d, count(*)::int as n
+           from users where created_at >= now() - ($1 || ' days')::interval group by 1`, [d]
+      )).rows;
+      const devices = (await pool.query(
+        `select date_trunc('day', created_at) as d, count(*)::int as n
+           from devices where created_at >= now() - ($1 || ' days')::interval group by 1`, [d]
+      )).rows;
+      const redemptions = (await pool.query(
+        `select date_trunc('day', created_at) as d, count(*)::int as n, coalesce(sum(amount_cents),0)::bigint as cents
+           from gift_redemptions where created_at >= now() - ($1 || ' days')::interval group by 1`, [d]
+      )).rows;
+      return { days: d, events, ledger, users, devices, redemptions };
+    },
+
+    async adminCampaigns({ status, limit, offset }: any) {
+      const n = Math.max(1, Math.min(500, parseInt(limit, 10) || 200));
+      const off = Math.max(0, parseInt(offset, 10) || 0);
+      const filters: string[] = [];
+      const params: any[] = [];
+      if (status) { params.push(status); filters.push(`c.status = $${params.length}`); }
+      const where = filters.length ? `where ${filters.join(" and ")}` : "";
+      params.push(n); const lim = `$${params.length}`;
+      params.push(off); const ofs = `$${params.length}`;
+      const { rows } = await pool.query(
+        `select c.id, c.brand, c.ad_line, c.url, c.category, c.status,
+                c.price_per_block_cents, c.blocks, c.impressions_total, c.impressions_remaining,
+                (c.impressions_total - c.impressions_remaining) as impressions_served,
+                c.show_on_leaderboard, c.review_note, c.created_at, c.paid_at, c.activated_at,
+                a.email as advertiser_email,
+                coalesce((select sum(amount_millicents) from ledger
+                          where campaign_id = c.id and entry_type in ('impression_credit','click_credit','platform_fee')),0)::bigint as recognized_millicents
+           from campaigns c left join advertisers a on a.id = c.advertiser_id
+           ${where}
+          order by c.created_at desc limit ${lim} offset ${ofs}`,
+        params
+      );
+      return rows;
+    },
+    async cancelCampaign(campaignId: string) {
+      if (!isUuid(campaignId)) return false;
+      const { rows } = await pool.query(
+        `update campaigns set status='cancelled'
+          where id=$1 and status in ('active','pending_review','pending_payment') returning id`,
+        [campaignId]
+      );
+      return !!rows[0];
+    },
+
+    async adminRedemptions({ status, limit }: any) {
+      const n = Math.max(1, Math.min(500, parseInt(limit, 10) || 200));
+      const params: any[] = [];
+      let where = "";
+      if (status) { params.push(status); where = `where g.status = $${params.length}`; }
+      params.push(n);
+      const { rows } = await pool.query(
+        `select g.id, g.plan, g.months, g.amount_cents, g.recipient_email, g.status, g.created_at,
+                g.user_id, g.device_id, u.email as user_email
+           from gift_redemptions g left join users u on u.id = g.user_id
+           ${where}
+          order by g.created_at desc limit $${params.length}`,
+        params
+      );
+      return rows;
+    },
+    // Set a redemption's status. When cancelling with refund=true, restore the
+    // user's/device's balance via an admin_credit equal to the original debit.
+    async setRedemptionStatus(id: string, status: string, refund: boolean) {
+      if (!isUuid(id)) return null;
+      if (!["pending", "fulfilled", "cancelled"].includes(status)) return null;
+      return tx(async (c: any) => {
+        const { rows } = await c.query(
+          "update gift_redemptions set status=$2 where id=$1 returning user_id, device_id, amount_cents, status, recipient_email",
+          [id, status]
+        );
+        if (!rows[0]) return null;
+        let refunded = false;
+        if (status === "cancelled" && refund) {
+          const mc = (BigInt(rows[0].amount_cents) * 1000n).toString();
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, user_id, device_id, meta)
+             values ('admin_credit', $1, $2, $3, $4)`,
+            [mc, rows[0].user_id || null, rows[0].device_id || null, JSON.stringify({ reason: "redemption_cancelled", redemptionId: id })]
+          );
+          refunded = true;
+        }
+        return { ...rows[0], refunded };
+      });
+    },
+
+    async adminUsers({ search, limit, offset }: any) {
+      const n = Math.max(1, Math.min(500, parseInt(limit, 10) || 100));
+      const off = Math.max(0, parseInt(offset, 10) || 0);
+      const params: any[] = [];
+      let where = "";
+      if (search) { params.push(`%${search}%`); where = `where u.email ilike $${params.length}`; }
+      params.push(n); const lim = `$${params.length}`;
+      params.push(off); const ofs = `$${params.length}`;
+      const { rows } = await pool.query(
+        `select u.id, u.email, u.email_verified, u.payouts_enabled, u.stripe_account_id,
+                u.referral_code, u.referred_by, u.created_at,
+                (select count(*) from devices d where d.user_id = u.id)::int as devices,
+                coalesce((select sum(amount_millicents) from ledger l
+                          where l.user_id = u.id or l.device_id in (select id from devices where user_id = u.id)),0)::bigint as balance_millicents,
+                coalesce((select sum(amount_millicents) from ledger l
+                          where (l.user_id = u.id or l.device_id in (select id from devices where user_id = u.id))
+                            and l.entry_type in ('impression_credit','click_credit','referral_credit')),0)::bigint as earned_millicents
+           from users u ${where}
+          order by u.created_at desc limit ${lim} offset ${ofs}`,
+        params
+      );
+      return rows;
+    },
+
+    async adminEmails() {
+      const { rows } = await pool.query(
+        `select email, source, created_at from (
+           select email, 'user' as source, created_at from users where email is not null
+           union all
+           select email, 'advertiser' as source, created_at from advertisers where email is not null
+           union all
+           select recipient_email as email, 'redemption_recipient' as source, created_at from gift_redemptions where recipient_email is not null
+         ) e order by created_at desc`
+      );
+      return rows;
+    },
+
+    async adminIncome() {
+      const byType = (await pool.query(
+        "select entry_type, count(*)::int as n, coalesce(sum(amount_millicents),0)::bigint as total from ledger group by entry_type order by entry_type"
+      )).rows;
+      return byType;
+    },
+
+    async adminPayoutsList() {
+      const { rows } = await pool.query(
+        `select p.id, p.user_id, p.amount_cents, p.status, p.stripe_transfer_id, p.created_at, u.email
+           from payouts p left join users u on u.id = p.user_id
+          order by p.created_at desc limit 200`
+      );
+      return rows;
+    },
+
+    async adminReferrals() {
+      const byStatus = (await pool.query(
+        "select status, count(*)::int as n, coalesce(sum(reward_millicents),0)::bigint as reward from referrals group by status order by status"
+      )).rows;
+      const top = (await pool.query(
+        `select r.referrer_user_id, u.email, count(*)::int as referred,
+                count(*) filter (where r.status='rewarded')::int as rewarded,
+                coalesce(sum(r.reward_millicents),0)::bigint as reward_millicents
+           from referrals r left join users u on u.id = r.referrer_user_id
+          group by r.referrer_user_id, u.email order by referred desc limit 50`
+      )).rows;
+      return { byStatus, top };
+    },
+
+    async adminDevices(dailyImpCap: number, dailyClickCap: number) {
+      const totals = (await pool.query(
+        `select count(*)::int as total,
+                count(*) filter (where last_seen_at >= now()-interval '1 day')::int as active_1d,
+                count(*) filter (where last_seen_at >= now()-interval '7 days')::int as active_7d,
+                count(*) filter (where user_id is not null)::int as linked
+           from devices`
+      )).rows[0];
+      const heavyDevices = (await pool.query(
+        `select device_id, sum(impressions)::bigint as imp, sum(clicks)::bigint as clk
+           from event_batches where created_at >= date_trunc('day', now())
+          group by device_id having sum(impressions) >= $1 or sum(clicks) >= $2
+          order by imp desc limit 50`, [dailyImpCap, dailyClickCap]
+      )).rows;
+      const heavyIps = (await pool.query(
+        `select ip_hash, count(distinct device_id)::int as devices, sum(impressions)::bigint as imp
+           from event_batches where created_at >= date_trunc('day', now()) and ip_hash is not null
+          group by ip_hash having sum(impressions) >= $1 order by imp desc limit 50`, [dailyImpCap]
+      )).rows;
+      return { totals, heavyDevices, heavyIps };
+    },
+
+    // Live schema introspection: every public table with its columns + exact
+    // row count. Powers the Schema tab.
+    async adminSchema() {
+      const cols = (await pool.query(
+        `select table_name, column_name, data_type, is_nullable, ordinal_position
+           from information_schema.columns where table_schema='public'
+          order by table_name, ordinal_position`
+      )).rows;
+      const tbls = (await pool.query(
+        "select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by table_name"
+      )).rows;
+      const out: any[] = [];
+      for (const t of tbls) {
+        const name = t.table_name;
+        if (!/^[a-z_][a-z0-9_]*$/i.test(name)) continue; // guard the interpolated identifier
+        let count: number | null = null;
+        try { count = Number((await pool.query(`select count(*)::bigint as n from "${name}"`)).rows[0].n); } catch { count = null; }
+        out.push({
+          table: name,
+          rowCount: count,
+          columns: cols.filter((c: any) => c.table_name === name)
+            .map((c: any) => ({ name: c.column_name, type: c.data_type, nullable: c.is_nullable === "YES" })),
+        });
+      }
+      return out;
+    },
+
+    async adminLedgerAdjust({ userId, deviceId, amountCents, direction, note }: any) {
+      const cents = Math.abs(parseInt(amountCents, 10) || 0);
+      if (!cents) return null;
+      if (userId && !isUuid(userId)) return null;
+      if (deviceId && !isUuid(deviceId)) return null;
+      if (!userId && !deviceId) return null;
+      const isCredit = direction !== "debit";
+      const entryType = isCredit ? "admin_credit" : "admin_debit";
+      const mc = (BigInt(cents) * 1000n) * (isCredit ? 1n : -1n);
+      const { rows } = await pool.query(
+        `insert into ledger (entry_type, amount_millicents, user_id, device_id, meta)
+         values ($1, $2, $3, $4, $5) returning id`,
+        [entryType, mc.toString(), userId || null, deviceId || null, JSON.stringify({ note: note || null, source: "admin" })]
+      );
+      return rows[0]?.id || null;
+    },
   };
 }
 const repo = createRepo(pool);
@@ -1011,7 +1303,20 @@ async function runPayouts() {
 }
 
 // ─────────────────────────── http plumbing ─────────────────────────────────
+// Ad-serving killswitch. Seeded from the KILLSWITCH env on cold start, then
+// kept in sync with the persisted `settings.serving` flag so a toggle from the
+// admin dashboard propagates across isolates. syncServing() refreshes at most
+// once per 15s to keep the /v1/ads hot path cheap.
 let serving = !config.killswitch;
+let servingSyncedAt = 0;
+async function syncServing() {
+  if (Date.now() - servingSyncedAt < 15000) return;
+  servingSyncedAt = Date.now();
+  try {
+    const v = await repo.getSetting("serving");
+    if (typeof v === "boolean") serving = v;
+  } catch { /* settings table absent / unreachable — keep current value */ }
+}
 // TEMP: capture the most recent unhandled route error for /v1/_diag.
 let lastError: any = null;
 const CORS: Record<string, string> = {
@@ -1118,8 +1423,9 @@ route("GET", "/v1/_diag", async (ctx: any) => {
   out.lastError = lastError;
   return json(200, out);
 });
-route("GET", "/v1/config", async () => json(200, { serving, revenueShare: config.revenueShare }));
+route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: config.revenueShare }); });
 route("GET", "/v1/ads", async () => {
+  await syncServing();
   const ads = serving ? await repo.activeAds() : [];
   return json(200, { revenueShare: config.revenueShare, ads: ads.map((a: any) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined })) });
 });
@@ -1601,12 +1907,179 @@ async function act(kind,id){
 route("POST", "/v1/admin/killswitch", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   if (typeof ctx.body?.serving !== "boolean") return json(400, { error: "serving (boolean) required" });
-  serving = ctx.body.serving; // per-isolate only (see header note)
+  serving = ctx.body.serving;
+  servingSyncedAt = Date.now();
+  try { await repo.setSetting("serving", serving); } // persist across isolates
+  catch (err: any) { console.error("[freeai] killswitch persist failed:", err?.message); }
   return json(200, { ok: true, serving });
 });
 route("POST", "/v1/admin/payouts", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   return json(200, await runPayouts());
+});
+
+// ── admin dashboard (read + management) ──
+// Money helpers: ledger is millicents, gift_redemptions is cents.
+const mcUsd = (v: any) => Number(v || 0) / 100000;
+const cUsd = (v: any) => Number(v || 0) / 100;
+
+route("GET", "/v1/admin/overview", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const o = await repo.adminOverview();
+  const m = o.money;
+  return json(200, {
+    revenue: {
+      adsPurchasedUsd: mcUsd(m.campaign_credit),
+      refundedUsd: -mcUsd(m.campaign_refund),
+      platformFeeUsd: mcUsd(m.platform_fee),
+      developerCreditUsd: mcUsd(m.dev_credit),
+      referralCreditUsd: mcUsd(m.referral_credit),
+      paidOutUsd: -mcUsd(m.payout_debit),
+      redeemedUsd: -mcUsd(m.redemption_debit),
+      adminAdjustUsd: mcUsd(m.admin_adjust),
+      outstandingLiabilityUsd: mcUsd(m.liability),
+    },
+    counts: o.counts,
+    campaignsByStatus: o.campaignsByStatus,
+    pendingRedemptionsUsd: cUsd(o.counts.redemptions_pending_cents),
+    serving,
+  });
+});
+
+route("GET", "/v1/admin/metrics/daily", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const days = parseInt(ctx.query.get("days") || "30", 10);
+  const raw = await repo.adminDailyMetrics(days);
+  const key = (d: any) => new Date(d).toISOString().slice(0, 10);
+  const map = new Map<string, any>();
+  const ensure = (k: string) => {
+    if (!map.has(k)) map.set(k, { date: k, impressions: 0, clicks: 0, adsPurchasedUsd: 0, platformFeeUsd: 0, developerCreditUsd: 0, recognizedUsd: 0, effectiveCpmUsd: 0, newUsers: 0, newDevices: 0, redemptions: 0, redemptionsUsd: 0 });
+    return map.get(k);
+  };
+  for (const r of raw.events) { const o = ensure(key(r.d)); o.impressions = Number(r.imp); o.clicks = Number(r.clk); }
+  for (const r of raw.ledger) { const o = ensure(key(r.d)); o.adsPurchasedUsd = mcUsd(r.bought); o.platformFeeUsd = mcUsd(r.fee); o.developerCreditUsd = mcUsd(r.dev); o.recognizedUsd = mcUsd(r.dev) + mcUsd(r.fee); }
+  for (const r of raw.users) { ensure(key(r.d)).newUsers = Number(r.n); }
+  for (const r of raw.devices) { ensure(key(r.d)).newDevices = Number(r.n); }
+  for (const r of raw.redemptions) { const o = ensure(key(r.d)); o.redemptions = Number(r.n); o.redemptionsUsd = cUsd(r.cents); }
+  // Fill the full window so every day shows, even with no activity.
+  const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+  const series: any[] = [];
+  for (let i = raw.days - 1; i >= 0; i--) {
+    const dt = new Date(today); dt.setUTCDate(dt.getUTCDate() - i);
+    const o = ensure(dt.toISOString().slice(0, 10));
+    o.effectiveCpmUsd = o.impressions > 0 ? (o.recognizedUsd / o.impressions) * 1000 : 0;
+    series.push(o);
+  }
+  return json(200, { days: raw.days, series });
+});
+
+route("GET", "/v1/admin/campaigns/all", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const rows = await repo.adminCampaigns({
+    status: ctx.query.get("status") || null,
+    limit: ctx.query.get("limit"), offset: ctx.query.get("offset"),
+  });
+  return json(200, { campaigns: rows.map((c: any) => ({
+    id: c.id, brand: c.brand, adLine: c.ad_line, url: c.url, category: c.category, status: c.status,
+    bidUsd: c.price_per_block_cents / 100, blocks: c.blocks,
+    impressionsTotal: c.impressions_total, impressionsRemaining: c.impressions_remaining, impressionsServed: c.impressions_served,
+    showOnLeaderboard: c.show_on_leaderboard, reviewNote: c.review_note,
+    recognizedUsd: mcUsd(c.recognized_millicents), advertiserEmail: c.advertiser_email,
+    createdAt: c.created_at, paidAt: c.paid_at, activatedAt: c.activated_at,
+  })) });
+});
+route("POST", "/v1/admin/campaigns/cancel", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const ok = await repo.cancelCampaign(ctx.body?.campaignId);
+  return json(ok ? 200 : 404, { ok });
+});
+
+route("GET", "/v1/admin/redemptions", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const rows = await repo.adminRedemptions({ status: ctx.query.get("status") || null, limit: ctx.query.get("limit") });
+  return json(200, { redemptions: rows.map((r: any) => ({
+    id: r.id, plan: GIFT_PLANS[r.plan]?.name || r.plan, planId: r.plan, months: r.months,
+    amountUsd: r.amount_cents / 100, recipientEmail: r.recipient_email, userEmail: r.user_email,
+    status: r.status, createdAt: r.created_at,
+  })) });
+});
+route("POST", "/v1/admin/redemptions/status", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const result = await repo.setRedemptionStatus(ctx.body?.id, ctx.body?.status, !!ctx.body?.refund);
+  if (!result) return json(400, { ok: false, error: "invalid id or status" });
+  return json(200, { ok: true, status: result.status, refunded: result.refunded });
+});
+
+route("GET", "/v1/admin/users", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const rows = await repo.adminUsers({ search: ctx.query.get("search") || null, limit: ctx.query.get("limit"), offset: ctx.query.get("offset") });
+  return json(200, { users: rows.map((u: any) => ({
+    id: u.id, email: u.email, emailVerified: u.email_verified, payoutsEnabled: u.payouts_enabled,
+    stripeLinked: !!u.stripe_account_id, referralCode: u.referral_code, referredBy: u.referred_by,
+    devices: u.devices, balanceUsd: mcUsd(u.balance_millicents), earnedUsd: mcUsd(u.earned_millicents), createdAt: u.created_at,
+  })) });
+});
+
+route("GET", "/v1/admin/emails", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const rows = await repo.adminEmails();
+  if ((ctx.query.get("format") || "") === "csv") {
+    const esc = (s: any) => `"${String(s == null ? "" : s).replace(/"/g, '""')}"`;
+    const body = ["email,source,created_at", ...rows.map((r: any) => [esc(r.email), esc(r.source), esc(r.created_at)].join(","))].join("\n");
+    return new Response(body, { status: 200, headers: { ...CORS, "Access-Control-Allow-Origin": resolveOrigin(ctx.req), "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="freeai-emails.csv"' } });
+  }
+  return json(200, { emails: rows });
+});
+
+route("GET", "/v1/admin/income", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const rows = await repo.adminIncome();
+  return json(200, { byType: rows.map((r: any) => ({ entryType: r.entry_type, count: r.n, totalUsd: mcUsd(r.total) })) });
+});
+
+route("GET", "/v1/admin/payouts", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const list = await repo.adminPayoutsList();
+  const payable = await repo.payableUsers(config.payoutThresholdCents * 1000);
+  return json(200, {
+    payouts: list.map((p: any) => ({ id: p.id, email: p.email, userId: p.user_id, amountUsd: p.amount_cents / 100, status: p.status, transferId: p.stripe_transfer_id, createdAt: p.created_at })),
+    payable: { count: payable.length, totalUsd: payable.reduce((s: number, u: any) => s + u.balance / 100000, 0), thresholdUsd: config.payoutThresholdCents / 100 },
+  });
+});
+
+route("GET", "/v1/admin/referrals", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const r = await repo.adminReferrals();
+  return json(200, {
+    byStatus: r.byStatus.map((s: any) => ({ status: s.status, count: s.n, rewardUsd: mcUsd(s.reward) })),
+    top: r.top.map((t: any) => ({ email: t.email, userId: t.referrer_user_id, referred: t.referred, rewarded: t.rewarded, rewardUsd: mcUsd(t.reward_millicents) })),
+  });
+});
+
+route("GET", "/v1/admin/devices", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const d = await repo.adminDevices(config.dailyImpressionCap, config.dailyClickCap);
+  return json(200, {
+    totals: d.totals,
+    caps: { dailyImpressionCap: config.dailyImpressionCap, dailyClickCap: config.dailyClickCap },
+    heavyDevices: d.heavyDevices.map((x: any) => ({ deviceId: x.device_id, impressions: Number(x.imp), clicks: Number(x.clk) })),
+    heavyIps: d.heavyIps.map((x: any) => ({ ipHash: x.ip_hash, devices: x.devices, impressions: Number(x.imp) })),
+  });
+});
+
+route("GET", "/v1/admin/schema", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  return json(200, { tables: await repo.adminSchema() });
+});
+
+route("POST", "/v1/admin/ledger/adjust", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const id = await repo.adminLedgerAdjust({
+    userId: ctx.body?.userId || null, deviceId: ctx.body?.deviceId || null,
+    amountCents: ctx.body?.amountCents, direction: ctx.body?.direction, note: ctx.body?.note,
+  });
+  if (!id) return json(400, { ok: false, error: "need userId or deviceId, a non-zero amountCents, and direction credit|debit" });
+  return json(200, { ok: true, ledgerId: id });
 });
 
 // ─────────────────────────────── dispatch ──────────────────────────────────

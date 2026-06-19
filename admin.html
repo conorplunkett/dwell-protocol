@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <!-- Production API (same origin contract as index.html / redeem.js). -->
+  <meta name="freeai-api" content="https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/api" />
+  <title>FreeAI · Admin</title>
+  <link rel="stylesheet" href="/theme.css" />
+  <link rel="stylesheet" href="/admin.css" />
+</head>
+<body>
+  <!-- Login gate: the ADMIN_KEY is the password. Held only in sessionStorage;
+       no secret is baked into this file. Every request is validated server-side. -->
+  <div id="gate" class="gate" hidden>
+    <form id="gate-form" class="gate-card">
+      <div class="gate-brand">FreeAI <span>admin</span></div>
+      <p class="gate-sub">Enter your admin key to continue.</p>
+      <input id="gate-key" type="password" autocomplete="off" placeholder="Admin key" spellcheck="false" />
+      <button type="submit" class="btn btn-accent">Unlock</button>
+      <div id="gate-err" class="gate-err" hidden></div>
+    </form>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="app" class="app" hidden>
+    <aside class="sidebar">
+      <div class="side-brand">FreeAI <span>admin</span></div>
+      <nav id="nav" class="nav"></nav>
+      <div class="side-foot">
+        <div id="serve-pill" class="serve-pill" title="Ad serving status">…</div>
+        <button id="logout" class="btn btn-ghost btn-sm">Log out</button>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <h1 id="page-title">Overview</h1>
+        <button id="refresh" class="btn btn-ghost btn-sm">↻ Refresh</button>
+      </header>
+      <div id="view" class="view"></div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/admin.js"></script>
+</body>
+</html>
