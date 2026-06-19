@@ -212,3 +212,24 @@ alter table ledger add constraint ledger_entry_type_check check (entry_type in (
   'gift_redemption_debit', -- redeemed for a Claude gift card        (- device)
   'referral_credit'      -- $20 bonus for a qualified referral        (+ user)
 ));
+
+-- ── Waitlists ────────────────────────────────────────────────────────────────
+-- Users can join a waitlist to be notified when ads launch on a surface that
+-- isn't live yet: the desktop app, the command line, the Chrome extension, and
+-- the VS Code extension. Each row is one user's interest in one surface; the
+-- (user_id, surface) pair is unique so a re-signup is a no-op, and a single user
+-- may sit on several waitlists.
+create table if not exists waitlist_signups (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id),
+  surface text not null check (surface in (
+    'desktop',           -- ads on desktop
+    'command_line',      -- ads on the command line
+    'chrome_extension',  -- ads on the Chrome extension
+    'vscode_extension'   -- ads on the VS Code extension
+  )),
+  created_at timestamptz not null default now(),
+  unique (user_id, surface)
+);
+create index if not exists waitlist_signups_user_idx on waitlist_signups (user_id);
+create index if not exists waitlist_signups_surface_idx on waitlist_signups (surface);
