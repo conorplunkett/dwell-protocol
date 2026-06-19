@@ -59,6 +59,17 @@ function createRepo(pool) {
        on conflict (referred_user_id) do nothing`,
       [referrer.id, newUserId]
     );
+    // Flip the "code used" indicator on a matching email invite, if the referrer
+    // had invited this exact address. Matched by email so it survives the OAuth /
+    // magic-link round-trip; harmless when the friend signed up some other way.
+    const ne = await client.query("select email from users where id = $1", [newUserId]);
+    if (ne.rows[0]?.email) {
+      await client.query(
+        `update referral_invites set status = 'joined', joined_at = now()
+          where referrer_user_id = $1 and lower(email) = lower($2) and status = 'sent'`,
+        [referrer.id, ne.rows[0].email]
+      );
+    }
   }
 
   // Pay the referrer their one-time bonus once the referred user redeems. The
@@ -92,6 +103,15 @@ function createRepo(pool) {
         where id = $1`,
       [id, String(rewardMillicents)]
     );
+    // Advance a matching email invite to its final 'rewarded' stage too.
+    const re = await client.query("select email from users where id = $1", [referredUserId]);
+    if (re.rows[0]?.email) {
+      await client.query(
+        `update referral_invites set status = 'rewarded', rewarded_at = now()
+          where referrer_user_id = $1 and lower(email) = lower($2) and status <> 'rewarded'`,
+        [referrer_user_id, re.rows[0].email]
+      );
+    }
   }
 
   return {
@@ -822,7 +842,27 @@ function createRepo(pool) {
       throw new Error("could not allocate referral code");
     },
 
-    // Counts + recent referrals for the dashboard.
+    // Record (or re-send) an email invite. Stored lower-cased so the email match
+    // that flips the 'joined'/'rewarded' indicators is case-insensitive. The
+    // self-referral guard ("can't refer your own email") lives in the route,
+    // which knows the caller's email. Returns the invite row.
+    async createReferralInvite(referrerUserId, email, code) {
+      const r = await pool.query(
+        `insert into referral_invites (referrer_user_id, email, code)
+           values ($1, lower($2), $3)
+         on conflict (referrer_user_id, email)
+           do update set sent_at = now(), code = excluded.code
+         returning email, status, sent_at`,
+        [referrerUserId, email, code]
+      );
+      return r.rows[0];
+    },
+
+    // Counts + the dashboard list, one row per friend with their email and the
+    // stage they're at: 'invited' (email sent, not signed up yet) comes from
+    // referral_invites; 'pending'/'rewarded'/'capped'/'cancelled' come from the
+    // referrals table joined to the friend's account. Both lists merge into one
+    // newest-first timeline so the user can see exactly who they've referred.
     async referralStats(userId) {
       const stats = await pool.query(
         `select
@@ -833,18 +873,33 @@ function createRepo(pool) {
          from referrals where referrer_user_id = $1`,
         [userId]
       );
-      const list = await pool.query(
-        `select status, created_at from referrals
-          where referrer_user_id = $1 order by created_at desc limit 50`,
+      const joined = await pool.query(
+        `select u.email, r.status, r.created_at
+           from referrals r join users u on u.id = r.referred_user_id
+          where r.referrer_user_id = $1
+          order by r.created_at desc limit 100`,
+        [userId]
+      );
+      // Only invites still awaiting a signup; once joined, the friend shows up in
+      // `joined` above (matched by email), so this avoids double-listing them.
+      const invited = await pool.query(
+        `select email, sent_at as created_at from referral_invites
+          where referrer_user_id = $1 and status = 'sent'
+          order by sent_at desc limit 100`,
         [userId]
       );
       const s = stats.rows[0];
+      const referrals = [
+        ...invited.rows.map((r) => ({ email: r.email, status: "invited", createdAt: r.created_at })),
+        ...joined.rows.map((r) => ({ email: r.email, status: r.status, createdAt: r.created_at })),
+      ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       return {
         rewardedCount: s.rewarded,
         pendingCount: s.pending,
         cappedCount: s.capped,
+        invitedCount: invited.rows.length,
         creditsEarnedMillicents: Number(s.earned_millicents),
-        referrals: list.rows.map((r) => ({ status: r.status, createdAt: r.created_at })),
+        referrals,
       };
     },
 

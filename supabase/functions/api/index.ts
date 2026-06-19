@@ -235,6 +235,14 @@ function createMailer(cfg: any) {
          <li><strong>Redemption id:</strong> ${redemptionId}</li>
        </ul>
        <p>Please fulfill within 48 hours.</p>`),
+    sendReferralInviteEmail: (to: string, { inviterEmail, link, rewardUsd }: any) =>
+      send(to, `${inviterEmail} invited you to FreeAI — free Claude credits`,
+      `<p>${inviterEmail} is using FreeAI to earn free Claude credits and wants you in.</p>
+       <p>FreeAI shows one subtle sponsored line while you use ChatGPT, Claude, or
+          Gemini, and pays you back 50% of the revenue as Claude credits.</p>
+       <p><a href="${link}">Accept the invite and claim your credits</a></p>
+       <p>When you sign up with this link and redeem your first Claude gift card,
+          ${inviterEmail} earns a one-time $${Math.round(rewardUsd)} bonus — at no cost to you.</p>`),
   };
 }
 const mailer = createMailer(config);
@@ -268,6 +276,14 @@ function createRepo(pool: any) {
        values ($1, $2, 'pending') on conflict (referred_user_id) do nothing`,
       [referrer.id, newUserId]
     );
+    const ne = await client.query("select email from users where id = $1", [newUserId]);
+    if (ne.rows[0]?.email) {
+      await client.query(
+        `update referral_invites set status = 'joined', joined_at = now()
+          where referrer_user_id = $1 and lower(email) = lower($2) and status = 'sent'`,
+        [referrer.id, ne.rows[0].email]
+      );
+    }
   }
 
   async function maybeRewardReferral(client: any, referredUserId: string, rewardMillicents: any, cap: number) {
@@ -294,6 +310,14 @@ function createRepo(pool: any) {
       `update referrals set status = 'rewarded', rewarded_at = now(), reward_millicents = $2 where id = $1`,
       [id, String(rewardMillicents)]
     );
+    const re = await client.query("select email from users where id = $1", [referredUserId]);
+    if (re.rows[0]?.email) {
+      await client.query(
+        `update referral_invites set status = 'rewarded', rewarded_at = now()
+          where referrer_user_id = $1 and lower(email) = lower($2) and status <> 'rewarded'`,
+        [referrer_user_id, re.rows[0].email]
+      );
+    }
   }
 
   return {
@@ -832,6 +856,17 @@ function createRepo(pool: any) {
       }
       throw new Error("could not allocate referral code");
     },
+    async createReferralInvite(referrerUserId: string, email: string, code: string) {
+      const r = await pool.query(
+        `insert into referral_invites (referrer_user_id, email, code)
+           values ($1, lower($2), $3)
+         on conflict (referrer_user_id, email)
+           do update set sent_at = now(), code = excluded.code
+         returning email, status, sent_at`,
+        [referrerUserId, email, code]
+      );
+      return r.rows[0];
+    },
     async referralStats(userId: string) {
       const stats = await pool.query(
         `select
@@ -842,15 +877,27 @@ function createRepo(pool: any) {
          from referrals where referrer_user_id = $1`,
         [userId]
       );
-      const list = await pool.query(
-        `select status, created_at from referrals where referrer_user_id = $1 order by created_at desc limit 50`,
+      const joined = await pool.query(
+        `select u.email, r.status, r.created_at
+           from referrals r join users u on u.id = r.referred_user_id
+          where r.referrer_user_id = $1 order by r.created_at desc limit 100`,
+        [userId]
+      );
+      const invited = await pool.query(
+        `select email, sent_at as created_at from referral_invites
+          where referrer_user_id = $1 and status = 'sent' order by sent_at desc limit 100`,
         [userId]
       );
       const s = stats.rows[0];
+      const referrals = [
+        ...invited.rows.map((r: any) => ({ email: r.email, status: "invited", createdAt: r.created_at })),
+        ...joined.rows.map((r: any) => ({ email: r.email, status: r.status, createdAt: r.created_at })),
+      ].sort((a: any, b: any) => +new Date(b.createdAt) - +new Date(a.createdAt));
       return {
         rewardedCount: s.rewarded, pendingCount: s.pending, cappedCount: s.capped,
+        invitedCount: invited.rows.length,
         creditsEarnedMillicents: Number(s.earned_millicents),
-        referrals: list.rows.map((r: any) => ({ status: r.status, createdAt: r.created_at })),
+        referrals,
       };
     },
     async recordPayout(userId: string, amountCents: number, transferId: string) {
@@ -1331,8 +1378,23 @@ route("GET", "/v1/web/referrals", async (ctx: any) => {
     code, link: `${config.siteUrl}/redeem.html?ref=${code}`,
     rewardUsd: config.referralRewardCents / 100, cap: config.referralCap,
     rewardedCount: stats.rewardedCount, pendingCount: stats.pendingCount,
+    invitedCount: stats.invitedCount,
     creditsEarnedUsd: stats.creditsEarnedMillicents / 100000, referrals: stats.referrals,
   });
+});
+route("POST", "/v1/web/referrals/invite", async (ctx: any) => {
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  const email = String(ctx.body?.email || "").trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(400, { error: "valid email required" });
+  if (email.toLowerCase() === String(user.email || "").toLowerCase()) {
+    return json(400, { error: "you can't refer your own email" });
+  }
+  const code = await repo.getOrCreateReferralCode(user.id);
+  const link = `${config.siteUrl}/redeem.html?ref=${code}`;
+  const invite = await repo.createReferralInvite(user.id, email, code);
+  await mailer.sendReferralInviteEmail(email, { inviterEmail: user.email, link, rewardUsd: config.referralRewardCents / 100 });
+  return json(200, { ok: true, sent: true, invite: { email: invite.email, status: invite.status, createdAt: invite.sent_at } });
 });
 route("POST", "/v1/web/redemptions", async (ctx: any) => {
   const user = await repo.userForSession(sessionFrom(ctx));

@@ -199,6 +199,29 @@ create table if not exists referrals (
 );
 create index if not exists referrals_referrer_idx on referrals (referrer_user_id);
 
+-- Email invites a user sends from the dashboard. The status tells the story of
+-- one invitation: 'sent' (the email went out — the "sent" indicator), 'joined'
+-- (the friend signed up with the code — the "code used" indicator), 'rewarded'
+-- (they redeemed and the referrer was paid). One invite per (referrer, email);
+-- re-inviting the same address just refreshes sent_at. The referrals table above
+-- stays the source of truth for money; this table only tracks outreach + the two
+-- indicators, joined to a referral by the friend's email.
+create table if not exists referral_invites (
+  id uuid primary key default gen_random_uuid(),
+  referrer_user_id uuid not null references users(id),
+  email text not null,
+  code text not null,
+  status text not null default 'sent'
+    check (status in ('sent', 'joined', 'rewarded')),
+  sent_at timestamptz not null default now(),
+  joined_at timestamptz,
+  rewarded_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (referrer_user_id, email)
+);
+create index if not exists referral_invites_referrer_idx on referral_invites (referrer_user_id);
+create index if not exists referral_invites_email_idx on referral_invites (lower(email));
+
 -- Allow the referral bonus entry type in the ledger. Drop + re-add so re-running
 -- the migration is idempotent and existing databases pick up the new value.
 alter table ledger drop constraint if exists ledger_entry_type_check;

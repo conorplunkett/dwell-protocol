@@ -554,8 +554,38 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
       cap: config.referralCap,
       rewardedCount: stats.rewardedCount,
       pendingCount: stats.pendingCount,
+      invitedCount: stats.invitedCount,
       creditsEarnedUsd: stats.creditsEarnedMillicents / 100000,
       referrals: stats.referrals,
+    });
+  });
+
+  // Invite a friend by email. Records the invite (the "sent" indicator) and
+  // emails them the user's referral link. You can't refer your own address —
+  // the code only ever attributes a brand-new account, so self-referral is both
+  // pointless and rejected here for a clear error.
+  route("POST", "/v1/web/referrals/invite", async (req, res, body) => {
+    const user = await repo.userForSession(sessionFrom(req, body));
+    if (!user) return json(res, 401, { error: "not signed in" });
+    const email = String(body?.email || "").trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return json(res, 400, { error: "valid email required" });
+    }
+    if (email.toLowerCase() === String(user.email || "").toLowerCase()) {
+      return json(res, 400, { error: "you can't refer your own email" });
+    }
+    const code = await repo.getOrCreateReferralCode(user.id);
+    const link = `${config.siteUrl}/redeem.html?ref=${code}`;
+    const invite = await repo.createReferralInvite(user.id, email, code);
+    await mailer.sendReferralInviteEmail(email, {
+      inviterEmail: user.email,
+      link,
+      rewardUsd: config.referralRewardCents / 100,
+    });
+    json(res, 200, {
+      ok: true,
+      sent: true,
+      invite: { email: invite.email, status: invite.status, createdAt: invite.sent_at },
     });
   });
 

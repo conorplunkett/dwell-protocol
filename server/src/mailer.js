@@ -68,7 +68,24 @@ function createMailer(config) {
     );
   }
 
-  return { sendVerifyEmail, sendWebLoginEmail, sendGiftRedemptionEmail };
+  // Invite a friend to FreeAI. Sent to the invitee from the dashboard's
+  // "refer a friend" form. The link carries the referrer's code (?ref=…) so the
+  // friend is attributed when they sign up.
+  async function sendReferralInviteEmail(to, { inviterEmail, link, rewardUsd }) {
+    const reward = `$${Math.round(rewardUsd)}`;
+    await send(
+      to,
+      `${inviterEmail} invited you to FreeAI — free Claude credits`,
+      `<p>${inviterEmail} is using FreeAI to earn free Claude credits and wants you in.</p>
+       <p>FreeAI shows one subtle sponsored line while you use ChatGPT, Claude, or
+          Gemini, and pays you back 50% of the revenue as Claude credits.</p>
+       <p><a href="${link}">Accept the invite and claim your credits</a></p>
+       <p>When you sign up with this link and redeem your first Claude gift card,
+          ${inviterEmail} earns a one-time ${reward} bonus — at no cost to you.</p>`
+    );
+  }
+
+  return { sendVerifyEmail, sendWebLoginEmail, sendGiftRedemptionEmail, sendReferralInviteEmail };
 }
 
 module.exports = { createMailer };
