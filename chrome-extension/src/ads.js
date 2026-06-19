@@ -23,7 +23,7 @@
     chip: "✓",
     color: "#d97757", // FreeAI brand coral (--accent) — our own test ad, not a sponsor
     ink: "#fff",
-    line: "this is what advertisers will see here.",
+    line: "this is a test ad — what advertisers will see here.",
     url: "https://freeai.fyi/?test=1",
     cat: "test",
     mock: true
