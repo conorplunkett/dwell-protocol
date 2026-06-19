@@ -42,7 +42,11 @@ Then verify it two ways:
 - **Test mode** swaps in a labelled mock ad — shown under the same
   only-while-generating rule — and keeps its counts separate, so you can
   confirm rendering, placement, and click-through without real earnings.
-- **Live backend (`https://api.freeai.fyi`).** On first run the service worker
+- **Live backend.** `API_BASE` in `src/background.js` points at the production
+  Supabase Edge Function
+  (`https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/api`; the
+  `api.freeai.fyi` hostname is a Vercel rewrite onto the same function). On
+  first run the service worker
   registers an anonymous device, pulls the live ad inventory from the auction
   (`/v1/ads`, falling back to the bundled list when offline), reports impressions
   to the ledger in idempotent batches (`/v1/events`), records clicks through
