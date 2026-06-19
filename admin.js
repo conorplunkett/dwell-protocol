@@ -62,6 +62,13 @@ async function api(path, { method = "GET", body } = {}) {
   if (!res.ok) { let m = res.status; try { m = (await res.json()).error || m; } catch {} throw new Error(String(m)); }
   return res.json();
 }
+// Soft variant for optional sections: returns null instead of throwing, so a
+// not-yet-deployed endpoint degrades to a placeholder rather than breaking a tab.
+async function tryApi(path) { try { return await api(path); } catch { return null; } }
+function soonCard(title) {
+  return h("div", { class: "card" }, h("div", { class: "card-head" }, h("h2", {}, title)),
+    h("p", { class: "empty" }, "Not available yet — this section’s API update is still deploying."));
+}
 
 // ── login gate ────────────────────────────────────────────────────────────
 // Inline display is set explicitly (not just the `hidden` attribute) so a
@@ -462,7 +469,8 @@ async function renderReferrals(view) {
     table([{ label: "Referrer" }, { label: "Referred", num: true }, { label: "Rewarded", num: true }, { label: "Earned", num: true }],
       d.top, (t) => [h("span", { class: "mono" }, t.email || short(t.userId)), num(t.referred), num(t.rewarded), usd(t.rewardUsd)])));
   // Referral invites funnel (emails people invited, and how far each got).
-  const inv = await api("/v1/admin/invites");
+  const inv = await tryApi("/v1/admin/invites");
+  if (!inv) { view.append(soonCard("Invites sent")); return; }
   view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Invites sent"),
       h("p", { class: "hint" }, "Emails referrers invited → joined → rewarded.")),
@@ -476,8 +484,9 @@ async function renderReferrals(view) {
 }
 
 async function renderWaitlist(view) {
-  const d = await api("/v1/admin/waitlist");
+  const d = await tryApi("/v1/admin/waitlist");
   view.innerHTML = "";
+  if (!d) { view.append(soonCard("Waitlist")); return; }
   view.append(tiles(d.bySurface.map((s) => ({ k: s.label || s.surface, v: num(s.count), s: "waiting" }))));
   view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Recent signups"),
@@ -557,8 +566,8 @@ async function renderSettings(view) {
         catch (e) { toast(e.message, true); }
       } }, d.serving ? "Pause ad serving" : "Resume ad serving")),
     h("p", { class: "hint" }, d.serving ? "Ads are live. Pausing stops /v1/ads from returning anything (propagates within ~15s)." : "Ad serving is paused. No ads are being delivered.")));
-  const cfg = await api("/v1/admin/config");
-  view.append(h("div", { class: "card" },
+  const cfg = await tryApi("/v1/admin/config");
+  if (cfg) view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Economics"),
       h("p", { class: "hint" }, "Read-only — set via the function’s environment.")),
     table([{ label: "Setting" }, { label: "Value", num: true }], [
@@ -578,8 +587,8 @@ async function renderSettings(view) {
     h("div", { class: "card-head" }, h("h2", {}, "Manual balance adjustment")),
     h("p", { class: "hint" }, "Credit or debit a user’s balance directly. Find the user under the Users tab and use “Adjust”, or use a device/user ID below."),
     adjustForm()));
-  const errs = await api("/v1/admin/errors");
-  view.append(h("div", { class: "card" },
+  const errs = await tryApi("/v1/admin/errors");
+  if (errs) view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Recent runtime errors"),
       h("p", { class: "hint" }, errs.errors.length ? "Server errors captured by the API dispatch handler." : "No errors logged 🎉")),
     errs.errors.length
