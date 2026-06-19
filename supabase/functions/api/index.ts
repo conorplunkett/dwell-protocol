@@ -111,6 +111,12 @@ function isCleanAdLine(s: any) {
   }
   return true;
 }
+// Guard user-supplied campaign ids before they hit a uuid column: a non-uuid
+// value makes Postgres throw (22P02), which would abort a whole batch tx.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(s: any) {
+  return typeof s === "string" && UUID_RE.test(s);
+}
 
 // Advertiser accent color, "#rrggbb" or bare "rrggbb" → canonical "#rrggbb",
 // else null (client falls back to a per-brand color).
@@ -447,6 +453,9 @@ function createRepo(pool: any) {
           const imp = Math.max(0, ev.impressions | 0);
           const billable = imp;
           if (!billable) continue;
+          // Skip demo/preview or otherwise non-uuid campaign ids — querying a
+          // uuid column with them throws and would poison the transaction.
+          if (!isUuid(ev.campaignId)) continue;
           const camp = await c.query(
             `select price_per_block_cents, impressions_remaining from campaigns
               where id = $1 and status = 'active' for update`,
@@ -529,6 +538,7 @@ function createRepo(pool: any) {
       });
     },
     async createClickToken(campaignId: string, deviceId: string, ttlMs: number) {
+      if (!isUuid(campaignId)) return null;
       const camp = await pool.query("select 1 from campaigns where id = $1 and status = 'active'", [campaignId]);
       if (!camp.rows[0]) return null;
       const token = crypto.randomBytes(24).toString("base64url");
@@ -888,12 +898,33 @@ async function runPayouts() {
 
 // ─────────────────────────── http plumbing ─────────────────────────────────
 let serving = !config.killswitch;
+// TEMP: capture the most recent unhandled route error for /v1/_diag.
+let lastError: any = null;
 const CORS: Record<string, string> = {
-  "Access-Control-Allow-Origin": config.corsOrigin || "*",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type,X-Admin-Key,Authorization,apikey",
   "Access-Control-Max-Age": "86400",
 };
+// Allowed browser origins. Reflect the caller's Origin when it's on our
+// allowlist (apex + www variants of SITE_URL, plus any CORS_ORIGIN entries) so
+// both https://freeai.fyi and https://www.freeai.fyi pass preflight.
+const ALLOWED_ORIGINS: Set<string> = (() => {
+  const set = new Set<string>();
+  const add = (o: string) => { const v = (o || "").trim().replace(/\/+$/, ""); if (v) set.add(v); };
+  (env("CORS_ORIGIN") || config.siteUrl || "").split(",").forEach(add);
+  try {
+    const u = new URL(config.siteUrl);
+    const host = u.host.replace(/^www\./, "");
+    add(`${u.protocol}//${host}`);
+    add(`${u.protocol}//www.${host}`);
+  } catch { /* siteUrl not a URL — skip variants */ }
+  return set;
+})();
+function resolveOrigin(req: Request): string {
+  const o = (req.headers.get("Origin") || "").replace(/\/+$/, "");
+  return ALLOWED_ORIGINS.has(o) ? o : (config.corsOrigin || "*");
+}
 const json = (status: number, body: any) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 const redirect = (url: string) => new Response(null, { status: 302, headers: { ...CORS, Location: url } });
@@ -941,6 +972,38 @@ function hashIp(ctx: any) {
 
 // ── health & catalog ──
 route("GET", "/healthz", async () => json(200, { ok: true }));
+// TEMP diagnostic (admin-gated): surfaces whether plain queries and
+// transactions work against the pooler, and the exact driver error if not.
+route("GET", "/v1/_diag", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(403, { error: "forbidden" });
+  const out: any = {};
+  try { out.query = (await pool.query("select 1 as n")).rows[0]; }
+  catch (e: any) { out.queryErr = String(e?.stack || e?.message || e); }
+  try { out.tx = await pool.begin(async (c: any) => (await c.query("select 1 as n")).rows[0]); }
+  catch (e: any) { out.txErr = String(e?.stack || e?.message || e); }
+  try {
+    const dev = await repo.registerDevice();
+    const camp = (await pool.query("select id from campaigns where status = 'active' limit 1")).rows[0];
+    out.campId = camp?.id || null;
+    out.ingest = await repo.ingestBatch({
+      deviceId: dev.deviceId, batchKey: "_diag-" + crypto.randomBytes(6).toString("hex"),
+      events: camp ? [{ campaignId: camp.id, impressions: 1 }] : [],
+      revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
+      ipHash: null, ipDailyCap: 0,
+    });
+  } catch (e: any) { out.ingestErr = String(e?.stack || e?.message || e); }
+  try {
+    const dev = await repo.registerDevice();
+    out.ingestDemo = await repo.ingestBatch({
+      deviceId: dev.deviceId, batchKey: "_diagdemo-" + crypto.randomBytes(6).toString("hex"),
+      events: [{ campaignId: "demo", impressions: 1 }],
+      revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
+      ipHash: null, ipDailyCap: 0,
+    });
+  } catch (e: any) { out.ingestDemoErr = String(e?.stack || e?.message || e); }
+  out.lastError = lastError;
+  return json(200, out);
+});
 route("GET", "/v1/config", async () => json(200, { serving, revenueShare: config.revenueShare }));
 route("GET", "/v1/ads", async () => {
   const ads = serving ? await repo.activeAds() : [];
@@ -1376,7 +1439,16 @@ function stripPrefix(pathname: string) {
 
 Deno.serve(async (req: Request) => {
   const started = Date.now();
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  const allowOrigin = resolveOrigin(req);
+  // Stamp the per-request allowed origin onto every response we return.
+  const withCors = (res: Response) => {
+    res.headers.set("Access-Control-Allow-Origin", allowOrigin);
+    res.headers.set("Vary", "Origin");
+    return res;
+  };
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: { ...CORS, "Access-Control-Allow-Origin": allowOrigin, "Vary": "Origin" } });
+  }
 
   const url = new URL(req.url);
   const path = stripPrefix(url.pathname);
@@ -1390,20 +1462,22 @@ Deno.serve(async (req: Request) => {
       if (m) { handler = r.handler; r.keys.forEach((k: string, i: number) => (params[k] = decodeURIComponent(m[i + 1]))); break; }
     }
   }
-  if (!handler) return json(404, { error: "not found" });
+  if (!handler) return withCors(json(404, { error: "not found" }));
 
   // read + size-cap the body
   const rawBody = await req.text();
-  if (rawBody && Buffer.byteLength(rawBody) > config.maxBodyBytes) return json(413, { error: "payload too large" });
+  if (rawBody && Buffer.byteLength(rawBody) > config.maxBodyBytes) return withCors(json(413, { error: "payload too large" }));
   let body: any = null;
-  if (rawBody) { try { body = JSON.parse(rawBody); } catch { return json(400, { error: "invalid json" }); } }
+  if (rawBody) { try { body = JSON.parse(rawBody); } catch { return withCors(json(400, { error: "invalid json" })); } }
 
   const ctx = { req, headers: req.headers, body, rawBody, query: url.searchParams, params };
   try {
-    return await handler(ctx);
+    return withCors(await handler(ctx));
   } catch (err: any) {
     console.error(`[freeai] ${req.method} ${path} failed:`, err?.message);
-    return json(500, { error: "internal error" });
+    lastError = { at: new Date().toISOString(), method: req.method, path, message: err?.message, stack: err?.stack };
+    try { await pool.query("insert into diag_errors (method, path, message, stack) values ($1,$2,$3,$4)", [req.method, path, String(err?.message || err), String(err?.stack || "")]); } catch (_e) { /* best-effort */ }
+    return withCors(json(500, { error: "internal error" }));
   } finally {
     console.log(`[freeai] ${req.method} ${path} ${Date.now() - started}ms`);
   }

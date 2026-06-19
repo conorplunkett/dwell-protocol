@@ -1,0 +1,11 @@
+{
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "api.freeai.fyi" }],
+      "destination": "https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/api/:path*"
+    }
+  ]
+}

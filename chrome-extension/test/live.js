@@ -184,96 +184,127 @@ async function main() {
       assert.ok(d < 24, `bar starts ${d}px from the reply's left edge — not left-aligned`);
     });
 
-    await check("Claude star-only stage ⇒ bar shows BELOW the thinking star", async () => {
-      // Claude's real star markup: .epitaxy-spark-working inside a flex row,
-      // inside the .epitaxy-transcript-width wrapper. The bar should land as
-      // the wrapper's last child, below the star row, and STAY there.
+    await check("Claude star-only stage ⇒ bar shows below the star, in the turn container", async () => {
+      // Claude anchors on the per-turn div[data-test-render-count] container.
+      // The visible thinking star (.epitaxy-spark-working) drives detection;
+      // the bar should land as the turn's last child, below the star, and STAY.
       await page.evaluate(() => {
         document.querySelector('[data-message-author-role="assistant"]').remove();
-        // Claude keeps an empty streaming bubble ABOVE the star — it must not
-        // steal the anchor (that's what put the bar above the star)
-        const bubble = document.createElement("div");
-        bubble.setAttribute("data-is-streaming", "true");
-        bubble.id = "claude-bubble";
-        document.getElementById("messages").appendChild(bubble);
-        const wrap = document.createElement("div");
-        wrap.className = "epitaxy-transcript-width";
-        wrap.id = "claude-wrap";
-        const row = document.createElement("div");
-        row.className = "flex items-center";
-        const span = document.createElement("span");
+        const turn = document.createElement("div");
+        turn.setAttribute("data-test-render-count", "1");
+        turn.id = "claude-turn";
         const star = document.createElement("div");
         star.className = "epitaxy-spark-working";
         star.id = "claude-star";
-        span.appendChild(star);
-        row.appendChild(span);
-        wrap.appendChild(row);
-        document.getElementById("messages").appendChild(wrap);
+        star.style.cssText = "display:block;width:18px;height:18px"; // real star is visible
+        turn.appendChild(star);
+        document.getElementById("messages").appendChild(turn);
       });
       await page.waitForFunction(() => {
-        const b = document.querySelector("#claude-wrap > .bb-bar.bb-show");
+        const turn = document.getElementById("claude-turn");
+        const b = turn && turn.querySelector(".bb-bar.bb-show");
         const star = document.getElementById("claude-star");
-        return b && star && !!(star.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+        return (
+          b && star &&
+          turn.lastElementChild === b &&
+          !!(star.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+        );
       }, { timeout: 5000 });
       // a node streaming in after the bar must still leave the bar last
       await page.evaluate(() => {
         const late = document.createElement("div");
         late.textContent = "first words…";
-        const wrap = document.getElementById("claude-wrap");
-        wrap.insertBefore(late, wrap.querySelector(".bb-bar"));
+        const turn = document.getElementById("claude-turn");
+        turn.insertBefore(late, turn.querySelector(".bb-bar"));
       });
       await page.waitForFunction(
-        () => document.getElementById("claude-wrap").lastElementChild.classList.contains("bb-bar"),
+        () => document.getElementById("claude-turn").lastElementChild.classList.contains("bb-bar"),
         { timeout: 3000 }
       );
       // restore the ChatGPT-style reply for the rest of the checks
       await page.evaluate(() => {
-        document.getElementById("claude-bubble").remove();
-        document.getElementById("claude-wrap").remove();
+        document.getElementById("claude-turn").remove();
         window.setGenerating(true);
       });
       await page.waitForSelector('[data-message-author-role="assistant"] .bb-bar.bb-show', { timeout: 5000 });
     });
 
-    await check("Gemini thinking-dots stage ⇒ detected and bar sits below the dots", async () => {
-      // dots alone, no stop button, no reply yet — Gemini puts the dots (and
-      // later the streamed thinking text) inside one row
-      await page.evaluate(() => {
-        window.setGenerating(false);
-        document.querySelector('[data-message-author-role="assistant"]').remove();
-        const row = document.createElement("div");
-        row.id = "gem-row";
-        const dots = document.createElement("thinking-dots-animation");
-        dots.id = "gem-dots";
-        dots.innerHTML = '<div class="thinking-dots-animation"></div>';
-        row.appendChild(dots);
-        document.getElementById("messages").appendChild(row);
-      });
+    // Build Gemini's REAL dots-only structure: the dots are nested deep inside
+    // <model-response>, inside an absolutely-positioned <thinking-overlay>
+    // whose in-flow parent is collapsed (height 0) — which is exactly what
+    // dropped the bar to the page bottom when we anchored on the dots.
+    const buildGeminiDots = () => {
+      window.setGenerating(false);
+      document.querySelector('[data-message-author-role="assistant"]').remove();
+      const msgs = document.getElementById("messages");
+      // an OLDER, completed turn — its model-response is the LAST in the DOM
+      // (Gemini keeps several around). The bar must NOT anchor here.
+      const newestUser = document.createElement("div");
+      newestUser.id = "gem-newest-user";
+      newestUser.textContent = "newest user message";
+      // the ACTIVE turn's model-response, holding the live dots
+      const mr = document.createElement("model-response");
+      mr.id = "gem-mr";
+      const content = document.createElement("div"); // response-content (collapsed)
+      content.id = "gem-content";
+      const overlay = document.createElement("thinking-overlay");
+      overlay.style.position = "absolute"; // out of flow, like the real overlay
+      const dots = document.createElement("thinking-dots-animation");
+      dots.id = "gem-dots";
+      dots.style.cssText = "display:block;width:28px;height:28px"; // real dots are visible (28×28)
+      dots.innerHTML = '<div class="thinking-dots-animation" style="width:28px;height:28px"></div>';
+      overlay.appendChild(dots);
+      content.appendChild(overlay);
+      mr.appendChild(content);
+      // a TRAILING empty model-response → reproduces "active turn is not last"
+      const trailing = document.createElement("model-response");
+      trailing.id = "gem-mr-trailing";
+      msgs.appendChild(newestUser);
+      msgs.appendChild(mr);
+      msgs.appendChild(trailing);
+    };
+
+    await check("Gemini dots in a NON-last model-response ⇒ bar anchors to the dots' turn", async () => {
+      await page.evaluate(buildGeminiDots);
       await page.waitForFunction(() => {
+        const mr = document.getElementById("gem-mr");
+        const trailing = document.getElementById("gem-mr-trailing");
         const b = document.querySelector(".bb-bar.bb-show");
         const dots = document.getElementById("gem-dots");
-        return b && dots && !!(dots.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+        return (
+          b &&
+          dots &&
+          mr.contains(b) &&                  // the ACTIVE (dots') turn
+          !trailing.contains(b) &&           // NOT the stale last model-response
+          mr.lastElementChild === b &&       // sits at the end of the reply
+          !!(dots.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) // below the dots
+        );
       }, { timeout: 5000 });
-      // the streamed "Assessing the Input" text lands in the SAME row as the
-      // dots — the bar must stay below the whole row, never wedged inside it
+    });
+
+    await check("Gemini dots+text ⇒ bar stays model-response's last child, below the text", async () => {
+      // the first thinking line streams into the same response, above the bar
       await page.evaluate(() => {
-        const label = document.createElement("div");
+        const label = document.createElement("span");
         label.id = "gem-label";
-        label.textContent = "Assessing the Input";
-        document.getElementById("gem-row").appendChild(label);
+        label.textContent = "Interpreting the input";
+        document.getElementById("gem-content").appendChild(label);
       });
       await page.waitForFunction(() => {
-        const b = document.querySelector(".bb-bar.bb-show");
-        const row = document.getElementById("gem-row");
+        const mr = document.getElementById("gem-mr");
+        const b = mr.querySelector(".bb-bar.bb-show");
         const label = document.getElementById("gem-label");
         return (
-          b && !row.contains(b) &&
+          b &&
+          mr.lastElementChild === b &&
           !!(label.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
         );
       }, { timeout: 3000 });
-      // clean up, restore the standard generating state
       await page.evaluate(() => {
-        document.getElementById("gem-row").remove();
+        for (const id of ["gem-mr", "gem-mr-trailing", "gem-newest-user"]) {
+          const n = document.getElementById(id);
+          if (n) n.remove();
+        }
         window.setGenerating(true);
       });
       await page.waitForSelector('[data-message-author-role="assistant"] .bb-bar.bb-show', { timeout: 5000 });
@@ -293,32 +324,6 @@ async function main() {
         const turn = document.querySelector('[data-message-author-role="assistant"]');
         return turn && turn.lastElementChild && turn.lastElementChild.classList.contains("bb-bar");
       }, { timeout: 3000 });
-    });
-
-    await check("Gemini: empty model-response shell + dots ⇒ bar still below the dots", async () => {
-      await page.evaluate(() => {
-        window.setGenerating(false);
-        document.querySelector('[data-message-author-role="assistant"]').remove();
-        const msgs = document.getElementById("messages");
-        const resp = document.createElement("model-response"); // empty shell, renders first
-        resp.id = "gem-resp";
-        msgs.appendChild(resp);
-        const dots = document.createElement("thinking-dots-animation");
-        dots.id = "gem-dots2";
-        dots.innerHTML = '<div class="thinking-dots-animation"></div>';
-        msgs.appendChild(dots);
-      });
-      await page.waitForFunction(() => {
-        const b = document.querySelector(".bb-bar.bb-show");
-        const dots = document.getElementById("gem-dots2");
-        return b && dots && !!(dots.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-      }, { timeout: 5000 });
-      await page.evaluate(() => {
-        document.getElementById("gem-resp").remove();
-        document.getElementById("gem-dots2").remove();
-        window.setGenerating(true);
-      });
-      await page.waitForSelector('[data-message-author-role="assistant"] .bb-bar.bb-show', { timeout: 5000 });
     });
 
     await check("bar is actually rendered (visible, has ad copy)", async () => {
@@ -341,6 +346,37 @@ async function main() {
     });
 
     await check("Stop button gone ⇒ bar hides", async () => {
+      await page.evaluate(() => window.setGenerating(false));
+      await page.waitForFunction(() => !document.querySelector(".bb-bar.bb-show"), { timeout: 5000 });
+    });
+
+    await check("on hide the box stays mounted + space-reserved and fades over 2s (no reflow)", async () => {
+      const meta = await page.$eval(".bb-bar", (el) => {
+        const s = getComputedStyle(el);
+        return { connected: el.isConnected, display: s.display, opacityDur: s.transitionDuration };
+      });
+      assert.ok(meta.connected, "bar was removed from the DOM on hide");
+      assert.strictEqual(meta.display, "flex", "box collapsed instead of reserving space");
+      assert.ok(/(^|,)\s*2s/.test(meta.opacityDur), `expected a 2s fade, got ${meta.opacityDur}`);
+      // partway through the 2s fade it should be visibly dimming, not snapped off
+      await sleep(700);
+      const mid = await page.$eval(".bb-bar", (el) => parseFloat(getComputedStyle(el).opacity));
+      assert.ok(mid > 0 && mid < 1, `expected a partial fade, got opacity ${mid}`);
+      // and after the full 2s it should be invisible (still mounted)
+      await sleep(1800);
+      const end = await page.$eval(".bb-bar", (el) => {
+        const s = getComputedStyle(el);
+        return { opacity: parseFloat(s.opacity), visibility: s.visibility };
+      });
+      assert.ok(end.opacity < 0.05, `did not finish fading, opacity ${end.opacity}`);
+      assert.strictEqual(end.visibility, "hidden", "faded box should be visibility:hidden");
+    });
+
+    await check("a new generation fades the same box back in (reused, not recreated)", async () => {
+      await page.evaluate(() => window.setGenerating(true));
+      await page.waitForSelector(".bb-bar.bb-show", { timeout: 5000 });
+      const n = await page.$$eval(".bb-bar", (els) => els.length);
+      assert.strictEqual(n, 1, "more than one bar exists — box should be reused");
       await page.evaluate(() => window.setGenerating(false));
       await page.waitForFunction(() => !document.querySelector(".bb-bar.bb-show"), { timeout: 5000 });
     });

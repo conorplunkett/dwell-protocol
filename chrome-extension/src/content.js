@@ -42,29 +42,29 @@
     ".epitaxy-spark-working",      // Claude — the animated thinking star
   ];
 
-  // Where to put the bar, in priority order. "inside" appends at the end of
-  // the matched element; "after" drops the bar at the end of the element's
-  // PARENT — used where the thinking indicator is a later sibling of the
-  // matched turn (Claude's star-only stage, Gemini's dots), so the bar always
-  // lands BELOW the indicator, never above it.
+  // Where to put the bar. Every anchor is a stable, in-flow container that
+  // WRAPS the site's thinking indicator, so appending the bar as that
+  // container's last child ("inside") lands it below the indicator (and below
+  // any text that streams into the same container). findAnchor() picks the
+  // candidate latest in document order, so a descendant container wins over an
+  // ancestor.
   const ANCHORS = [
-    { sel: '[data-is-streaming="true"]', mode: "inside" },             // Claude — streaming bubble
-    // Claude star-only stage: the spark (.epitaxy-spark-working) sits in a row
-    // inside .epitaxy-transcript-width. Append the bar as that wrapper's last
-    // child so it lands BELOW the star row. :has scopes us to the wrapper that
-    // actually holds the spark.
-    { sel: ".epitaxy-transcript-width:has(.epitaxy-spark-working)", mode: "inside" },
-    { sel: "div[data-test-render-count]", mode: "inside" },            // Claude — fallback turn container
-    { sel: '[data-message-author-role="assistant"]', mode: "inside" }, // ChatGPT
-    { sel: ".result-streaming", mode: "inside" },                      // ChatGPT (older)
-    // Gemini: the dots stage MUST outrank model-response — an empty
-    // model-response shell exists while the dots are showing, and anchoring
-    // inside it puts the bar above the dots.
-    // Gemini dots stage: anchor ONLY on the outer custom element — its inner
-    // .thinking-dots-animation div would win the document-order pick and make
-    // the "row" the custom element itself, wedging the bar inside the row.
-    { sel: "thinking-dots-animation", mode: "after" },
-    { sel: "model-response", mode: "inside" },                         // Gemini — reply
+    // Claude — the per-turn container wraps the WHOLE assistant turn: the
+    // thinking star, the "Thinking…" shimmer line, and the streamed reply. The
+    // bar as its last child lands below all of them at every stage. Do NOT
+    // anchor on [data-is-streaming="true"]: in the star-only stage that bubble
+    // is EMPTY and sits ABOVE the star, so the bar mounted above the star.
+    // (The old .epitaxy-spark-working / .epitaxy-transcript-width selectors were
+    // removed when claude.ai rebuilt its thinking UI — they no longer match.)
+    "div[data-test-render-count]",            // Claude — assistant turn container
+    '[data-message-author-role="assistant"]', // ChatGPT
+    ".result-streaming",                      // ChatGPT (older)
+    // Gemini — the per-turn <model-response> wraps the thinking dots and the
+    // streamed reply, so the bar as its last child lands below both. This is
+    // only a FALLBACK: Gemini keeps many model-responses around and the active
+    // one is often not the last in the DOM, so findAnchor() prefers the
+    // model-response that actually contains the live dots (see below).
+    "model-response",                         // Gemini
   ];
 
   let ads = [];
@@ -125,16 +125,45 @@
   // tick because these apps re-render aggressively (React may evict us) and
   // the anchor often appears a beat after the Stop button.
   let anchorEl = null;
+  // Last visible element (in document order) matching any of the selectors.
+  function lastVisibleMatch(selectors) {
+    let found = null;
+    for (const sel of selectors) {
+      let els;
+      try { els = document.querySelectorAll(sel); } catch (_) { continue; }
+      for (const el of els) {
+        if (!isVisible(el)) continue;
+        if (
+          !found ||
+          (typeof found.compareDocumentPosition === "function" &&
+            found.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+        ) {
+          found = el;
+        }
+      }
+    }
+    return found;
+  }
   function findAnchor() {
-    // Collect one candidate per selector, then pick the candidate LATEST in
-    // document order (a descendant beats its ancestor). Priority lists fail
-    // here: e.g. Claude keeps an empty streaming bubble ABOVE the thinking
-    // star, and anchoring there put the bar above the star.
+    // Gemini: anchor to the <model-response> that actually CONTAINS the live
+    // thinking dots, not the last model-response in the DOM. Gemini keeps
+    // several model-responses around and the generating one is often not last,
+    // so a document-order pick landed the bar in a stale turn ABOVE the newest
+    // user message.
+    const dots = lastVisibleMatch(["thinking-dots-animation", ".thinking-dots-animation"]);
+    if (dots && typeof dots.closest === "function") {
+      const mr = dots.closest("model-response");
+      if (mr) return mr;
+    }
+    // Everything else: collect one candidate per selector, then pick the
+    // candidate LATEST in document order (a descendant beats its ancestor).
+    // Priority lists fail here: e.g. Claude keeps an empty streaming bubble
+    // ABOVE the thinking star, and anchoring there put the bar above the star.
     const candidates = [];
-    for (const { sel, mode } of ANCHORS) {
+    for (const sel of ANCHORS) {
       try {
         const els = document.querySelectorAll(sel);
-        if (els.length) candidates.push({ el: els[els.length - 1], mode });
+        if (els.length) candidates.push(els[els.length - 1]);
       } catch (_) {}
     }
     if (!candidates.length) return null;
@@ -143,9 +172,9 @@
       const c = candidates[i];
       try {
         if (
-          best.el !== c.el &&
-          typeof best.el.compareDocumentPosition === "function" &&
-          best.el.compareDocumentPosition(c.el) & Node.DOCUMENT_POSITION_FOLLOWING
+          best !== c &&
+          typeof best.compareDocumentPosition === "function" &&
+          best.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING
         ) {
           best = c;
         }
@@ -157,33 +186,12 @@
   // Re-checked every tick: these apps keep inserting elements (the star, the
   // dots, streamed text) after we mount, so we re-assert the bar's position.
   function mount() {
-    const found = findAnchor();
-    if (found) {
-      const { el, mode } = found;
+    const el = findAnchor();
+    if (el) {
       try {
-        if (mode === "after") {
-          // Sit the bar just after the ROW holding the indicator (Gemini puts
-          // the dots and the streamed "Assessing…" text in the same row — the
-          // bar must land below BOTH, never wedged between them).
-          const row = el.parentElement || el;
-          const host = row.parentElement;
-          if (host) {
-            if (!(bar.parentElement === host && bar.previousElementSibling === row)) {
-              host.insertBefore(bar, row.nextSibling);
-            }
-            anchorEl = host;
-            bar.classList.add("bb-inline");
-            return true;
-          }
-          // mock-DOM / detached node: just attach to the element itself
-          if (typeof el.appendChild === "function") {
-            el.appendChild(bar);
-            anchorEl = el;
-            bar.classList.add("bb-inline");
-            return true;
-          }
-        } else if (typeof el.appendChild === "function") {
-          // "inside": keep the bar as the last child of the reply container
+        if (typeof el.appendChild === "function") {
+          // keep the bar as the last child of the reply container, below the
+          // thinking indicator and any streamed text
           if (!(bar.parentElement === el && el.lastElementChild === bar)) {
             el.appendChild(bar);
           }

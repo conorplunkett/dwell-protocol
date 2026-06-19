@@ -13,8 +13,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="theme.css?v=20260613b" />
-  <link rel="stylesheet" href="styles.css?v=20260613b" />
+  <link rel="stylesheet" href="theme.css?v=20260619a" />
+  <link rel="stylesheet" href="styles.css?v=20260619a" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='26' fill='%23d97757'/%3E%3Ctext x='50' y='72' font-size='58' font-family='monospace' font-weight='bold' fill='white' text-anchor='middle'%3EF$%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -31,7 +31,7 @@
     </a>
     <nav class="nav-btns">
       <a href="#advertisers" class="navbtn"><span class="nav-long">Advertisers Portal</span><span class="nav-short">Advertise</span></a>
-      <a href="redeem.html" class="navbtn">User Login</a>
+      <a href="/redeem" class="navbtn">User Login</a>
       <a href="#install" class="navbtn navbtn-cta">Install</a>
     </nav>
   </header>
@@ -100,8 +100,21 @@
 
       <!-- INSTALL CARD -->
       <a href="#install" class="install-card">
-        <span class="install-title">Add the Chrome extension</span>
-        <span class="install-pill" id="earn-pill">$76.71<span class="per">/mo</span></span>
+        <span class="install-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+            <circle cx="12" cy="12" r="3.4" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 8.6h8.4M9 13.5 4.8 6.3M15 13.5l-4.2 7.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="install-text">
+          <span class="install-title">Add the Chrome extension</span>
+          <span class="install-sub">Free · installs in seconds</span>
+        </span>
+        <span class="install-pill">
+          <span class="install-pill-label">Earn up to</span>
+          <span class="install-pill-amt" id="earn-pill">$76.71<span class="per">/mo</span></span>
+        </span>
         <span class="install-arrow">→</span>
       </a>
 
@@ -249,16 +262,23 @@
         and 50% of the revenue becomes Claude credits, redeemable for Claude Pro or Max.
       </p>
       <div class="install-actions">
-        <a href="https://chromewebstore.google.com/" class="btn-green">Add to Chrome</a>
+        <a href="https://chromewebstore.google.com/" class="btn-green">
+          <svg class="btn-chrome" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+            <circle cx="12" cy="12" r="3.4" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 8.6h8.4M9 13.5 4.8 6.3M15 13.5l-4.2 7.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          Add to Chrome
+        </a>
         <a href="#advertisers" class="btn-outline">I want to advertise</a>
       </div>
       <p class="install-fine">Free forever. <strong>50% back as Claude credits.</strong> Reads none of your prompts. Opt out any time.</p>
-      <p class="install-fine" style="margin-top:8px">Live in the terminal too — <a href="terminal.html">install FreeAI for <strong>Claude Code</strong> →</a></p>
+      <p class="install-fine" style="margin-top:8px">Live in the terminal too — <a href="/terminal">install FreeAI for <strong>Claude Code</strong> →</a></p>
     </section>
   </main>
 
   <footer class="footer">
-    <p>© 2026 FreeAI.fyi · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+    <p>© 2026 FreeAI.fyi · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
     <p class="fdim">An open marketplace for the time you already spend waiting on AI.</p>
     <p class="fdim tiny">Not affiliated with Anthropic, OpenAI, or Google.</p>
   </footer>
@@ -268,6 +288,6 @@
        user-facing copy production-only — no test/demo wording. The one developer
        affordance is an opt-in mock-data mode at ?dev=1 (sticky; ?dev=0 to exit),
        handled in script.js, which never shows unless explicitly requested. -->
-  <script src="script.js?v=20260613b"></script>
+  <script src="script.js?v=20260619a"></script>
 </body>
 </html>
