@@ -20,6 +20,44 @@
   display: none;
 }
 
+/* ── First-paint auth gate ──
+   An inline <head> script adds `auth-pending` to <html> when a session token is
+   present, so returning users paint the loading splash instead of a flash of the
+   login form while redeem.js confirms the session. These rules govern only that
+   first frame; redeem.js removes the class and drives the `hidden` attribute from
+   then on. The `html.auth-pending` qualifier (id+class+element) outranks both
+   `.portal-split` and `#portal-loading[hidden]`. */
+html.auth-pending #login-page { display: none; }
+html.auth-pending #portal-loading { display: flex; }
+
+/* Loading splash — centered spinner over the full viewport. Hidden by default
+   (anon users never see it); shown via the gate above or by redeem.js clearing
+   the `hidden` attribute. */
+#portal-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+#portal-loading[hidden] {
+  display: none;
+}
+.portal-spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid rgba(var(--accent-rgb), 0.25);
+  border-top-color: var(--accent);
+  animation: portal-spin 0.7s linear infinite;
+}
+@keyframes portal-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .portal-spinner { animation-duration: 1.6s; }
+}
+
 /* ── Left column — hero ── */
 .portal-left {
   display: flex;
