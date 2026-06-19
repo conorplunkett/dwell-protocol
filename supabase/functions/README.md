@@ -69,23 +69,30 @@ deploy api --no-verify-jwt` whenever a push to `main` touches
 `supabase/functions/**`. This is the canonical deploy: it ships the exact bytes
 from git, so it never drifts from the repo.
 
-### Required GitHub repo secret (not a Supabase secret)
+### When the CI deploy isn't running, check these in order
 
-The CI deploy authenticates with a **`SUPABASE_ACCESS_TOKEN`** repo secret —
-this is separate from the runtime Edge Function secrets above. Set it once at
-**GitHub → repo Settings → Secrets and variables → Actions → New repository
-secret**:
+If the live `api` function lags behind `main`, the deploy workflow isn't
+landing. Diagnose with `gh run list --workflow=deploy-functions.yml` (or the
+Actions tab) and look at the failed run:
 
-| Repo secret | Where to get it | Needed for |
-| --- | --- | --- |
-| `SUPABASE_ACCESS_TOKEN` | Supabase dashboard → Account → Access Tokens | the `deploy-functions` workflow to authenticate |
-| `SUPABASE_PROJECT_REF` | optional; defaults to the FreeAI project ref in the workflow | targeting a different project |
+1. **Out of GitHub Actions minutes / billing (most common here).** This is a
+   **private** repo, so Actions minutes are metered. When they're exhausted (or
+   the spending limit is hit), every job **fails at startup in ~2 seconds with
+   no runner assigned** — no steps run, no logs. The fix is on the billing side:
+   GitHub → Settings → Billing → raise the Actions spending limit or top up.
+   Nothing in this repo can work around it.
+2. **Missing `SUPABASE_ACCESS_TOKEN` repo secret.** The deploy authenticates
+   with this secret (separate from the runtime Edge Function secrets above); set
+   it at **GitHub → repo Settings → Secrets and variables → Actions**. If it's
+   absent, the run *does* start but fails fast at the guard step with
+   `SUPABASE_ACCESS_TOKEN secret is not set`. `SUPABASE_PROJECT_REF` is optional
+   (defaults to the FreeAI project ref in the workflow).
 
-> **If this secret is missing, the workflow fails on every run** (its guard step
-> exits with `SUPABASE_ACCESS_TOKEN secret is not set`) and the live function
-> silently goes stale while the repo moves on. If you ever see the deployed
-> function lagging behind `main`, check this first:
-> `gh run list --workflow=deploy-functions.yml`.
+Distinguishing the two: a **2-second, zero-step, no-runner** failure is #1
+(billing); a failure that ran a few steps then stopped at the token check is #2.
+
+When CI can't run, deploy by hand (below) — that's how the referral-invite
+release went out while Actions was over its minutes.
 
 ### Manual deploy (fallback)
 
