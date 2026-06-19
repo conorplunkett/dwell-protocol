@@ -642,6 +642,20 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
       try { await stripe.createRefund({ payment_intent: result.paymentIntentId }); }
       catch (err) { console.error("[freeai] refund failed:", err.message); }
     }
+    // Tell the advertiser their campaign was rejected + refunded. Wrapped so a
+    // mail failure never fails the moderation action (already committed above).
+    try {
+      await mailer.sendCampaignRejectedEmail(result.email, {
+        campaignId: body.campaignId,
+        brand: result.brand,
+        adLine: result.adLine,
+        pricePerBlockCents: result.pricePerBlockCents,
+        blocks: result.blocks,
+        note: result.note,
+      });
+    } catch (err) {
+      console.error("[freeai] rejection email failed:", err.message);
+    }
     json(res, 200, { ok: true, refunded: !!result.paymentIntentId });
   });
 

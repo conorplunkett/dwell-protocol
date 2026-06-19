@@ -74,6 +74,26 @@ function createMailer(config) {
     );
   }
 
+  // Sent when a paid campaign is rejected in moderation and refunded. Tells the
+  // advertiser the charge was reversed (Stripe also emails its own refund
+  // notification) and includes the reviewer's note when there is one.
+  async function sendCampaignRejectedEmail(to, { campaignId, brand, adLine, pricePerBlockCents, blocks, note }) {
+    const totalUsd = (pricePerBlockCents * blocks) / 100;
+    await send(
+      to,
+      "Your FreeAI campaign was refunded",
+      `<p>Thanks for your interest in advertising on FreeAI. We weren't able to approve this campaign, so we've refunded it in full.</p>
+       <ul>
+         <li><strong>Ad line:</strong> "${adLine}"</li>
+         ${brand ? `<li><strong>Brand:</strong> ${brand}</li>` : ""}
+         <li><strong>Refunded:</strong> US$${totalUsd.toFixed(2)}</li>
+         <li><strong>Campaign id:</strong> ${campaignId}</li>
+       </ul>
+       ${note ? `<p><strong>Reviewer note:</strong> ${note}</p>` : ""}
+       <p>The refund returns to your original payment method; Stripe will email a separate confirmation. You're welcome to submit a new campaign any time.</p>`
+    );
+  }
+
   // Fulfillment notification for a Claude gift card redemption. Goes to the
   // fulfillment inbox (not the user); the gift card itself is sent manually
   // within 48 hours.
@@ -93,7 +113,7 @@ function createMailer(config) {
     );
   }
 
-  return { sendVerifyEmail, sendWebLoginEmail, sendAdvertiserReceiptEmail, sendGiftRedemptionEmail };
+  return { sendVerifyEmail, sendWebLoginEmail, sendAdvertiserReceiptEmail, sendCampaignRejectedEmail, sendGiftRedemptionEmail };
 }
 
 module.exports = { createMailer };

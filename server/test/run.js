@@ -43,6 +43,7 @@ const fakeMailer = {
   sendVerifyEmail: async (to, link) => { mailbox.push({ to, link }); },
   sendWebLoginEmail: async (to, link) => { mailbox.push({ to, link }); },
   sendAdvertiserReceiptEmail: async (to, details) => { mailbox.push({ to, ...details }); },
+  sendCampaignRejectedEmail: async (to, details) => { mailbox.push({ to, ...details }); },
   sendGiftRedemptionEmail: async (to, details) => { mailbox.push({ to, ...details }); },
 };
 
@@ -270,8 +271,15 @@ const fakeMailer = {
       api("POST", "/v1/redemptions", { ...raceDev, plan: "pro", months: 1, recipientEmail: "race@example.com" }),
       api("POST", "/v1/redemptions", { ...raceDev, plan: "pro", months: 1, recipientEmail: "race@example.com" }),
     ]);
-    const statuses = [a.status, b.status].sort();
-    assert.deepStrictEqual(statuses, [200, 403], "exactly one redemption should succeed");
+    // Exactly one settles (200). The loser is rejected either by the up-front
+    // balance check (403, when the two requests serialize) or by the
+    // in-transaction re-check under the advisory lock (409, when they truly
+    // overlap). Both are correct "no double-spend" outcomes, so accept either
+    // rather than flaking on scheduler timing.
+    const ok = [a.status, b.status].filter((s) => s === 200);
+    const rejected = [a.status, b.status].filter((s) => s === 403 || s === 409);
+    assert.strictEqual(ok.length, 1, "exactly one redemption should succeed");
+    assert.strictEqual(rejected.length, 1, "the other redemption must be rejected (403 or 409)");
     const after = (await api("GET", `/v1/me/earnings?deviceId=${raceDev.deviceId}&deviceKey=${raceDev.deviceKey}`)).body;
     assert.strictEqual(after.redeemedUsd, 20, "only one $20 gift was charged");
     assert.strictEqual(after.balanceUsd, 4.75);
@@ -595,6 +603,10 @@ const fakeMailer = {
     assert.strictEqual(st, "rejected");
     const refundEntry = await poolNs.query("select count(*)::int n from ledger where campaign_id = $1 and entry_type = 'campaign_refund'", [r.body.campaignId]);
     assert.strictEqual(refundEntry.rows[0].n, 1);
+    // the advertiser is emailed about the rejection + refund, with the note
+    const rejMail = mailbox.find((m) => m.campaignId === r.body.campaignId && m.note === "off-policy");
+    assert.ok(rejMail, "no rejection email sent");
+    assert.strictEqual(rejMail.to, "spam@x.io");
   });
 
   // ---------- XSS escaping on the admin page ----------

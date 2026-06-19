@@ -237,6 +237,17 @@ function createMailer(cfg: any) {
        </ul>
        <p>Your campaign is now in review and goes live once we approve it — usually within a day.</p>
        <p>Stripe has emailed a separate itemized payment receipt for your records.</p>`),
+    sendCampaignRejectedEmail: (to: string, { campaignId, brand, adLine, pricePerBlockCents, blocks, note }: any) =>
+      send(to, "Your FreeAI campaign was refunded",
+      `<p>Thanks for your interest in advertising on FreeAI. We weren't able to approve this campaign, so we've refunded it in full.</p>
+       <ul>
+         <li><strong>Ad line:</strong> "${adLine}"</li>
+         ${brand ? `<li><strong>Brand:</strong> ${brand}</li>` : ""}
+         <li><strong>Refunded:</strong> US$${((pricePerBlockCents * blocks) / 100).toFixed(2)}</li>
+         <li><strong>Campaign id:</strong> ${campaignId}</li>
+       </ul>
+       ${note ? `<p><strong>Reviewer note:</strong> ${note}</p>` : ""}
+       <p>The refund returns to your original payment method; Stripe will email a separate confirmation. You're welcome to submit a new campaign any time.</p>`),
     sendGiftRedemptionEmail: (to: string, { redemptionId, planName, months, amountUsd, recipientEmail }: any) =>
       send(to, `Gift card redemption: ${months} month${months > 1 ? "s" : ""} of ${planName}`,
       `<p>A FreeAI user redeemed their credits for a Claude gift card.</p>
@@ -404,9 +415,12 @@ function createRepo(pool: any) {
     async rejectCampaign(campaignId: string, note: string) {
       return tx(async (c: any) => {
         const { rows } = await c.query(
-          `update campaigns set status = 'rejected', review_note = $2
-            where id = $1 and status = 'pending_review'
-            returning price_per_block_cents, blocks, stripe_payment_intent_id`,
+          `update campaigns cmp set status = 'rejected', review_note = $2
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_review'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line,
+                      cmp.price_per_block_cents, cmp.blocks, cmp.stripe_payment_intent_id`,
           [campaignId, note || null]
         );
         if (!rows[0]) return null;
@@ -416,7 +430,15 @@ function createRepo(pool: any) {
            values ('campaign_refund', $1, $2, $3)`,
           [(-refund).toString(), campaignId, JSON.stringify({ note: note || null })]
         );
-        return { paymentIntentId: rows[0].stripe_payment_intent_id };
+        return {
+          paymentIntentId: rows[0].stripe_payment_intent_id,
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+          note: note || null,
+        };
       });
     },
     async claimWebhookEvent(eventId: string, type: string) {
@@ -1413,6 +1435,20 @@ route("POST", "/v1/admin/campaigns/reject", async (ctx: any) => {
   if (result.paymentIntentId) {
     try { await stripe.createRefund({ payment_intent: result.paymentIntentId }); }
     catch (err: any) { console.error("[freeai] refund failed:", err.message); }
+  }
+  // Tell the advertiser their campaign was rejected + refunded. Wrapped so a
+  // mail failure never fails the moderation action (already committed above).
+  try {
+    await mailer.sendCampaignRejectedEmail((result as any).email, {
+      campaignId: ctx.body?.campaignId,
+      brand: (result as any).brand,
+      adLine: (result as any).adLine,
+      pricePerBlockCents: (result as any).pricePerBlockCents,
+      blocks: (result as any).blocks,
+      note: (result as any).note,
+    });
+  } catch (err: any) {
+    console.error("[freeai] rejection email failed:", err.message);
   }
   return json(200, { ok: true, refunded: !!result.paymentIntentId });
 });
