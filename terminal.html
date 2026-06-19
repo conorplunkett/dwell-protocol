@@ -123,6 +123,20 @@ npm link        <span class="c"># exposes the global `freeai` command</span></co
       <li>The moment Claude Code finishes and waits for you, the line <strong>disappears</strong>.</li>
       <li>After <strong>5 continuous seconds</strong> of activity, one impression is recorded — and 50% of its value becomes your credit balance.</li>
     </ul>
+    <p><strong>Confirm it credited your device</strong> — the first run creates a device credential at <code>~/.freeai/device.json</code>. After a session with a few seconds of activity, read it and check your earnings straight from the API:</p>
+    <pre><code><span class="c"># needs `jq`; the device file holds your deviceId + deviceKey</span>
+BASE="https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/api"
+DID=$(jq -r .deviceId ~/.freeai/device.json)
+DK=$(jq -r .deviceKey ~/.freeai/device.json)
+curl -s "$BASE/v1/me/earnings?deviceId=$DID&deviceKey=$DK"</code></pre>
+    <pre><code>{
+  "revenueShare": 0.5,
+  <span class="adurl">"earnedUsd"</span>: 0.0025,
+  "paidOutUsd": 0,
+  "redeemedUsd": 0,
+  "balanceUsd": 0.0025
+}</code></pre>
+    <p>A <strong>nonzero <code>earnedUsd</code></strong> (and matching <code>balanceUsd</code>) means the impression landed server-side and your 50% share is in the ledger.</p>
     <p>Redeem what you’ve earned anytime on the <a href="redeem.html">user login page</a> — the terminal client shares the same device-credit balance as the browser extension.</p>
 
     <h2><span class="num">How it stays out of your way</span></h2>
