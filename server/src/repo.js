@@ -151,7 +151,7 @@ function createRepo(pool) {
     // ---------- auction ----------
     async activeAds(limit = 20) {
       const { rows } = await pool.query(
-        `select id, brand, ad_line, url, category, price_per_block_cents, show_on_leaderboard
+        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard
            from campaigns
           where status = 'active' and impressions_remaining > 0
           order by price_per_block_cents desc, activated_at asc
@@ -174,7 +174,7 @@ function createRepo(pool) {
     },
 
     // ---------- advertiser checkout ----------
-    async createPendingCampaign({ email, brand, adLine, url, category, pricePerBlockCents, blocks, showOnLeaderboard }) {
+    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, showOnLeaderboard }) {
       return tx(async (c) => {
         const adv = await c.query(
           "insert into advertisers (email) values ($1) returning id",
@@ -182,11 +182,11 @@ function createRepo(pool) {
         );
         const { rows } = await c.query(
           `insert into campaigns
-             (advertiser_id, brand, ad_line, url, category, price_per_block_cents,
+             (advertiser_id, brand, ad_line, url, category, color, price_per_block_cents,
               blocks, impressions_total, impressions_remaining, show_on_leaderboard)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10)
            returning id`,
-          [adv.rows[0].id, brand || null, adLine, url, category || "other",
+          [adv.rows[0].id, brand || null, adLine, url, category || "other", color || null,
            pricePerBlockCents, blocks, blocks * 1000, showOnLeaderboard !== false]
         );
         return rows[0].id;
@@ -205,13 +205,19 @@ function createRepo(pool) {
     // pending_payment campaign transitions. Money is now received, so the
     // funding ledger entry rides this tx — but the ad doesn't serve until a
     // human approves it (status -> pending_review).
+    // Returns the campaign + advertiser details on the first (transitioning)
+    // call so the caller can email a receipt, or false on a no-op (already paid
+    // / unknown). The receipt thus rides the same exactly-once guarantee as the
+    // funding ledger entry.
     async markCampaignPaid(campaignId, paymentIntentId) {
       return tx(async (c) => {
         const { rows } = await c.query(
-          `update campaigns set status = 'pending_review', paid_at = now(),
-                  stripe_payment_intent_id = coalesce($2, stripe_payment_intent_id)
-            where id = $1 and status = 'pending_payment'
-            returning price_per_block_cents, blocks`,
+          `update campaigns cmp set status = 'pending_review', paid_at = now(),
+                  stripe_payment_intent_id = coalesce($2, cmp.stripe_payment_intent_id)
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_payment'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line, cmp.price_per_block_cents, cmp.blocks`,
           [campaignId, paymentIntentId || null]
         );
         if (!rows[0]) return false;
@@ -221,7 +227,13 @@ function createRepo(pool) {
            values ('campaign_credit', $1, $2, $3)`,
           [funded.toString(), campaignId, JSON.stringify({ blocks: rows[0].blocks })]
         );
-        return true;
+        return {
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+        };
       });
     },
 
@@ -246,13 +258,18 @@ function createRepo(pool) {
     },
 
     // Reject -> mark rejected and post a refund ledger entry that zeroes out the
-    // funding. Returns the payment intent so the caller can issue a Stripe refund.
+    // funding. Returns the payment intent (so the caller can issue a Stripe
+    // refund) plus the advertiser + campaign details (so the caller can email
+    // the advertiser). Null on a no-op (unknown / not in review).
     async rejectCampaign(campaignId, note) {
       return tx(async (c) => {
         const { rows } = await c.query(
-          `update campaigns set status = 'rejected', review_note = $2
-            where id = $1 and status = 'pending_review'
-            returning price_per_block_cents, blocks, stripe_payment_intent_id`,
+          `update campaigns cmp set status = 'rejected', review_note = $2
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_review'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line,
+                      cmp.price_per_block_cents, cmp.blocks, cmp.stripe_payment_intent_id`,
           [campaignId, note || null]
         );
         if (!rows[0]) return null;
@@ -262,7 +279,15 @@ function createRepo(pool) {
            values ('campaign_refund', $1, $2, $3)`,
           [(-refund).toString(), campaignId, JSON.stringify({ note: note || null })]
         );
-        return { paymentIntentId: rows[0].stripe_payment_intent_id };
+        return {
+          paymentIntentId: rows[0].stripe_payment_intent_id,
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+          note: note || null,
+        };
       });
     },
 
@@ -558,40 +583,6 @@ function createRepo(pool) {
     // re-checked inside the transaction (with the ledger as source of truth) so
     // concurrent redemptions can't spend the same credits twice. Returns the
     // redemption id, or null if the balance is insufficient.
-    async recordGiftRedemption({ id, deviceId, plan, months, amountCents, recipientEmail }) {
-      return tx(async (c) => {
-        // Serialize concurrent redeems on the same balance: a transaction-scoped
-        // advisory lock keyed on the owning user (or the device when unlinked)
-        // so two requests can't both pass the balance check and overdraw.
-        const link = await c.query("select user_id from devices where id = $1", [deviceId]);
-        const lockKey = link.rows[0]?.user_id ? `user:${link.rows[0].user_id}` : `device:${deviceId}`;
-        await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, lockKey]);
-
-        const bal = await c.query(
-          `select coalesce(sum(amount_millicents), 0)::bigint as balance from ledger
-            where (device_id = $1
-                or user_id = (select user_id from devices where id = $1 and user_id is not null))
-              and entry_type in ('impression_credit','click_credit','referral_credit','payout_debit','gift_redemption_debit')`,
-          [deviceId]
-        );
-        const costMillicents = BigInt(amountCents) * 1000n;
-        if (BigInt(bal.rows[0].balance) < costMillicents) return null;
-
-        const { rows } = await c.query(
-          `insert into gift_redemptions (id, device_id, plan, months, amount_cents, recipient_email)
-           values (coalesce($1::uuid, gen_random_uuid()),$2,$3,$4,$5,$6) returning id`,
-          [id || null, deviceId, plan, months, amountCents, recipientEmail]
-        );
-        await c.query(
-          `insert into ledger (entry_type, amount_millicents, device_id, meta)
-           values ('gift_redemption_debit', $1, $2, $3)`,
-          [(-costMillicents).toString(), deviceId,
-           JSON.stringify({ redemptionId: rows[0].id, plan, months })]
-        );
-        return rows[0].id;
-      });
-    },
-
     // ---------- OAuth sign-in ----------
     // Find or create a user from a Google/Apple OAuth callback, then open a
     // web session. Looks up by provider ID first, then by email. Patches any

@@ -118,6 +118,14 @@ function isUuid(s: any) {
   return typeof s === "string" && UUID_RE.test(s);
 }
 
+// Advertiser accent color, "#rrggbb" or bare "rrggbb" → canonical "#rrggbb",
+// else null (client falls back to a per-brand color).
+function normalizeHexColor(value: any) {
+  if (value == null || value === "") return null;
+  const match = /^#?([0-9a-f]{6})$/i.exec(String(value).trim());
+  return match ? `#${match[1].toLowerCase()}` : null;
+}
+
 // ─────────────────────────── giftcards.js ──────────────────────────────────
 const GIFT_PLANS: any = {
   pro: { id: "pro", name: "Claude Pro", tagline: "For the curious", monthlyCents: 2000 },
@@ -210,7 +218,7 @@ function createMailer(cfg: any) {
         headers: { Authorization: `Bearer ${cfg.resendApiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ from: cfg.mailFrom || "FreeAI <hello@freeai.fyi>", to, subject, html: htmlBody }),
       });
-      if (!res.ok) throw new Error("resend send failed: " + res.status);
+      if (!res.ok) throw new Error("resend send failed: " + res.status + " " + (await res.text().catch(() => "")).slice(0, 300));
       return;
     }
     console.log(`[freeai][mail] to=${to} subject="${subject}"`);
@@ -224,6 +232,30 @@ function createMailer(cfg: any) {
       `<p>Click to sign in and redeem your FreeAI credits for Claude.</p>
        <p><a href="${link}">Sign in to FreeAI</a></p>
        <p>This link expires in 30 minutes. If you didn't request it, ignore this email.</p>`),
+    sendAdvertiserReceiptEmail: (to: string, { campaignId, brand, adLine, pricePerBlockCents, blocks }: any) =>
+      send(to, "Your FreeAI campaign receipt",
+      `<p>Thanks for advertising on FreeAI — your payment is confirmed.</p>
+       <ul>
+         <li><strong>Ad line:</strong> "${adLine}"</li>
+         ${brand ? `<li><strong>Brand:</strong> ${brand}</li>` : ""}
+         <li><strong>Blocks:</strong> ${blocks} (${(blocks * 1000).toLocaleString("en-US")} impressions)</li>
+         <li><strong>Price per block:</strong> US$${(pricePerBlockCents / 100).toFixed(2)}</li>
+         <li><strong>Total paid:</strong> US$${((pricePerBlockCents * blocks) / 100).toFixed(2)}</li>
+         <li><strong>Campaign id:</strong> ${campaignId}</li>
+       </ul>
+       <p>Your campaign is now in review and goes live once we approve it — usually within a day.</p>
+       <p>Stripe has emailed a separate itemized payment receipt for your records.</p>`),
+    sendCampaignRejectedEmail: (to: string, { campaignId, brand, adLine, pricePerBlockCents, blocks, note }: any) =>
+      send(to, "Your FreeAI campaign was refunded",
+      `<p>Thanks for your interest in advertising on FreeAI. We weren't able to approve this campaign, so we've refunded it in full.</p>
+       <ul>
+         <li><strong>Ad line:</strong> "${adLine}"</li>
+         ${brand ? `<li><strong>Brand:</strong> ${brand}</li>` : ""}
+         <li><strong>Refunded:</strong> US$${((pricePerBlockCents * blocks) / 100).toFixed(2)}</li>
+         <li><strong>Campaign id:</strong> ${campaignId}</li>
+       </ul>
+       ${note ? `<p><strong>Reviewer note:</strong> ${note}</p>` : ""}
+       <p>The refund returns to your original payment method; Stripe will email a separate confirmation. You're welcome to submit a new campaign any time.</p>`),
     sendGiftRedemptionEmail: (to: string, { redemptionId, planName, months, amountUsd, recipientEmail }: any) =>
       send(to, `Gift card redemption: ${months} month${months > 1 ? "s" : ""} of ${planName}`,
       `<p>A FreeAI user redeemed their credits for a Claude gift card.</p>
@@ -346,7 +378,7 @@ function createRepo(pool: any) {
     },
     async activeAds(limit = 20) {
       const { rows } = await pool.query(
-        `select id, brand, ad_line, url, category, price_per_block_cents, show_on_leaderboard
+        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard
            from campaigns where status = 'active' and impressions_remaining > 0
           order by price_per_block_cents desc, activated_at asc limit $1`,
         [limit]
@@ -362,15 +394,15 @@ function createRepo(pool: any) {
       );
       return rows;
     },
-    async createPendingCampaign({ email, brand, adLine, url, category, pricePerBlockCents, blocks, showOnLeaderboard }: any) {
+    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, showOnLeaderboard }: any) {
       return tx(async (c: any) => {
         const adv = await c.query("insert into advertisers (email) values ($1) returning id", [email]);
         const { rows } = await c.query(
           `insert into campaigns
-             (advertiser_id, brand, ad_line, url, category, price_per_block_cents,
+             (advertiser_id, brand, ad_line, url, category, color, price_per_block_cents,
               blocks, impressions_total, impressions_remaining, show_on_leaderboard)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9) returning id`,
-          [adv.rows[0].id, brand || null, adLine, url, category || "other",
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10) returning id`,
+          [adv.rows[0].id, brand || null, adLine, url, category || "other", color || null,
            pricePerBlockCents, blocks, blocks * 1000, showOnLeaderboard !== false]
         );
         return rows[0].id;
@@ -382,9 +414,12 @@ function createRepo(pool: any) {
     async markCampaignPaid(campaignId: string, paymentIntentId: string) {
       return tx(async (c: any) => {
         const { rows } = await c.query(
-          `update campaigns set status = 'pending_review', paid_at = now(),
-                  stripe_payment_intent_id = coalesce($2, stripe_payment_intent_id)
-            where id = $1 and status = 'pending_payment' returning price_per_block_cents, blocks`,
+          `update campaigns cmp set status = 'pending_review', paid_at = now(),
+                  stripe_payment_intent_id = coalesce($2, cmp.stripe_payment_intent_id)
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_payment'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line, cmp.price_per_block_cents, cmp.blocks`,
           [campaignId, paymentIntentId || null]
         );
         if (!rows[0]) return false;
@@ -394,7 +429,13 @@ function createRepo(pool: any) {
            values ('campaign_credit', $1, $2, $3)`,
           [funded.toString(), campaignId, JSON.stringify({ blocks: rows[0].blocks })]
         );
-        return true;
+        return {
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+        };
       });
     },
     async pendingReviewCampaigns(limit = 50) {
@@ -416,9 +457,12 @@ function createRepo(pool: any) {
     async rejectCampaign(campaignId: string, note: string) {
       return tx(async (c: any) => {
         const { rows } = await c.query(
-          `update campaigns set status = 'rejected', review_note = $2
-            where id = $1 and status = 'pending_review'
-            returning price_per_block_cents, blocks, stripe_payment_intent_id`,
+          `update campaigns cmp set status = 'rejected', review_note = $2
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_review'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line,
+                      cmp.price_per_block_cents, cmp.blocks, cmp.stripe_payment_intent_id`,
           [campaignId, note || null]
         );
         if (!rows[0]) return null;
@@ -428,7 +472,15 @@ function createRepo(pool: any) {
            values ('campaign_refund', $1, $2, $3)`,
           [(-refund).toString(), campaignId, JSON.stringify({ note: note || null })]
         );
-        return { paymentIntentId: rows[0].stripe_payment_intent_id };
+        return {
+          paymentIntentId: rows[0].stripe_payment_intent_id,
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+          note: note || null,
+        };
       });
     },
     async claimWebhookEvent(eventId: string, type: string) {
@@ -650,33 +702,6 @@ function createRepo(pool: any) {
         [thresholdMillicents]
       );
       return rows.map((r: any) => ({ ...r, balance: Number(r.balance) }));
-    },
-    async recordGiftRedemption({ id, deviceId, plan, months, amountCents, recipientEmail }: any) {
-      return tx(async (c: any) => {
-        const link = await c.query("select user_id from devices where id = $1", [deviceId]);
-        const lockKey = link.rows[0]?.user_id ? `user:${link.rows[0].user_id}` : `device:${deviceId}`;
-        await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, lockKey]);
-        const bal = await c.query(
-          `select coalesce(sum(amount_millicents), 0)::bigint as balance from ledger
-            where (device_id = $1
-                or user_id = (select user_id from devices where id = $1 and user_id is not null))
-              and entry_type in ('impression_credit','click_credit','referral_credit','payout_debit','gift_redemption_debit')`,
-          [deviceId]
-        );
-        const costMillicents = BigInt(amountCents) * 1000n;
-        if (BigInt(bal.rows[0].balance) < costMillicents) return null;
-        const { rows } = await c.query(
-          `insert into gift_redemptions (id, device_id, plan, months, amount_cents, recipient_email)
-           values (coalesce($1::uuid, gen_random_uuid()),$2,$3,$4,$5,$6) returning id`,
-          [id || null, deviceId, plan, months, amountCents, recipientEmail]
-        );
-        await c.query(
-          `insert into ledger (entry_type, amount_millicents, device_id, meta)
-           values ('gift_redemption_debit', $1, $2, $3)`,
-          [(-costMillicents).toString(), deviceId, JSON.stringify({ redemptionId: rows[0].id, plan, months })]
-        );
-        return rows[0].id;
-      });
     },
     async upsertUserByOAuth({ email, googleId, appleId, referralCode, emailVerified }: any, sessionTtlMs: number) {
       return tx(async (c: any) => {
@@ -1056,7 +1081,7 @@ route("GET", "/v1/_diag", async (ctx: any) => {
 route("GET", "/v1/config", async () => json(200, { serving, revenueShare: config.revenueShare }));
 route("GET", "/v1/ads", async () => {
   const ads = serving ? await repo.activeAds() : [];
-  return json(200, { revenueShare: config.revenueShare, ads: ads.map((a: any) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category })) });
+  return json(200, { revenueShare: config.revenueShare, ads: ads.map((a: any) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined })) });
 });
 route("GET", "/v1/leaderboard", async () => {
   const rows = await repo.leaderboard();
@@ -1099,7 +1124,7 @@ route("GET", "/v1/go/:token", async (ctx: any) => {
 
 // ── advertiser checkout ──
 route("POST", "/v1/checkout", async (ctx: any) => {
-  const { email, adLine, url, brand, category, pricePerBlock, blocks, showOnLeaderboard } = ctx.body || {};
+  const { email, adLine, url, brand, category, color, pricePerBlock, blocks, showOnLeaderboard } = ctx.body || {};
   const priceCents = Math.round(Number(pricePerBlock) * 100);
   const nBlocks = parseInt(blocks, 10);
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(400, { error: "valid email required" });
@@ -1107,9 +1132,9 @@ route("POST", "/v1/checkout", async (ctx: any) => {
   if (!/^https:\/\/[^\s]+$/.test(url || "")) return json(400, { error: "https url required" });
   if (!(priceCents >= 100)) return json(400, { error: "min bid is $1.00 per block" });
   if (!(nBlocks >= 1)) return json(400, { error: "at least 1 block" });
-  const campaignId = await repo.createPendingCampaign({ email, brand, adLine, url, category, pricePerBlockCents: priceCents, blocks: nBlocks, showOnLeaderboard });
+  const campaignId = await repo.createPendingCampaign({ email, brand, adLine, url, category, color: normalizeHexColor(color), pricePerBlockCents: priceCents, blocks: nBlocks, showOnLeaderboard });
   const session = await stripe.createCheckoutSession({
-    mode: "payment", customer_email: email,
+    mode: "payment", customer_email: email, receipt_email: email,
     line_items: [{ quantity: nBlocks, price_data: { currency: "usd", unit_amount: priceCents, product_data: { name: "FreeAI spinner block — 1,000 impressions", description: `"${adLine}"` } } }],
     metadata: { campaign_id: campaignId },
     success_url: `${config.siteUrl}/?checkout=success`,
@@ -1133,7 +1158,24 @@ route("POST", "/v1/webhooks/stripe", async (ctx: any) => {
   switch (event.type) {
     case "checkout.session.completed": {
       const obj = event.data?.object || {};
-      if (obj.metadata?.campaign_id) await repo.markCampaignPaid(obj.metadata.campaign_id, obj.payment_intent);
+      if (obj.metadata?.campaign_id) {
+        const paid = await repo.markCampaignPaid(obj.metadata.campaign_id, obj.payment_intent);
+        // Only on the transitioning call. Wrapped so a mail outage never rolls
+        // back the funded state — the webhook event is already claimed.
+        if (paid) {
+          try {
+            await mailer.sendAdvertiserReceiptEmail((paid as any).email, {
+              campaignId: obj.metadata.campaign_id,
+              brand: (paid as any).brand,
+              adLine: (paid as any).adLine,
+              pricePerBlockCents: (paid as any).pricePerBlockCents,
+              blocks: (paid as any).blocks,
+            });
+          } catch (err) {
+            console.error("[freeai] advertiser receipt email failed", err);
+          }
+        }
+      }
       break;
     }
     case "account.updated": {
@@ -1192,25 +1234,16 @@ route("GET", "/v1/giftcards", async () => json(200, {
   plans: Object.values(GIFT_PLANS).map((p: any) => ({ id: p.id, name: p.name, tagline: p.tagline, monthlyUsd: p.monthlyCents / 100 })),
   months: GIFT_MONTHS, deliveryWindowHours: 48,
 }));
-route("POST", "/v1/redemptions", async (ctx: any) => {
-  const device = await authDeviceFrom(ctx);
-  if (!device) return json(401, { error: "bad device credentials" });
-  const body = ctx.body || {};
-  const plan = GIFT_PLANS[body.plan];
-  const months = parseInt(body.months, 10);
-  const amountCents = plan ? giftPriceCents(plan.id, months) : null;
-  if (!amountCents) return json(400, { error: "plan must be pro/max5x/max20x and months 1/3/6/12" });
-  let recipientEmail = body.recipientEmail;
-  if (!recipientEmail) { const user = await repo.userForDevice(device.id); recipientEmail = user?.email; }
-  if (!recipientEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(recipientEmail)) return json(400, { error: "valid recipientEmail required" });
-  const balance = await repo.earningsForDevice(device.id);
-  if (balance.balanceMillicents < amountCents * 1000) return json(403, { error: "insufficient credits", balanceUsd: balance.balanceMillicents / 100000, requiredUsd: amountCents / 100 });
-  const redemptionId = crypto.randomUUID();
-  await mailer.sendGiftRedemptionEmail(config.giftFulfillmentEmail, { redemptionId, planName: plan.name, months, amountUsd: amountCents / 100, recipientEmail });
-  const recorded = await repo.recordGiftRedemption({ id: redemptionId, deviceId: device.id, plan: plan.id, months, amountCents, recipientEmail });
-  if (!recorded) return json(409, { error: "insufficient credits" });
-  const after = await repo.earningsForDevice(device.id);
-  return json(200, { ok: true, redemptionId, plan: plan.id, months, amountUsd: amountCents / 100, balanceUsd: after.balanceMillicents / 100000, deliveryWindowHours: 48 });
+// Redemption is a website-only, logged-in flow (see AGENTS.md): credits are
+// cashed out at /v1/web/redemptions behind a web session. The old
+// device-credential path is retired — a leaked deviceKey must let someone
+// accrue credits in your name, never cash them out. Old clients get a clear,
+// safe refusal instead of a money-out they can't be trusted with.
+route("POST", "/v1/redemptions", async () => {
+  return json(410, {
+    error: "redeem on the website after signing in",
+    redeemUrl: `${config.siteUrl}/redeem.html`,
+  });
 });
 
 // ── OAuth helpers ──
@@ -1446,6 +1479,20 @@ route("POST", "/v1/admin/campaigns/reject", async (ctx: any) => {
   if (result.paymentIntentId) {
     try { await stripe.createRefund({ payment_intent: result.paymentIntentId }); }
     catch (err: any) { console.error("[freeai] refund failed:", err.message); }
+  }
+  // Tell the advertiser their campaign was rejected + refunded. Wrapped so a
+  // mail failure never fails the moderation action (already committed above).
+  try {
+    await mailer.sendCampaignRejectedEmail((result as any).email, {
+      campaignId: ctx.body?.campaignId,
+      brand: (result as any).brand,
+      adLine: (result as any).adLine,
+      pricePerBlockCents: (result as any).pricePerBlockCents,
+      blocks: (result as any).blocks,
+      note: (result as any).note,
+    });
+  } catch (err: any) {
+    console.error("[freeai] rejection email failed:", err.message);
   }
   return json(200, { ok: true, refunded: !!result.paymentIntentId });
 });
