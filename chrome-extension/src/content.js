@@ -49,12 +49,14 @@
   // candidate latest in document order, so a descendant container wins over an
   // ancestor.
   const ANCHORS = [
-    '[data-is-streaming="true"]',             // Claude — streaming bubble
-    // Claude star-only stage: the spark (.epitaxy-spark-working) sits in a row
-    // inside .epitaxy-transcript-width. :has scopes us to the wrapper that
-    // actually holds the spark, so the bar lands below the star row.
-    ".epitaxy-transcript-width:has(.epitaxy-spark-working)",
-    "div[data-test-render-count]",            // Claude — fallback turn container
+    // Claude — the per-turn container wraps the WHOLE assistant turn: the
+    // thinking star, the "Thinking…" shimmer line, and the streamed reply. The
+    // bar as its last child lands below all of them at every stage. Do NOT
+    // anchor on [data-is-streaming="true"]: in the star-only stage that bubble
+    // is EMPTY and sits ABOVE the star, so the bar mounted above the star.
+    // (The old .epitaxy-spark-working / .epitaxy-transcript-width selectors were
+    // removed when claude.ai rebuilt its thinking UI — they no longer match.)
+    "div[data-test-render-count]",            // Claude — assistant turn container
     '[data-message-author-role="assistant"]', // ChatGPT
     ".result-streaming",                      // ChatGPT (older)
     // Gemini — the per-turn <model-response> CONTAINS the thinking dots
