@@ -63,8 +63,49 @@ The API host moved off `api.freeai.fyi`, so update these to the new base
 
 ## Deploy
 
-Via the Supabase MCP `deploy_edge_function`, or the CLI:
+**Normal path — automatic on merge to `main`.** The
+`.github/workflows/deploy-functions.yml` workflow runs `supabase functions
+deploy api --no-verify-jwt` whenever a push to `main` touches
+`supabase/functions/**`. This is the canonical deploy: it ships the exact bytes
+from git, so it never drifts from the repo.
+
+### Required GitHub repo secret (not a Supabase secret)
+
+The CI deploy authenticates with a **`SUPABASE_ACCESS_TOKEN`** repo secret —
+this is separate from the runtime Edge Function secrets above. Set it once at
+**GitHub → repo Settings → Secrets and variables → Actions → New repository
+secret**:
+
+| Repo secret | Where to get it | Needed for |
+| --- | --- | --- |
+| `SUPABASE_ACCESS_TOKEN` | Supabase dashboard → Account → Access Tokens | the `deploy-functions` workflow to authenticate |
+| `SUPABASE_PROJECT_REF` | optional; defaults to the FreeAI project ref in the workflow | targeting a different project |
+
+> **If this secret is missing, the workflow fails on every run** (its guard step
+> exits with `SUPABASE_ACCESS_TOKEN secret is not set`) and the live function
+> silently goes stale while the repo moves on. If you ever see the deployed
+> function lagging behind `main`, check this first:
+> `gh run list --workflow=deploy-functions.yml`.
+
+### Manual deploy (fallback)
+
+Via the Supabase CLI:
 
 ```
 supabase functions deploy api --no-verify-jwt --project-ref <ref>
 ```
+
+Or the Supabase MCP `deploy_edge_function` tool (one `index.ts` + `deno.json`).
+When redeploying the existing `api` slug this way, pass `import_map_path:
+deno.json` — the slug remembers its old import-map path otherwise and the deploy
+is rejected.
+
+## Database / RLS note
+
+Schema lives in `server/db/schema.sql` (applied to local Postgres via `npm run
+migrate`). On Supabase, **Row Level Security is enabled on every `public`
+table** (deny-all to the `anon` / `authenticated` PostgREST roles). The API is
+unaffected: it connects over the privileged `SUPABASE_DB_URL` pooler role, which
+bypasses RLS. New tables should be created with `alter table … enable row level
+security;` to match — no policies are needed, since browsers reach the data only
+through this function, never PostgREST.
