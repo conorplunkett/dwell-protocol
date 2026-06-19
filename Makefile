@@ -130,7 +130,7 @@ mac-build:
 mac-run:
 	cd $(MAC_DIR) && swift run SponsorOverlay
 
-## mac-demo: Run the macOS app in demo mode — no server or Claude needed.
+## mac-demo: Run the macOS app in demo mode — no server or assistant needed.
 mac-demo:
 	cd $(MAC_DIR) && FREEAI_DEMO=1 swift run SponsorOverlay
 
