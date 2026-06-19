@@ -328,6 +328,64 @@ a { color: inherit; text-decoration: none; }
 .install-fine { font-size: 13.5px; color: var(--gray-2); margin-top: 22px; }
 .install-fine strong { color: var(--green-d); }
 
+/* DASHBOARD (signed-in portal) — utility nav, section tabs, delivery, states */
+/* Align the header with the dashboard content column instead of the wide site nav. */
+.dash-nav { max-width: 780px; }
+
+/* Account cluster — Home + Sign out kept separate from the section nav, styled as
+   quiet text links so the segmented tabs below read as the primary navigation. */
+.dash-account { display: flex; align-items: center; gap: 2px; }
+.dash-account-link {
+  font-family: var(--sans); font-size: 13.5px; font-weight: 600; color: var(--gray);
+  padding: 7px 12px; border: none; border-radius: 999px; background: transparent;
+  cursor: pointer; text-decoration: none; transition: color .15s, background .15s;
+}
+.dash-account-link:hover { color: var(--ink); background: var(--bg-tint); }
+.dash-signout:hover { color: var(--err-fg); }
+
+/* Section tabs — one segmented control, one active view at a time. */
+.dash-tabs {
+  display: flex; gap: 4px;
+  width: min(716px, 100% - 28px); margin: 24px auto 0; padding: 5px;
+  border: 1px solid var(--line); border-radius: 16px; background: #fff;
+  box-shadow: 0 14px 36px -30px rgba(20,30,40,.45);
+}
+.dash-tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 11px 10px; border: none; border-radius: 11px; background: transparent;
+  font-family: var(--sans); font-size: 14px; font-weight: 700; color: var(--gray);
+  cursor: pointer; transition: color .15s, background .15s;
+}
+.dash-tab:hover { color: var(--ink); background: #fcfbf9; }
+.dash-tab.active { color: var(--accent-d); background: #fbf0ea; }
+.dash-tab-ico { width: 16px; height: 16px; flex-shrink: 0; display: inline-flex; }
+.dash-tab-ico svg { width: 100%; height: 100%; display: block; }
+.dash-tabs + .redeem { padding-top: 26px; }
+
+/* Gift-card delivery — read-only "delivered to" card replacing the bare input. */
+.redeem-delivery {
+  display: flex; align-items: center; gap: 13px; max-width: 420px;
+  padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #fcfbf9;
+}
+.rd-ico {
+  flex-shrink: 0; width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center;
+  color: var(--accent-d); background: #fbf0ea; border: 1px solid rgba(var(--accent-rgb), .25);
+}
+.rd-ico svg { width: 19px; height: 19px; }
+.rd-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rd-label { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--gray-2); }
+.rd-email { font-size: 15px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Activity loading state (auto-retrieve). Reuses .portal-spinner from portal.css. */
+.act-loading { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 44px 20px; }
+.act-loading p { font-size: 14px; color: var(--gray); margin: 0; }
+.act-loading .portal-spinner { width: 30px; height: 30px; }
+
+@media (max-width: 560px) {
+  .dash-tab { font-size: 12.5px; padding: 10px 5px; gap: 0; }
+  .dash-tab-ico { display: none; }
+}
+
 /* REDEEM PAGE */
 .redeem { max-width: 780px; margin: 0 auto; padding: 40px 32px 0; }
 .redeem-card {
@@ -547,7 +605,6 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* REFERRALS VIEW */
-.navbtn.active { border-color: var(--accent); background: #fbf0ea; color: var(--accent-d); }
 .ref-link-row { display: flex; gap: 10px; margin: 4px 0 26px; }
 .ref-link-row input {
   flex: 1; min-width: 0; padding: 13px 14px; border: 1px solid var(--line);
