@@ -4,13 +4,14 @@ surface, from a single definition. No third-party deps: it drives a local
 Chromium (for real font rendering) and writes PNGs by hand.
 
 The mark mirrors the shared brand renderer in
-`vscode-extension/scripts/_brand.mjs` (Montserrat 800 white "F$" on the vertical
-coral gradient). The gradient colors are read straight from the design-system
-source of truth, `theme.css` (--accent-grad-a / --accent-grad-b), so the icon can
-never drift from the palette. Montserrat is pulled from Google Fonts when online;
-offline it falls back to a bold system sans — visually equivalent at icon scale.
+`vscode-extension/scripts/_brand.mjs` — the monospace "F$" (JetBrains Mono, the
+same face as the site .logo chip and favicon) on the vertical coral gradient. The
+gradient colors are read straight from the design-system source of truth,
+`theme.css` (--accent-grad-a / --accent-grad-b), so the icon can never drift from
+the palette. JetBrains Mono loads from Google Fonts when online; offline it falls
+back to a local monospace (DejaVu Sans Mono) — the same monospaced shape.
 `vscode-extension/scripts/gen-icon.mjs` remains the Marketplace-official path
-(true Montserrat via Playwright); this tool is the dependency-free, offline one.
+(via Playwright); this tool is the dependency-free, offline one.
 
 Writes (overwrites) every committed app icon:
   chrome-extension/icons/icon16.png, icon48.png, icon128.png
@@ -31,10 +32,12 @@ import zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Layout ratios — mirror _brand.mjs (RADIUS_RATIO, FONT_RATIO).
-RADIUS_RATIO = 0.22
+# Layout — the mark is the monospace "F$" used by the site logo (.logo, which is
+# var(--mono) = JetBrains Mono, weight 700) and the favicon. Offline, JetBrains
+# Mono can't load, so we fall back to a local monospace — same monospaced shape.
+RADIUS_RATIO = 0.26   # matches the site logo chip (8/30) and favicon (rx 26/100)
 FONT_RATIO = 0.47
-FONT_STACK = "'Liberation Sans','DejaVu Sans','Helvetica Neue',Arial,sans-serif"
+FONT_STACK = "'JetBrains Mono','DejaVu Sans Mono','Liberation Mono',ui-monospace,monospace"
 PAD = 40  # transparent margin so the mark never touches the (height-capped) window
 
 TARGETS = [
@@ -73,17 +76,16 @@ def find_chrome():
 def icon_html(size, grad_top, grad_bot):
     r = round(size * RADIUS_RATIO)
     fs = round(size * FONT_RATIO)
-    ls = max(0, round(size * 0.02))
     return (
         "<!doctype html><html><head><meta charset=utf-8>"
         "<link rel=preconnect href='https://fonts.googleapis.com'>"
-        "<link href='https://fonts.googleapis.com/css2?family=Montserrat:wght@800&display=swap' rel=stylesheet>"
+        "<link href='https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap' rel=stylesheet>"
         "<style>html,body{margin:0;padding:0;background:transparent}"
         f"#m{{position:absolute;left:{PAD}px;top:{PAD}px;width:{size}px;height:{size}px;"
         f"border-radius:{r}px;background:linear-gradient(180deg,{grad_top} 0%,{grad_bot} 100%);"
         "display:flex;align-items:center;justify-content:center;color:#fff;"
-        f"font-family:Montserrat,{FONT_STACK};font-weight:800;font-size:{fs}px;"
-        f"line-height:1;letter-spacing:-{ls}px}}"
+        f"font-family:{FONT_STACK};font-weight:700;font-size:{fs}px;"
+        "line-height:1;letter-spacing:0}"
         "</style></head><body><div id=m>F$</div></body></html>"
     )
 
