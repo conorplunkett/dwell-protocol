@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Generate audience-specific landing pages from index.html.
 //
-// index.html is the single source of truth: it stays the homepage (the
-// developer / Claude Code default) and also acts as the template for every
-// other lander. This script clones it and swaps only the *header* copy — the
+// index.html is the single source of truth and the clear base of the site: it
+// stays at the repo root (served at `/`) and doubles as the template for every
+// audience lander. This script clones it and swaps only the *header* copy — the
 // <title>, social/meta tags, the hero <h1>, the .sub line, the .hero-note, and
 // the .jump CTA label — plus, when given, the before/after demo's "Stock <tool>"
 // card so the page mimics the real thinking indicator of the tool that audience
@@ -11,24 +11,28 @@
 // else (advertiser form, install card, script.js) is untouched, so structural
 // edits to index.html propagate to every lander on the next `make landers`.
 //
-// Output is a real static .html file per audience. vercel.json already sets
-// `cleanUrls: true`, so `students.html` is served at `/students` — each ad
-// campaign gets its own crawlable URL with the right message, present even with
-// JavaScript disabled.
+// Output is one real static .html file per audience, all under `landers/` to
+// keep the repo root tidy. The generator also:
+//   • rewrites the shared-asset links (theme.css / styles.css / script.js) to
+//     absolute paths so a lander renders correctly from any URL depth;
+//   • links the lander-only landers.css (per-tool demo indicators);
+//   • adds a <link rel="canonical"> to the short campaign URL;
+//   • manages vercel.json so each lander is served at a clean short URL
+//     (`/chatgpt` → `landers/chatgpt.html`), one URL per ad campaign.
 //
-// Per-tool demo indicators are styled in landers.css (linked into each lander,
-// not into index.html). Only audiences whose AI tool is actually supported by
-// the product today — ChatGPT, Claude, Gemini (browser) and Claude Code — are
-// generated here; Cursor / Copilot / Perplexity wait until those integrations
-// ship so a live lander never promises something we can't yet deliver.
+// Only audiences whose AI tool the product serves today — ChatGPT, Claude,
+// Gemini (browser) and Claude Code — are generated; Cursor / Copilot /
+// Perplexity wait until those integrations ship so a live lander never promises
+// something we can't yet deliver (their indicators already exist in landers.css).
 //
 // No third-party deps. Run `node tools/gen-landers.mjs` or `make landers`.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const outDir = join(root, "landers");
 const src = readFileSync(join(root, "index.html"), "utf8");
 
 // Reusable "Stock <tool>" demo cards. `label` is the card's eyebrow; `icon` is
@@ -42,7 +46,8 @@ const DEMO = {
 };
 
 // Each lander overrides the header copy (and optionally the demo) for one
-// audience. `slug` is the output file and, via cleanUrls, the URL path.
+// audience. `slug` is the output file and, via the vercel.json rewrite, the
+// short URL path (`/<slug>`).
 const LANDERS = [
   {
     slug: "developers",
@@ -235,18 +240,28 @@ function sub(html, label, re, value) {
   return html.replace(re, value);
 }
 
+mkdirSync(outDir, { recursive: true });
+
 let written = 0;
 for (const l of LANDERS) {
   let out = src;
 
   // Link the lander-only stylesheet (per-tool demo indicators) right after the
-  // shared styles.css, so its classes resolve without touching index.html.
+  // shared styles.css link — matched on its original relative form, before the
+  // asset paths below are absolutized.
   out = sub(
     out,
     "styles.css link",
     /(<link rel="stylesheet" href="styles\.css\?v=[^"]*" \/>)/,
-    `$1\n  <link rel="stylesheet" href="landers.css?v=20260620a" />`,
+    `$1\n  <link rel="stylesheet" href="/landers/landers.css?v=20260620a" />`,
   );
+
+  // Landers live under /landers/, so make the shared-asset links absolute —
+  // they'd otherwise resolve against the lander's path and 404.
+  out = out
+    .replace(/href="theme\.css/g, 'href="/theme.css')
+    .replace(/href="styles\.css/g, 'href="/styles.css')
+    .replace(/src="script\.js/g, 'src="/script.js');
 
   out = sub(out, "title", /<title>[\s\S]*?<\/title>/, `<title>${l.title}</title>`);
   out = sub(
@@ -266,6 +281,13 @@ for (const l of LANDERS) {
     "og:description",
     /<meta property="og:description" content="[\s\S]*?" \/>/,
     `<meta property="og:description" content="${l.ogDescription}" />`,
+  );
+  // Canonicalize every URL variant of this lander to its short campaign URL.
+  out = sub(
+    out,
+    "canonical anchor",
+    /(<link rel="preconnect" href="https:\/\/fonts\.googleapis\.com" \/>)/,
+    `<link rel="canonical" href="https://freeai.fyi/${l.slug}" />\n  $1`,
   );
   out = sub(out, "hero h1", /<h1>[\s\S]*?<\/h1>/, `<h1>${l.h1}</h1>`);
   out = sub(
@@ -302,9 +324,26 @@ for (const l of LANDERS) {
   // Mark which lander rendered, for debugging and analytics segmentation.
   out = out.replace(/<body>/, `<body data-lander="${l.slug}">`);
 
-  writeFileSync(join(root, `${l.slug}.html`), out);
+  writeFileSync(join(outDir, `${l.slug}.html`), out);
   written++;
-  console.log(`  wrote ${l.slug}.html`);
+  console.log(`  wrote landers/${l.slug}.html`);
 }
 
-console.log(`gen-landers: generated ${written} landing page(s) from index.html`);
+// Keep vercel.json's lander rewrites in sync with the LANDERS list above, so
+// each campaign is served at a clean short URL (`/chatgpt`). Non-lander
+// rewrites (e.g. the api.freeai.fyi proxy) are preserved untouched.
+const vercelPath = join(root, "vercel.json");
+const vercel = JSON.parse(readFileSync(vercelPath, "utf8"));
+const isLanderRewrite = (r) =>
+  typeof r?.destination === "string" && r.destination.startsWith("/landers/");
+const preserved = (vercel.rewrites || []).filter((r) => !isLanderRewrite(r));
+const landerRewrites = LANDERS.map((l) => ({
+  source: `/${l.slug}`,
+  destination: `/landers/${l.slug}.html`,
+}));
+vercel.rewrites = [...preserved, ...landerRewrites];
+writeFileSync(vercelPath, JSON.stringify(vercel, null, 2) + "\n");
+
+console.log(
+  `gen-landers: generated ${written} landing page(s) → landers/, and synced ${landerRewrites.length} rewrite(s) in vercel.json`,
+);

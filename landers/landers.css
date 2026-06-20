@@ -1,7 +1,8 @@
 /* FreeAI.fyi — landing-page-only styles. Linked into the generated audience
- * landers (developers.html, chatgpt.html, …) by tools/gen-landers.mjs, NOT into
- * index.html. Keeps the shared styles.css clean while letting each audience's
- * before/after demo mimic the *real* thinking indicator of the tool it targets.
+ * landers (landers/developers.html, landers/chatgpt.html, …) by
+ * tools/gen-landers.mjs, NOT into index.html. Keeps the shared styles.css clean
+ * while letting each audience's before/after demo mimic the *real* thinking
+ * indicator of the tool it targets.
  *
  * The "Stock <tool>" card on each lander swaps the default coral asterisk for
  * the matching indicator below. The tool brand colors here are deliberately
