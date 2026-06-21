@@ -17,6 +17,9 @@
 - **Blocking for a clean launch:** wire the production secrets + external OAuth/
   Stripe consoles (below), and decide whether the **open Gemini placement bug**
   ships as a known issue. Everything else is ready.
+- **To test the product end-to-end before launch** (all surfaces, watch a real
+  account balance climb live, no real money / no Stripe): see
+  [`DEVNET.md`](DEVNET.md) — `make devnet` + `make devnet-earn`.
 
 ## Verified working (run in this audit)
 

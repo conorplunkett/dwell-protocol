@@ -23,8 +23,12 @@ function createMailer(config) {
       if (!res.ok) throw new Error("resend send failed: " + res.status);
       return;
     }
-    // console transport
-    console.log(`[freeai][mail] to=${to} subject="${subject}"`);
+    // console transport (dev/CI). Print the action link too, so magic-link /
+    // verify flows can be completed end-to-end locally (e.g. `make devnet`)
+    // without a real mail provider. Never used in production (set
+    // MAIL_PROVIDER=resend there).
+    const link = (String(htmlBody).match(/href="([^"]+)"/) || [])[1];
+    console.log(`[freeai][mail] to=${to} subject="${subject}"${link ? ` link=${link}` : ""}`);
   }
 
   async function sendVerifyEmail(to, link) {

@@ -32,6 +32,8 @@ one-line description. The common ones:
 | Command | What it does |
 | --- | --- |
 | `make site` | Serve the static site at http://localhost:8000 |
+| `make devnet` | Full local stack (db + migrate + seed + API), **no Stripe needed** — see [`DEVNET.md`](DEVNET.md) |
+| `make devnet-earn` | Drive a real earning session and watch a portal balance climb live |
 | `make server-up` | Start Postgres, migrate, and run the API on :8787 |
 | `make server` | Start just the API (db already up) |
 | `make test-server` | Server end-to-end tests against the local DB |
