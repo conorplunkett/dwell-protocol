@@ -114,12 +114,26 @@ final class AssistantDetector {
 
         var scan = TreeScan(wantStar: target.hasThinkingStar)
         scanTree(window, depth: 0, into: &scan, target: target)
-        state.composerBounds = (scan.composer ?? scan.firstTextArea).flatMap(frame(of:))
+        state.composerBounds = composerBounds(scan: scan, window: state.windowBounds)
         state.starBounds = scan.star.flatMap(frame(of:))
         state.generating = scan.hasStopButton || scan.star != nil
         cachedWindow = window
         cachedStar = scan.star
         return state
+    }
+
+    /// The composer frame to anchor the card to — but only if it actually sits
+    /// inside the window. The hint-matched composer (Claude's "Prompt") is
+    /// trusted; ChatGPT has no placeholder, so we fall back to its first text
+    /// area, which can be an off-window hidden input. Anchoring to that flings
+    /// the card off-screen, so reject any frame not within the window and let
+    /// the overlay use its reliable window-bottom anchor instead.
+    private func composerBounds(scan: TreeScan, window: CGRect?) -> CGRect? {
+        guard let element = scan.composer ?? scan.firstTextArea,
+              let f = frame(of: element) else { return nil }
+        guard let w = window, w.intersects(f),
+              f.minY >= w.minY - 1, f.maxY <= w.maxY + 1 else { return nil }
+        return f
     }
 
     /// Cheap between-scan refresh for the fast-follow loop: re-reads only the
