@@ -86,7 +86,7 @@ WHAT IT DOES NOT DO
 
 SUPPORTED SITES
 ChatGPT (chatgpt.com / chat.openai.com), Claude (claude.ai), Gemini
-(gemini.google.com).
+(gemini.google.com), Google AI Studio, Perplexity, v0.dev, and bolt.new.
 
 Not affiliated with Anthropic, OpenAI, or Google.
 ```
