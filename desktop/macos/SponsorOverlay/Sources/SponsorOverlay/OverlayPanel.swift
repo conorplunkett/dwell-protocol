@@ -18,8 +18,11 @@ struct SponsorCard {
 final class OverlayPanelController {
     static let height: CGFloat = 34
     static let maxWidth: CGFloat = 560
-    /// Gap between the card's bottom edge and the composer's top edge.
-    static let anchorGap: CGFloat = 14
+    /// Gap between the card's bottom edge and the composer's top edge. Only the
+    /// composer-anchored path (Claude) uses it; ChatGPT anchors off the window
+    /// bottom. Sized so a locked card clears Claude's prompt box rather than
+    /// sitting on its border.
+    static let anchorGap: CGFloat = 28
     /// Fallback when no composer geometry is available: distance from the
     /// bottom of the assistant window (the extension's fixed pill uses 96px too).
     static let bottomInset: CGFloat = 96
