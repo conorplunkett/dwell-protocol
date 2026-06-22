@@ -278,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setUpMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "₿"
+        statusItem.button?.imagePosition = .imageOnly // brand icon set in refreshAccessibilityState
         let menu = NSMenu()
         menu.delegate = self   // refresh the Accessibility row each time it opens
         balanceItem = NSMenuItem(title: demoMode ? "Demo mode" : "Balance: —", action: nil, keyEquivalent: "")
@@ -307,13 +307,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshAccessibilityState()
     }
 
+    // Brand "F$" wordmark for the menu bar, rendered once per state. Matches
+    // the design-system app icon (tools/gen-icons.py): white monospace "F$" on
+    // the vertical coral accent gradient.
+    private lazy var statusIconNormal = Self.makeStatusIcon(warning: false)
+    private lazy var statusIconWarning = Self.makeStatusIcon(warning: true)
+    /// Last permission state reflected in the menu-bar icon, so we only swap the
+    /// image when it actually changes (refresh runs every tick / on menu open).
+    private var iconTrusted: Bool?
+
     /// Reflects Accessibility-permission state in the menu (row visibility) and
-    /// the status icon (⚠ vs ₿) so the user notices before wondering why nothing
-    /// shows. Cheap to call; runs on each tick and whenever the menu opens.
+    /// the status icon (the brand "F$" mark, badged amber when access is
+    /// missing) so the user notices before wondering why nothing shows. Cheap to
+    /// call; runs on each tick and whenever the menu opens.
     private func refreshAccessibilityState() {
         let trusted = demoMode || AXIsProcessTrusted()
         accessibilityItem?.isHidden = trusted
-        statusItem?.button?.title = trusted ? "₿" : "⚠"
+        if iconTrusted != trusted, let button = statusItem?.button {
+            button.image = trusted ? statusIconNormal : statusIconWarning
+            iconTrusted = trusted
+        }
+    }
+
+    /// Draws the FreeAI "F$" menu-bar mark. Colors mirror theme.css
+    /// --accent-grad-a / --accent-grad-b (the palette source of truth); keep
+    /// them in sync by hand, like OverlayPanel's palette. Not a template image —
+    /// the coral is the brand, so it stays coral on light and dark menu bars.
+    /// When `warning` is set (Accessibility not granted) a small amber dot is
+    /// badged top-right, replacing the old "⚠" glyph.
+    private static func makeStatusIcon(warning: Bool) -> NSImage {
+        let gradTop = NSColor(red: 0xe0/255.0, green: 0x8a/255.0, blue: 0x6a/255.0, alpha: 1) // --accent-grad-a #e08a6a
+        let gradBot = NSColor(red: 0xcf/255.0, green: 0x6b/255.0, blue: 0x4a/255.0, alpha: 1) // --accent-grad-b #cf6b4a
+        let height: CGFloat = 16
+        let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .bold)
+        let text = "F$" as NSString
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+        let textSize = text.size(withAttributes: attrs)
+        let padX: CGFloat = 4
+        let width = ceil(textSize.width) + padX * 2
+
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+            let radius = height * 0.26 // matches the app-icon corner ratio
+            let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+            // AppKit y-up: angle -90 points down, so the starting color (grad-a)
+            // sits at the top — same top→bottom coral gradient as the app icon.
+            NSGradient(starting: gradTop, ending: gradBot)?.draw(in: path, angle: -90)
+            text.draw(at: NSPoint(x: padX, y: (height - textSize.height) / 2), withAttributes: attrs)
+            if warning {
+                let d: CGFloat = 5
+                let dot = NSRect(x: rect.maxX - d - 0.5, y: rect.maxY - d - 0.5, width: d, height: d)
+                NSColor(red: 1, green: 0xd5/255.0, blue: 0x4a/255.0, alpha: 1).setFill() // --ov-chip-bg #ffd54a
+                NSBezierPath(ovalIn: dot).fill()
+            }
+            return true
+        }
+        image.isTemplate = false
+        return image
     }
 
     @objc private func openAccessibilitySettings() {
