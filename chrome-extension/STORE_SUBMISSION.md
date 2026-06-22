@@ -66,19 +66,17 @@ manifest and pre-fills name, version, and icons. Then complete the tabs below.
 
 ```
 FreeAI turns the AI "thinking" spinner into a tiny ad marketplace — and gives
-you half the money back as Claude credits.
+you half the money back as credits.
 
-While ChatGPT, Claude, or Gemini is generating an answer, FreeAI shows ONE
-subtle, clickable sponsored line right by the reply. That's it. When the model
-finishes, the line fades away. 50% of the ad revenue accrues to you as credits
-you can redeem for Claude on freeai.fyi.
+While ChatGPT, Claude, or Gemini is generating an answer, FreeAI shows a
+sponsored line right by the reply. That's it. When the model finishes, it goes
+away. 50% of the ad revenue accrues to you as credits you can redeem for AI
+subscriptions like Claude.
 
 WHAT IT DOES
-• Shows a single, tasteful sponsored line only while the assistant is thinking.
-• Tracks impressions and clicks locally and shows your live earnings in the popup.
-• Test mode renders a labelled mock ad so you can see exactly how it looks,
-  without touching real earnings.
-• A "Show me the money" button runs a 30-second demo on the current tab.
+• Shows a sponsored line only while the assistant is thinking.
+• Tracks impressions and shows your live earnings.
+• Lets you earn more from friends you refer.
 
 WHAT IT DOES NOT DO
 • It never reads, stores, or transmits your prompts or the model's answers.
@@ -88,12 +86,7 @@ WHAT IT DOES NOT DO
 
 SUPPORTED SITES
 ChatGPT (chatgpt.com / chat.openai.com), Claude (claude.ai), Gemini
-(gemini.google.com), Google AI Studio, Perplexity, v0.dev, and bolt.new.
-
-HOW EARNINGS WORK
-Every 5 seconds an ad is shown = one impression; a click is worth 50×. Credits
-accrue at your 50% share and are redeemable for Claude gift cards on freeai.fyi
-after you sign in.
+(gemini.google.com).
 
 Not affiliated with Anthropic, OpenAI, or Google.
 ```
