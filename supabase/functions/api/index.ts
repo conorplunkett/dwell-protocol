@@ -466,6 +466,32 @@ function createRepo(pool: any) {
     throw new Error("could not allocate affiliate code");
   }
 
+  // Ensure the user is enrolled as an APPROVED affiliate with a code (self-serve,
+  // no social application), idempotently; returns { id, code }. Shared by the
+  // device popup path and the web dashboard so everyone has a base 10% link.
+  async function ensureAffiliate(userId: string) {
+    const ins = await pool.query(
+      `insert into affiliates (user_id, status, approved_at)
+       values ($1, 'approved', now())
+       on conflict (user_id) do nothing
+       returning id`,
+      [userId]
+    );
+    let id = ins.rows[0]?.id;
+    if (!id) {
+      const ex = await pool.query("select id, status from affiliates where user_id = $1", [userId]);
+      id = ex.rows[0].id;
+      if (ex.rows[0].status !== "approved") {
+        await pool.query(
+          "update affiliates set status = 'approved', approved_at = coalesce(approved_at, now()) where id = $1",
+          [id]
+        );
+      }
+    }
+    const code = await mintAffiliateCode(id);
+    return { id, code };
+  }
+
   return {
     async registerDevice() {
       const secret = crypto.randomBytes(32).toString("hex");
@@ -1203,32 +1229,28 @@ function createRepo(pool: any) {
       );
       return upd.rows[0] ? { id: affiliateId, code } : null;
     },
-    // Self-serve affiliate enrollment for the extension "crew" feature. Ensures
-    // the user has an APPROVED affiliate row with a code — no social-handle
-    // application — idempotently, and returns { id, code }. Auto-approving here
-    // is the self-serve model: every signed-in earner can invite friends and
-    // collect their 10% without admin review.
+    // Self-serve affiliate enrollment: every signed-in earner is an approved
+    // affiliate (base 10%) with a code — no social application, no admin review.
     async getOrCreateAffiliate(userId: string) {
-      const ins = await pool.query(
-        `insert into affiliates (user_id, status, approved_at)
-         values ($1, 'approved', now())
-         on conflict (user_id) do nothing
-         returning id`,
-        [userId]
+      return ensureAffiliate(userId);
+    },
+    // Influencer upgrade request: the user keeps their active base 10% while
+    // attaching socials so an admin can grant a higher rate / uncapped earnings /
+    // a custom code. Records the socials on the (auto-created) affiliate row; the
+    // presence of any handle is the "upgrade requested" signal the dashboard reads.
+    async requestAffiliateUpgrade(userId: string, socials: any) {
+      await ensureAffiliate(userId);
+      const s = socials || {};
+      await pool.query(
+        `update affiliates set
+           instagram_handle = $2, instagram_followers = $3,
+           linkedin_handle = $4, linkedin_followers = $5,
+           twitter_handle = $6, twitter_followers = $7
+         where user_id = $1`,
+        [userId, s.instagram || null, s.instagramFollowers ?? null,
+         s.linkedin || null, s.linkedinFollowers ?? null,
+         s.twitter || null, s.twitterFollowers ?? null]
       );
-      let id = ins.rows[0]?.id;
-      if (!id) {
-        const ex = await pool.query("select id, status from affiliates where user_id = $1", [userId]);
-        id = ex.rows[0].id;
-        if (ex.rows[0].status !== "approved") {
-          await pool.query(
-            "update affiliates set status = 'approved', approved_at = coalesce(approved_at, now()) where id = $1",
-            [id]
-          );
-        }
-      }
-      const code = await mintAffiliateCode(id);
-      return { id, code };
     },
     // Per-friend crew breakdown for an affiliate: each attributed friend, the
     // credits they've generated, and the affiliate's 10% cut earned from them.
@@ -2211,32 +2233,38 @@ route("POST", "/v1/web/referrals/invite", async (ctx: any) => {
 route("GET", "/v1/web/affiliate", async (ctx: any) => {
   const user = await repo.userForSession(sessionFrom(ctx));
   if (!user) return json(401, { error: "not signed in" });
+  // Self-serve: everyone is an affiliate. Ensure enrollment, then read details.
+  await repo.getOrCreateAffiliate(user.id);
   const data = await repo.affiliateForUser(user.id);
   const app = data.application;
+  // Influencer upgrade = a higher rate or a raised cap above the base config.
+  const upgraded = app.rewardBps > config.affiliateRewardBps || app.capMillicents > config.affiliateCapCents * 1000;
+  // Upgrade requested = the user attached socials (auto-enrolled rows have none).
+  const upgradeRequested = !!(app.socials.instagram || app.socials.linkedin || app.socials.twitter);
   return json(200, {
-    application: app ? {
-      status: app.status, code: app.code,
-      link: app.code ? `${config.siteUrl}/redeem.html?ref=${app.code}` : null,
-      socials: app.socials,
-      rewardPct: app.rewardBps / 100,
-      capUsd: app.capMillicents / 100000,
-      creditedUsd: app.creditedMillicents / 100000,
-      attributedCount: app.attributedCount,
-      createdAt: app.createdAt,
-    } : null,
+    enrolled: true,
+    code: app.code,
+    link: app.code ? `${config.siteUrl}/redeem.html?ref=${app.code}` : null,
+    socials: app.socials,
+    rewardPct: app.rewardBps / 100,
+    capUsd: app.capMillicents / 100000,
+    creditedUsd: app.creditedMillicents / 100000,
+    attributedCount: app.attributedCount,
+    upgraded, upgradeRequested,
     attributed: data.attributed,
     hasReferrer: data.hasReferrer,
     canApplyCode: !data.attributed && !data.hasReferrer,
   });
 });
+// Influencer upgrade application: attach socials to request a custom rate /
+// uncapped earnings. Keeps the user's active base 10% — no status downgrade.
 route("POST", "/v1/web/affiliate/apply", async (ctx: any) => {
   const user = await repo.userForSession(sessionFrom(ctx));
   if (!user) return json(401, { error: "not signed in" });
   const parsed = parseAffiliateSocials(ctx.body);
   if (parsed.error) return json(400, { error: parsed.error });
-  const created = await repo.submitAffiliateApplication(user.id, parsed.socials);
-  if (!created) return json(409, { error: "you've already applied" });
-  return json(200, { ok: true, status: created.status });
+  await repo.requestAffiliateUpgrade(user.id, parsed.socials);
+  return json(200, { ok: true });
 });
 route("POST", "/v1/web/affiliate-code", async (ctx: any) => {
   const user = await repo.userForSession(sessionFrom(ctx));
