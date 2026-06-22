@@ -698,6 +698,7 @@ async function renderSettings(view) {
         catch (e) { toast(e.message, true); }
       } }, d.serving ? "Pause ad serving" : "Resume ad serving")),
     h("p", { class: "hint" }, d.serving ? "Ads are live. Pausing stops /v1/ads from returning anything (propagates within ~15s)." : "Ad serving is paused. No ads are being delivered.")));
+  await pricingCard(view);
   const cfg = await tryApi("/v1/admin/config");
   if (cfg) view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Economics"),
@@ -757,6 +758,33 @@ function adjustForm() {
         toast("Adjustment posted"); uid.value = did.value = amt.value = note.value = "";
       } catch (e) { toast(e.message, true); }
     } }, "Post"));
+}
+
+// Advertiser pricing knobs — minimum (enforced floor), suggested (pre-fills the
+// form), and a top-bid anchor. The lander reads these from /v1/config.
+async function pricingCard(view) {
+  const p = await tryApi("/v1/admin/pricing");
+  if (!p) return; // endpoint not deployed yet — degrade gracefully
+  const dollar = (c) => (Number(c || 0) / 100).toFixed(2);
+  const minI = h("input", { type: "number", step: "0.01", min: "0.50", value: dollar(p.minBidCents) });
+  const sugI = h("input", { type: "number", step: "0.01", min: "0.50", value: dollar(p.suggestedBidCents) });
+  const topI = h("input", { type: "number", step: "0.01", min: "0", value: dollar(p.topBidAnchorCents) });
+  view.append(h("div", { class: "card" },
+    h("div", { class: "card-head" }, h("h2", {}, "Advertiser pricing"),
+      h("p", { class: "hint" }, `Shown on the advertiser page, per 1,000-impression block. Displayed “top bid” = the higher of your anchor and the current highest active bid (${usd((p.topActiveBidCents || 0) / 100)}). Minimum is floored at $0.50 (Stripe’s minimum).`)),
+    h("div", { class: "inline-form", style: "margin-top:6px" },
+      h("label", { class: "fld" }, "Minimum bid $", minI),
+      h("label", { class: "fld" }, "Suggested bid $", sugI),
+      h("label", { class: "fld" }, "Top-bid anchor $", topI),
+      h("button", { class: "btn btn-accent", onclick: async () => {
+        const cents = (el) => Math.round((parseFloat(el.value) || 0) * 100);
+        try {
+          await api("/v1/admin/pricing", { method: "POST", body: {
+            minBidCents: cents(minI), suggestedBidCents: cents(sugI), topBidAnchorCents: cents(topI),
+          } });
+          toast("Pricing saved"); route(true);
+        } catch (e) { toast(e.message, true); }
+      } }, "Save pricing"))));
 }
 
 // ── boot ─────────────────────────────────────────────────────────────────────

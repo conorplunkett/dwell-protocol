@@ -167,8 +167,9 @@ const blocksEl = document.getElementById("blocks");
 const fmt = (n) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n) => n.toLocaleString();
 
+let MIN_BID = 0.5; // overridden by loadPricing() from /v1/config
 function recalc() {
-  const price = Math.max(0.5, parseFloat(priceEl.value) || 0);
+  const price = Math.max(MIN_BID, parseFloat(priceEl.value) || 0);
   const blocks = Math.max(1, parseInt(blocksEl.value) || 0);
   const total = price * blocks;
   const imp = blocks * 1000;
@@ -259,6 +260,39 @@ async function loadLeaderboard() {
   }
 }
 loadLeaderboard();
+
+// Pull admin-tunable pricing (min / suggested / top bid) from /v1/pricing and
+// reflect it in the form + estimate. Falls back to the hardcoded defaults if
+// the API is unreachable.
+async function loadPricing() {
+  if (!API_BASE) return;
+  try {
+    const res = await fetch(`${API_BASE}/v1/pricing`);
+    if (!res.ok) return;
+    const c = await res.json();
+    const dollars = (cents, fallback) => (Number.isFinite(cents) ? cents / 100 : fallback);
+    const min = dollars(c.minBidCents, 0.5);
+    const suggested = dollars(c.suggestedBidCents, 5);
+    const top = dollars(c.topBidCents, 110);
+    const money = (n) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    MIN_BID = min;
+    const priceEl2 = document.getElementById("price");
+    if (priceEl2) {
+      priceEl2.min = min.toFixed(2);
+      priceEl2.value = suggested.toFixed(2); // pre-fill with the suggested bid
+    }
+    const setText = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    setText("price-min-hint", `(min ${money(min)})`);
+    setText("note-top", money(top));
+    setText("note-min", money(min));
+    setText("note-suggested", money(suggested));
+    if (typeof recalc === "function") recalc();
+  } catch (_) {
+    /* offline — keep the hardcoded defaults */
+  }
+}
+loadPricing();
 
 // Real advertiser checkout: create a campaign + redirect to Stripe.
 const adForm = document.querySelector(".adform");
