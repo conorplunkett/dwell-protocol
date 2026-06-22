@@ -145,6 +145,22 @@ if (adcolor && adcolorSwatch) {
   });
 }
 
+// --- Destination URL: accept bare domains by auto-adding https:// ---
+// The backend requires https://, so prepend the scheme when the advertiser
+// tabs out of the field (and again on submit), and upgrade a typed http://.
+function normalizeUrl(raw) {
+  const v = (raw || "").trim();
+  if (!v) return "";
+  if (/^https:\/\//i.test(v)) return v;
+  if (/^http:\/\//i.test(v)) return v.replace(/^http:\/\//i, "https://");
+  if (/^\/\//.test(v)) return "https:" + v; // protocol-relative //host
+  return "https://" + v;
+}
+const urlInput = document.querySelector('.adform input[name="url"]');
+if (urlInput) {
+  urlInput.addEventListener("blur", () => { urlInput.value = normalizeUrl(urlInput.value); });
+}
+
 // --- Live bid / estimate calculator ---
 const priceEl = document.getElementById("price");
 const blocksEl = document.getElementById("blocks");
@@ -252,10 +268,10 @@ if (adForm) {
     const stripeBtn = adForm.querySelector(".stripe-btn");
     const get = (sel) => adForm.querySelector(sel)?.value?.trim() || "";
     const payload = {
-      email: get('input[type="email"]'),
+      email: get('input[name="email"]'),
       adLine: document.getElementById("adline")?.value?.trim() || "",
-      url: get('input[type="url"]'),
-      brand: adForm.querySelector('input[placeholder="Linear"]')?.value?.trim() || "",
+      url: normalizeUrl(get('input[name="url"]')),
+      brand: get('input[name="organization"]'),
       color: document.getElementById("adcolor")?.value?.trim() || "",
       pricePerBlock: parseFloat(document.getElementById("price")?.value || "0"),
       blocks: parseInt(document.getElementById("blocks")?.value || "0", 10),
