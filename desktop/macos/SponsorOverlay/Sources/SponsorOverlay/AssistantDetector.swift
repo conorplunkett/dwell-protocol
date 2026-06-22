@@ -114,7 +114,7 @@ final class AssistantDetector {
 
         var scan = TreeScan(wantStar: target.hasThinkingStar)
         scanTree(window, depth: 0, into: &scan, target: target)
-        state.composerBounds = scan.composer.flatMap(frame(of:))
+        state.composerBounds = (scan.composer ?? scan.firstTextArea).flatMap(frame(of:))
         state.starBounds = scan.star.flatMap(frame(of:))
         state.generating = scan.hasStopButton || scan.star != nil
         cachedWindow = window
@@ -174,14 +174,18 @@ final class AssistantDetector {
     /// never message text. Web content nests deep inside the AXWebArea, hence
     /// the generous depth.
     private struct TreeScan {
+        /// Composer matched by placeholder hint (preferred).
         var composer: AXUIElement?
+        /// First AXTextArea seen, used as the composer when no hint matches
+        /// (ChatGPT exposes no placeholder on its input).
+        var firstTextArea: AXUIElement?
         var hasStopButton = false
         var star: AXUIElement?
         /// False for apps without a thinking star (ChatGPT), so the scan can
-        /// short-circuit once the composer + Stop button are found.
+        /// short-circuit once a composer + Stop button are found.
         var wantStar = true
         var isComplete: Bool {
-            composer != nil && hasStopButton && (!wantStar || star != nil)
+            (composer != nil || firstTextArea != nil) && hasStopButton && (!wantStar || star != nil)
         }
     }
 
@@ -192,20 +196,25 @@ final class AssistantDetector {
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
         let role = roleRef as? String
 
-        // Composer: a text-input element whose placeholder matches one of the
-        // target's hints (Claude: "prompt"; ChatGPT: "ask anything" / …). The
-        // placeholder surfaces under different AX attributes across apps —
-        // Claude puts it in the description, ChatGPT in AXPlaceholderValue — so
-        // check all of them. Restricted to text-input roles so an ordinary
-        // label can never be mistaken for the composer.
-        if scan.composer == nil, role == kAXTextAreaRole as String || role == kAXTextFieldRole as String {
-            for attr in [kAXDescriptionAttribute, kAXPlaceholderValueAttribute, kAXTitleAttribute] {
-                var v: CFTypeRef?
-                AXUIElementCopyAttributeValue(element, attr as CFString, &v)
-                if let s = (v as? String)?.lowercased(),
-                   target.composerHints.contains(where: { s.contains($0) }) {
-                    scan.composer = element
-                    break
+        // Composer: both apps expose it as an AXTextArea (Claude's tiptap
+        // editor reads placeholder "Prompt"; ChatGPT's exposes no placeholder
+        // at all). Prefer a text area whose placeholder matches a target hint —
+        // checking description, AXPlaceholderValue and title, since the
+        // placeholder lands in different attributes across apps — and otherwise
+        // fall back to the first AXTextArea in the window. Restricted to
+        // AXTextArea so the sidebar search (an AXTextField) can't be mistaken
+        // for the composer.
+        if role == kAXTextAreaRole as String {
+            if scan.firstTextArea == nil { scan.firstTextArea = element }
+            if scan.composer == nil {
+                for attr in [kAXDescriptionAttribute, kAXPlaceholderValueAttribute, kAXTitleAttribute] {
+                    var v: CFTypeRef?
+                    AXUIElementCopyAttributeValue(element, attr as CFString, &v)
+                    if let s = (v as? String)?.lowercased(),
+                       target.composerHints.contains(where: { s.contains($0) }) {
+                        scan.composer = element
+                        break
+                    }
                 }
             }
         }
@@ -296,7 +305,8 @@ final class AssistantDetector {
         scanTree(window, depth: 0, into: &scan, target: target)
         let starFrame = scan.star.flatMap(frame(of:)).map { "\($0)" }
             ?? (target.hasThinkingStar ? "not found" : "n/a")
-        print("probe: \(target.displayName) — generating=\(scan.hasStopButton || scan.star != nil) stopButton=\(scan.hasStopButton) composer=\(scan.composer != nil) star=\(starFrame)")
+        let composerFound = (scan.composer ?? scan.firstTextArea) != nil
+        print("probe: \(target.displayName) — generating=\(scan.hasStopButton || scan.star != nil) stopButton=\(scan.hasStopButton) composer=\(composerFound) star=\(starFrame)")
         let verbose = ProcessInfo.processInfo.environment["FREEAI_PROBE_VERBOSE"] == "1"
         dump(window, depth: 0, verbose: verbose)
     }

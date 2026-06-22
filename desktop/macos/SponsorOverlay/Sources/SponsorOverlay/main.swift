@@ -303,9 +303,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshAccessibilityState()
     }
 
-    // Brand "F$" wordmark for the menu bar, rendered once per state. Matches
-    // the design-system app icon (tools/gen-icons.py): white monospace "F$" on
-    // the vertical coral accent gradient.
+    // Brand "F$" wordmark for the menu bar, rendered once per state: a hollow
+    // wireframe outline of the app-icon chip (tools/gen-icons.py) as a
+    // monochrome template image, so the menu bar tints it (white on dark, dark
+    // on light) rather than the filled coral.
     private lazy var statusIconNormal = Self.makeStatusIcon(warning: false)
     private lazy var statusIconWarning = Self.makeStatusIcon(warning: true)
     /// Last permission state reflected in the menu-bar icon, so we only swap the
@@ -325,39 +326,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Draws the FreeAI "F$" menu-bar mark. Colors mirror theme.css
-    /// --accent-grad-a / --accent-grad-b (the palette source of truth); keep
-    /// them in sync by hand, like OverlayPanel's palette. Not a template image —
-    /// the coral is the brand, so it stays coral on light and dark menu bars.
-    /// When `warning` is set (Accessibility not granted) a small amber dot is
-    /// badged top-right, replacing the old "⚠" glyph.
+    /// Draws the FreeAI "F$" menu-bar mark as a hollow wireframe: a stroked
+    /// rounded-rect chip (the app-icon silhouette) with the monospace "F$"
+    /// inside. Returned as a template image — drawn in opaque black and tinted
+    /// by the menu bar, so it shows white on the usual dark bar and dark on a
+    /// light one, never coloured. When `warning` is set (Accessibility not
+    /// granted) a small dot is badged top-right, replacing the old "⚠" glyph.
     private static func makeStatusIcon(warning: Bool) -> NSImage {
-        let gradTop = NSColor(red: 0xe0/255.0, green: 0x8a/255.0, blue: 0x6a/255.0, alpha: 1) // --accent-grad-a #e08a6a
-        let gradBot = NSColor(red: 0xcf/255.0, green: 0x6b/255.0, blue: 0x4a/255.0, alpha: 1) // --accent-grad-b #cf6b4a
         let height: CGFloat = 16
-        let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .bold)
+        let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .bold)
         let text = "F$" as NSString
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+        // Template images are masked by alpha and tinted by the system, so the
+        // ink colour itself is irrelevant — draw in opaque black.
+        let ink = NSColor.black
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink]
         let textSize = text.size(withAttributes: attrs)
         let padX: CGFloat = 4
         let width = ceil(textSize.width) + padX * 2
 
         let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+            let lineWidth: CGFloat = 1
             let radius = height * 0.26 // matches the app-icon corner ratio
-            let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
-            // AppKit y-up: angle -90 points down, so the starting color (grad-a)
-            // sits at the top — same top→bottom coral gradient as the app icon.
-            NSGradient(starting: gradTop, ending: gradBot)?.draw(in: path, angle: -90)
+            let box = rect.insetBy(dx: lineWidth / 2, dy: lineWidth / 2)
+            let path = NSBezierPath(roundedRect: box, xRadius: radius, yRadius: radius)
+            path.lineWidth = lineWidth
+            ink.setStroke()
+            path.stroke() // hollow outline — no fill
             text.draw(at: NSPoint(x: padX, y: (height - textSize.height) / 2), withAttributes: attrs)
             if warning {
-                let d: CGFloat = 5
+                let d: CGFloat = 4
                 let dot = NSRect(x: rect.maxX - d - 0.5, y: rect.maxY - d - 0.5, width: d, height: d)
-                NSColor(red: 1, green: 0xd5/255.0, blue: 0x4a/255.0, alpha: 1).setFill() // --ov-chip-bg #ffd54a
+                ink.setFill()
                 NSBezierPath(ovalIn: dot).fill()
             }
             return true
         }
-        image.isTemplate = false
+        image.isTemplate = true
         return image
     }
 
