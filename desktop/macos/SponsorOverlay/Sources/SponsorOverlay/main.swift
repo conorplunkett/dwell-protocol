@@ -301,7 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let redeem = NSMenuItem(title: "Redeem credits…", action: #selector(openRedeem), keyEquivalent: "")
         redeem.target = self
         menu.addItem(redeem)
-        let setup = NSMenuItem(title: "Set Up FreeAI…", action: #selector(showSetup), keyEquivalent: "")
+        let setup = NSMenuItem(title: "Setup", action: #selector(showSetup), keyEquivalent: "")
         setup.target = self
         menu.addItem(setup)
         let updates = NSMenuItem(title: "Check for Updates…",
