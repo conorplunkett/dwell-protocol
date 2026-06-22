@@ -533,36 +533,41 @@ const fakeMailer = {
       (await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${inviterSess}` })).body.needsReferral,
       true, "new user needs to refer a friend first");
 
-    // can't refer your own email
-    const self = await api("POST", "/v1/web/referrals/invite", { email: "inviter@example.com" },
+    // can't invite your own email
+    const self = await api("POST", "/v1/web/affiliate/invite", { email: "inviter@example.com" },
       { Authorization: `Bearer ${inviterSess}` });
     assert.strictEqual(self.status, 400);
 
-    // a failed self-refer doesn't clear the gate
+    // a failed self-invite doesn't clear the gate
     assert.strictEqual(
       (await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${inviterSess}` })).body.needsReferral,
       true, "rejected invite leaves the gate up");
 
     // a malformed address is rejected too
     assert.strictEqual(
-      (await api("POST", "/v1/web/referrals/invite", { email: "nope" }, { Authorization: `Bearer ${inviterSess}` })).status,
+      (await api("POST", "/v1/web/affiliate/invite", { email: "nope" }, { Authorization: `Bearer ${inviterSess}` })).status,
       400);
 
-    // invite a friend → email goes out and the invite is recorded as 'sent'
-    const inv = await api("POST", "/v1/web/referrals/invite", { email: "invitee@example.com" },
+    // invite a friend to your crew → email goes out and the invite is recorded as 'sent'
+    const inv = await api("POST", "/v1/web/affiliate/invite", { email: "invitee@example.com" },
       { Authorization: `Bearer ${inviterSess}` });
     assert.strictEqual(inv.status, 200);
+    assert.strictEqual(inv.body.sent, true, "crew invite reports sent:true");
     assert.strictEqual(inv.body.invite.status, "sent");
 
     // a valid invite clears the onboarding gate — the friend needn't sign up
     assert.strictEqual(
       (await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${inviterSess}` })).body.needsReferral,
-      false, "one valid invite unlocks the dashboard");
+      false, "one valid crew invite unlocks the dashboard");
 
+    // the crew invite went out via the crew-invite mailer (rewardPct, not $20)
     const invMail = mailbox.at(-1);
     assert.strictEqual(invMail.to, "invitee@example.com");
-    const inviterCode = (await api("GET", "/v1/web/referrals", undefined, { Authorization: `Bearer ${inviterSess}` })).body.code;
-    assert.ok(invMail.link.includes(`ref=${inviterCode}`), "invite link carries the referrer's code");
+    assert.ok(invMail.rewardPct !== undefined, "crew invite uses sendCrewInviteEmail");
+    // the invite link carries the inviter's affiliate code so the friend is
+    // attributed to their crew
+    const inviterCode = (await api("GET", "/v1/web/affiliate", undefined, { Authorization: `Bearer ${inviterSess}` })).body.code;
+    assert.ok(invMail.link.includes(`ref=${inviterCode}`), "invite link carries the inviter's affiliate code");
 
     // dashboard now shows the invite under the 'invited' stage, with the email
     // masked so the page never leaks the full address

@@ -507,7 +507,7 @@ $("onboard-form").addEventListener("submit", async (e) => {
   // rejects the user's own email. Both invites must be accepted before the
   // dashboard unlocks.
   for (const email of [email1, email2]) {
-    const { status, body } = await apiPost("/v1/web/referrals/invite", { email });
+    const { status, body } = await apiPost("/v1/web/affiliate/invite", { email });
     if (status === 401) { localStorage.removeItem(SESSION_KEY); location.reload(); return; }
     if (status !== 200) {
       btn.disabled = false;

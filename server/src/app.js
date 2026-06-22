@@ -782,6 +782,35 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     });
   });
 
+  // Invite a friend to your crew from the website (session-authed mirror of the
+  // device-scoped /v1/me/affiliate/invite). Sends the inviter's affiliate link so
+  // the friend is attributed to them — earning the affiliate's cut forever. This
+  // also writes the referral_invites row that satisfies the onboarding gate.
+  route("POST", "/v1/web/affiliate/invite", async (req, res, body) => {
+    const user = await repo.userForSession(sessionFrom(req, body));
+    if (!user) return json(res, 401, { error: "not signed in" });
+    const email = String(body?.email || "").trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return json(res, 400, { error: "valid email required" });
+    }
+    if (email.toLowerCase() === String(user.email || "").toLowerCase()) {
+      return json(res, 400, { error: "you can't invite your own email" });
+    }
+    const aff = await repo.getOrCreateAffiliate(user.id);
+    const link = `${config.siteUrl}/redeem.html?ref=${aff.code}`;
+    const invite = await repo.createReferralInvite(user.id, email, aff.code);
+    await mailer.sendCrewInviteEmail(email, {
+      inviterEmail: user.email,
+      link,
+      rewardPct: config.affiliateRewardBps / 100,
+    });
+    json(res, 200, {
+      ok: true,
+      sent: true,
+      invite: { email: invite.email, status: invite.status, createdAt: invite.sent_at },
+    });
+  });
+
   // Influencer upgrade application: attach socials to request a custom rate /
   // uncapped earnings. Keeps the user's active base 10% — no status downgrade.
   route("POST", "/v1/web/affiliate/apply", async (req, res, body) => {
