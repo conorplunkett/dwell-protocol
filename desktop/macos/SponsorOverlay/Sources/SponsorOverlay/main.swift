@@ -17,10 +17,22 @@ import AppKit
 import Sparkle
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    // Reads SUFeedURL / SUPublicEDKey from Info.plist and manages background
-    // update checks; wired to the "Check for Updates…" menu item below.
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    // Sparkle only runs when it's actually configured: a real (non-placeholder)
+    // SUPublicEDKey + https feed in the app bundle's Info.plist. Running via
+    // `swift run` there's no bundled Info.plist, and the shipped placeholder key
+    // isn't valid yet — in both cases starting the updater throws "the updater
+    // failed to start", so we skip it and hide the menu item until it's set up.
+    static var sparkleConfigured: Bool {
+        guard let info = Bundle.main.infoDictionary,
+              let feed = info["SUFeedURL"] as? String, feed.hasPrefix("https://"),
+              let key = info["SUPublicEDKey"] as? String,
+              !key.isEmpty, !key.hasPrefix("AAAA") else { return false }
+        return true
+    }
+    private let updaterController: SPUStandardUpdaterController? =
+        AppDelegate.sparkleConfigured
+            ? SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+            : nil
 
     private let demoMode = ProcessInfo.processInfo.environment["FREEAI_DEMO"] == "1"
     // FREEAI_PROBE=1: every 2s, dump the labeled elements of the focused
@@ -304,11 +316,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let setup = NSMenuItem(title: "Setup", action: #selector(showSetup), keyEquivalent: "")
         setup.target = self
         menu.addItem(setup)
-        let updates = NSMenuItem(title: "Check for Updates…",
-                                 action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
-                                 keyEquivalent: "")
-        updates.target = updaterController
-        menu.addItem(updates)
+        // Only offer updates when Sparkle is actually configured — otherwise it
+        // throws "the updater failed to start".
+        if let updaterController {
+            let updates = NSMenuItem(title: "Check for Updates…",
+                                     action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+                                     keyEquivalent: "")
+            updates.target = updaterController
+            menu.addItem(updates)
+        }
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem.menu = menu
@@ -477,7 +493,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 320),
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        w.title = "Set up FreeAI"
+        w.title = "Setup"
         w.isReleasedWhenClosed = false
         w.center()
 
