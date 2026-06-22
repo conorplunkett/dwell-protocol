@@ -171,7 +171,7 @@
         <form class="adform" onsubmit="return false;">
           <label class="field">
             <span class="flabel">Email <em>(required)</em></span>
-            <input type="email" placeholder="you@example.com" required />
+            <input type="email" name="email" autocomplete="email" placeholder="you@example.com" required />
           </label>
 
           <label class="field">
@@ -180,13 +180,13 @@
           </label>
 
           <label class="field">
-            <span class="flabel">Destination URL (https://)</span>
-            <input type="url" placeholder="https://linear.app/" />
+            <span class="flabel">Destination URL <em>(https:// optional)</em></span>
+            <input type="url" name="url" autocomplete="url" placeholder="https://linear.app/" />
           </label>
 
           <label class="field">
             <span class="flabel">Brand name <em>(optional, shown on leaderboard)</em></span>
-            <input type="text" placeholder="Linear" />
+            <input type="text" name="organization" autocomplete="organization" placeholder="Linear" />
           </label>
 
           <label class="field">
