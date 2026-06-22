@@ -1371,6 +1371,38 @@ function createRepo(pool: any) {
       );
     },
 
+    // Advertiser pricing knobs (admin-tunable, all in cents). Best-effort: a
+    // missing `settings` table/row falls back to defaults so checkout never
+    // breaks. minBid is floored at 50 (Stripe's USD minimum).
+    async getPricing() {
+      const defaults = { minBidCents: 50, suggestedBidCents: 500, topBidAnchorCents: 11000 };
+      try {
+        const { rows } = await pool.query("select value from settings where key = 'pricing'");
+        const v = (rows[0] && rows[0].value) || {};
+        const pick = (n: any, d: number) => (Number.isFinite(Number(n)) ? Math.round(Number(n)) : d);
+        return {
+          minBidCents: Math.max(50, pick(v.minBidCents, defaults.minBidCents)),
+          suggestedBidCents: pick(v.suggestedBidCents, defaults.suggestedBidCents),
+          topBidAnchorCents: Math.max(0, pick(v.topBidAnchorCents, defaults.topBidAnchorCents)),
+        };
+      } catch { return defaults; }
+    },
+    async setPricing(next: any) {
+      await pool.query(
+        `insert into settings (key, value, updated_at) values ('pricing', $1::jsonb, now())
+         on conflict (key) do update set value = excluded.value, updated_at = now()`,
+        [JSON.stringify(next)]
+      );
+    },
+    // Highest bid among currently-active campaigns (0 if none). Drives the
+    // live-override half of the lander's "top bid".
+    async topActiveBidCents() {
+      try {
+        const { rows } = await pool.query("select coalesce(max(price_per_block_cents),0)::int as top from campaigns where status = 'active'");
+        return rows[0]?.top || 0;
+      } catch { return 0; }
+    },
+
     // KPI tiles + counts for the Overview tab. All money returned as raw
     // millicents (ledger) or cents (gift_redemptions); the edge route converts.
     async adminOverview() {
@@ -1831,6 +1863,15 @@ function parseAffiliateSocials(body: any): { socials?: any; error?: string } {
 // ── health & catalog ──
 route("GET", "/healthz", async () => json(200, { ok: true }));
 route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: config.revenueShare }); });
+
+// Advertiser pricing for the lander (min / suggested / top). Kept off /v1/config
+// so the extension's frequent config polls stay query-free. top = max(anchor,
+// highest active bid).
+route("GET", "/v1/pricing", async () => {
+  const pricing = await repo.getPricing();
+  const topBidCents = Math.max(pricing.topBidAnchorCents, await repo.topActiveBidCents());
+  return json(200, { minBidCents: pricing.minBidCents, suggestedBidCents: pricing.suggestedBidCents, topBidCents });
+});
 route("GET", "/v1/ads", async () => {
   await syncServing();
   const ads = serving ? await repo.activeAds() : [];
@@ -1898,7 +1939,8 @@ route("POST", "/v1/checkout", async (ctx: any) => {
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(400, { error: "valid email required" });
   if (!isCleanAdLine(adLine)) return json(400, { error: "ad line must be 3-60 printable chars, no < >" });
   if (!/^https:\/\/[^\s]+$/.test(url || "")) return json(400, { error: "https url required" });
-  if (!(priceCents >= 50)) return json(400, { error: "min bid is $0.50 per block" });
+  const { minBidCents } = await repo.getPricing();
+  if (!(priceCents >= minBidCents)) return json(400, { error: `min bid is $${(minBidCents / 100).toFixed(2)} per block` });
   if (!(nBlocks >= 1)) return json(400, { error: "at least 1 block" });
   const campaignId = await repo.createPendingCampaign({ email, brand, adLine, url, category, color: normalizeHexColor(color), pricePerBlockCents: priceCents, blocks: nBlocks, showOnLeaderboard });
   const session = await stripe.createCheckoutSession({
@@ -2471,6 +2513,27 @@ route("POST", "/v1/admin/killswitch", async (ctx: any) => {
 route("POST", "/v1/admin/payouts", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   return json(200, await runPayouts());
+});
+
+// ── advertiser pricing (min / suggested / top-bid anchor) ──
+route("GET", "/v1/admin/pricing", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const pricing = await repo.getPricing();
+  return json(200, { ...pricing, topActiveBidCents: await repo.topActiveBidCents() });
+});
+route("POST", "/v1/admin/pricing", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const cur = await repo.getPricing();
+  const b = ctx.body || {};
+  const pick = (n: any, d: number) => (Number.isFinite(Number(n)) ? Math.round(Number(n)) : d);
+  const next = {
+    minBidCents: Math.max(50, pick(b.minBidCents, cur.minBidCents)),
+    suggestedBidCents: pick(b.suggestedBidCents, cur.suggestedBidCents),
+    topBidAnchorCents: Math.max(0, pick(b.topBidAnchorCents, cur.topBidAnchorCents)),
+  };
+  next.suggestedBidCents = Math.max(next.minBidCents, next.suggestedBidCents); // suggested ≥ min
+  await repo.setPricing(next);
+  return json(200, next);
 });
 
 // ── admin dashboard (read + management) ──

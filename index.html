@@ -209,7 +209,7 @@
 
           <div class="grid2">
             <label class="field">
-              <span class="flabel">Price per block <em>(min $0.50)</em></span>
+              <span class="flabel">Price per block <em id="price-min-hint">(min $0.50)</em></span>
               <input type="number" id="price" min="0.50" step="0.01" value="5.00" />
             </label>
             <label class="field">
@@ -229,8 +229,9 @@
               <div class="est-row"><strong id="est-imp">1,000</strong><span>impressions</span></div>
             </div>
             <p class="est-note">
-              Top bid is <strong>$110.00 per 1,000 impressions</strong> — bid above it to
-              take #1, or any amount from $0.50 to join the queue.
+              Top bid is <strong id="note-top">$110.00</strong> per block — outbid it to take #1,
+              or bid from <strong id="note-min">$0.50</strong> to join the queue.
+              Suggested: <strong id="note-suggested">$5.00</strong>.
             </p>
           </div>
 
