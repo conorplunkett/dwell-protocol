@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpMenuBar()
+        overlay.verticalLift = cardLift
         requestAccessibilityIfNeeded()
 
         if probeMode {
@@ -289,9 +290,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pause = NSMenuItem(title: "Pause sponsor messages", action: #selector(togglePause(_:)), keyEquivalent: "p")
         pause.target = self
         menu.addItem(pause)
-        let dash = NSMenuItem(title: "Why am I seeing this?", action: #selector(openPrivacy), keyEquivalent: "")
-        dash.target = self
-        menu.addItem(dash)
+        // Live slider so users place the card where it suits their window
+        // (everyone runs the assistant full-width, so the right height varies).
+        menu.addItem(makeOffsetMenuItem())
+        let redeem = NSMenuItem(title: "Redeem credits…", action: #selector(openRedeem), keyEquivalent: "")
+        redeem.target = self
+        menu.addItem(redeem)
         let updates = NSMenuItem(title: "Check for Updates…",
                                  action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
                                  keyEquivalent: "")
@@ -375,8 +379,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.title = adsPaused ? "Resume sponsor messages" : "Pause sponsor messages"
     }
 
-    @objc private func openPrivacy() {
-        NSWorkspace.shared.open(URL(string: "https://freeai.fyi/privacy.html")!)
+    @objc private func openRedeem() {
+        NSWorkspace.shared.open(URL(string: "https://freeai.fyi/redeem")!)
+    }
+
+    // MARK: sponsor-card height offset (user setting)
+
+    /// Extra points the card is lifted above the composer. Persisted so it
+    /// survives launches; defaults to a clearly-raised position.
+    private var cardLift: CGFloat = {
+        CGFloat(UserDefaults.standard.object(forKey: "cardLift") as? Double ?? 160)
+    }()
+
+    /// A label + slider embedded in the menu so the height is adjustable live.
+    private func makeOffsetMenuItem() -> NSMenuItem {
+        let width: CGFloat = 220
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 46))
+        let label = NSTextField(labelWithString: "Sponsor card height")
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = .secondaryLabelColor
+        label.frame = NSRect(x: 14, y: 26, width: width - 28, height: 16)
+        let slider = NSSlider(value: Double(cardLift), minValue: 0, maxValue: 400,
+                              target: self, action: #selector(cardLiftChanged(_:)))
+        slider.isContinuous = true
+        slider.frame = NSRect(x: 14, y: 4, width: width - 28, height: 20)
+        container.addSubview(label)
+        container.addSubview(slider)
+        let item = NSMenuItem()
+        item.view = container
+        return item
+    }
+
+    @objc private func cardLiftChanged(_ sender: NSSlider) {
+        cardLift = CGFloat(sender.doubleValue)
+        UserDefaults.standard.set(Double(cardLift), forKey: "cardLift")
+        overlay.verticalLift = cardLift
+        repositionOverlay()
+    }
+
+    /// Re-anchor the visible card immediately (e.g. after the slider moves)
+    /// using the last known geometry, so the change is seen without waiting for
+    /// the next poll.
+    private func repositionOverlay() {
+        guard overlay.isShown, let bounds = lastShownBounds else { return }
+        overlay.show(over: bounds, composer: lastComposerBounds, star: lastStarBounds)
     }
 
     private func requestAccessibilityIfNeeded() {

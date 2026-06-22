@@ -47,6 +47,10 @@ final class OverlayPanelController {
     /// Content-fitted width, recomputed whenever the card changes.
     private(set) var panelWidth: CGFloat = 360
     var onClick: ((SponsorCard) -> Void)?
+    /// Extra points the card is raised above its composer/bottom anchor,
+    /// adjustable from the menu so users place it to taste. Clamped in `show`
+    /// so it can never leave the top of the window.
+    var verticalLift: CGFloat = 0
 
     var isShown: Bool { panel?.isVisible ?? false }
 
@@ -75,15 +79,18 @@ final class OverlayPanelController {
         var x: CGFloat
         let axTop: CGFloat // card's top edge in AX (top-left-origin) coordinates
         if let star, appBounds.intersects(star) {
+            // Sit on the star; the lift doesn't apply — it tracks the star row.
             x = star.minX
             axTop = star.midY - Self.height / 2
         } else if let composer, composer.minY > appBounds.minY {
             x = composer.minX
-            axTop = composer.minY - Self.anchorGap - Self.height
+            axTop = composer.minY - Self.anchorGap - Self.height - verticalLift
         } else {
             x = appBounds.midX - width / 2
-            axTop = appBounds.maxY - Self.bottomInset - Self.height
+            axTop = appBounds.maxY - Self.bottomInset - Self.height - verticalLift
         }
+        // The lift must never push the card off the top of the window.
+        axTop = max(appBounds.minY + 8, axTop)
         // Keep the pill inside the assistant window horizontally.
         let lower = appBounds.minX + 16
         let upper = max(lower, appBounds.maxX - width - 16)
