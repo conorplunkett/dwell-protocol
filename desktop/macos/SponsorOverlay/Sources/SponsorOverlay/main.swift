@@ -271,6 +271,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleClick(campaignId: String) {
+        // Paused means no earnings: ignore clicks too. The card fades out over
+        // ~2s after a pause, so without this a click in that window would still
+        // be credited.
+        guard !adsPaused else { return }
         guard let ad = currentAd, ad.id == campaignId else { return }
         if demoMode {
             NSLog("[freeai] click: campaign=%@", campaignId)
