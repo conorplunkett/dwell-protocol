@@ -212,6 +212,42 @@ async function refreshAll() {
   await flushEvents();
 }
 
+// ---------- crew (referrals) ----------
+// The popup's "Your crew" section. Referral data is user-scoped, so it only
+// resolves once the extension is linked to a signed-in account (a web-session
+// token kept in storage under `webSession`). The popup is anonymous today, so
+// with no session this returns the signed-out state and the popup shows the
+// invite CTA. Mapped from GET /v1/web/referrals; see supabase/functions/api.
+async function getCrew() {
+  const { webSession } = await chrome.storage.local.get(["webSession"]);
+  if (!webSession || typeof fetch !== "function") return { signedIn: false, friends: [], fromFriendsUsd: 0 };
+  try {
+    const res = await fetch(`${API_BASE}/v1/web/referrals`, {
+      headers: { Authorization: `Bearer ${webSession}` },
+    });
+    if (!res.ok) return { signedIn: false, friends: [], fromFriendsUsd: 0 };
+    const data = await res.json();
+    const labels = { invited: "invited", pending: "signed up", rewarded: "earning", capped: "capped" };
+    const subs = {
+      invited: "invite sent",
+      pending: "signed up — redeem to unlock your bonus",
+      rewarded: "redeemed — bonus paid",
+      capped: "referral cap reached",
+    };
+    const friends = (Array.isArray(data.referrals) ? data.referrals : []).map((r) => ({
+      name: r.email,
+      status: r.status,
+      statusLabel: labels[r.status] || r.status,
+      sub: subs[r.status] || "",
+      youUsd: r.status === "rewarded" ? data.rewardUsd || 0 : 0,
+      cutLabel: "referral bonus",
+    }));
+    return { signedIn: true, friends, fromFriendsUsd: data.creditsEarnedUsd || 0 };
+  } catch (_) {
+    return { signedIn: false, friends: [], fromFriendsUsd: 0 };
+  }
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   const has = await chrome.storage.local.get("installedAt");
   if (!has.installedAt) {
@@ -236,6 +272,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     switch (msg.type) {
       case "BB_GET_STATE":
         sendResponse(await getState());
+        break;
+      case "BB_GET_CREW":
+        sendResponse(await getCrew());
         break;
       case "BB_GET_ADS": {
         const s = await getState();
