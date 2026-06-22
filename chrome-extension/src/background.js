@@ -232,26 +232,28 @@ async function getCrew() {
   }
 }
 
-// Kick off email sign-in from the popup: link this device to a user account via a
-// magic link. authed by the device credentials. The click in the email hits
-// /v1/auth/verify, which sets devices.user_id — after which getCrew() goes linked.
-async function requestSignInLink(email) {
-  if (typeof fetch !== "function") return { ok: false };
+// Link this device to the freeai.fyi account whose web session the link bridge
+// (src/link.js) found in the site's localStorage. Authed by device creds + that
+// web session; the server sets devices.user_id and auto-enrolls the affiliate.
+// We remember the last session we linked so we don't re-POST on every poll tick;
+// the server call is idempotent regardless (service-worker eviction is fine).
+let lastLinkedSession = null;
+async function linkDevice(session) {
+  if (!session || typeof fetch !== "function") return { ok: false };
+  if (session === lastLinkedSession) return { ok: true, already: true };
   const device = await getOrRegisterDevice();
   if (!device) return { ok: false, error: "no device" };
   try {
-    const res = await fetch(`${API_BASE}/v1/auth/request-link`, {
+    const res = await fetch(`${API_BASE}/v1/devices/link`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, deviceId: device.deviceId, deviceKey: device.deviceKey }),
+      body: JSON.stringify({ deviceId: device.deviceId, deviceKey: device.deviceKey, session }),
     });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      return { ok: false, error: data.error || "couldn't send the link" };
-    }
-    return { ok: true, sent: true };
+    if (!res.ok) return { ok: false };
+    lastLinkedSession = session;
+    return { ok: true };
   } catch (_) {
-    return { ok: false, error: "network error" };
+    return { ok: false };
   }
 }
 
@@ -283,8 +285,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case "BB_GET_CREW":
         sendResponse(await getCrew());
         break;
-      case "BB_SIGNIN":
-        sendResponse(await requestSignInLink((msg.email || "").trim()));
+      case "BB_LINK":
+        sendResponse(await linkDevice((msg.session || "").trim()));
         break;
       case "BB_GET_ADS": {
         const s = await getState();

@@ -23,6 +23,7 @@
   "permissions": ["storage", "alarms"],
   "host_permissions": [
     "https://wpjfhezklpczxzocgxsb.supabase.co/*",
+    "https://freeai.fyi/*",
     "https://claude.ai/*",
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
@@ -47,6 +48,11 @@
       ],
       "js": ["src/ads.js", "src/content.js"],
       "css": ["src/inject.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://freeai.fyi/*"],
+      "js": ["src/link.js"],
       "run_at": "document_idle"
     }
   ]
