@@ -294,6 +294,31 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     });
   });
 
+  // Device-scoped affiliate "crew": the extension popup's earn-with-friends
+  // panel. Anonymous until the device is linked to a user (via the magic link
+  // from /v1/auth/request-link); once linked, the user is auto-enrolled as an
+  // approved affiliate and this returns their invite link plus the per-friend 10%
+  // breakdown — device credentials only, no web session.
+  route("GET", "/v1/me/affiliate", async (req, res, body, rawBody, query) => {
+    const device = await authDeviceFrom(null, query);
+    if (!device) return json(res, 401, { error: "bad device credentials" });
+    const rewardPct = config.affiliateRewardBps / 100;
+    const user = await repo.userForDevice(device.id);
+    if (!user) return json(res, 200, { linked: false, rewardPct });
+    const aff = await repo.getOrCreateAffiliate(user.id);
+    const crew = await repo.affiliateCrew(aff.id, user.id);
+    json(res, 200, {
+      linked: true,
+      email: user.email,
+      code: aff.code,
+      link: `${config.siteUrl}/redeem.html?ref=${aff.code}`,
+      rewardPct,
+      attributedCount: crew.count,
+      creditedUsd: crew.creditedMillicents / 100000,
+      friends: crew.friends,
+    });
+  });
+
   // ---------- gift card redemptions ----------
   route("GET", "/v1/giftcards", async (req, res) => {
     json(res, 200, {

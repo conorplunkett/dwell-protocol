@@ -435,6 +435,37 @@ function createRepo(pool: any) {
     );
   }
 
+  // Mint a unique affiliate code (unique across users.referral_code AND
+  // affiliates.code) onto an affiliate row that has none yet; returns the code
+  // (existing or freshly minted). Shared by approveAffiliate and the self-serve
+  // getOrCreateAffiliate path so the two never drift.
+  async function mintAffiliateCode(affiliateId: string) {
+    const ex = await pool.query("select code from affiliates where id = $1", [affiliateId]);
+    if (ex.rows[0]?.code) return ex.rows[0].code;
+    for (let i = 0; i < 8; i++) {
+      const cand = generateReferralCode();
+      const clash = await pool.query(
+        `select 1 from users where upper(referral_code) = $1
+         union all select 1 from affiliates where upper(code) = $1`,
+        [cand]
+      );
+      if (clash.rows[0]) continue;
+      try {
+        const r = await pool.query(
+          "update affiliates set code = $2 where id = $1 and code is null returning code",
+          [affiliateId, cand]
+        );
+        if (r.rows[0]) return r.rows[0].code;
+        const re = await pool.query("select code from affiliates where id = $1", [affiliateId]);
+        if (re.rows[0]?.code) return re.rows[0].code;
+      } catch (err: any) {
+        if (err.code === "23505") continue;
+        throw err;
+      }
+    }
+    throw new Error("could not allocate affiliate code");
+  }
+
   return {
     async registerDevice() {
       const secret = crypto.randomBytes(32).toString("hex");
@@ -1162,39 +1193,75 @@ function createRepo(pool: any) {
       return rows;
     },
     async approveAffiliate(affiliateId: string) {
-      const existing = await pool.query("select code from affiliates where id = $1", [affiliateId]);
+      const existing = await pool.query("select id from affiliates where id = $1", [affiliateId]);
       if (!existing.rows[0]) return null;
-      let code = existing.rows[0].code;
-      if (!code) {
-        for (let i = 0; i < 8; i++) {
-          const cand = generateReferralCode();
-          const clash = await pool.query(
-            `select 1 from users where upper(referral_code) = $1
-             union all select 1 from affiliates where upper(code) = $1`,
-            [cand]
-          );
-          if (clash.rows[0]) continue;
-          try {
-            const r = await pool.query(
-              "update affiliates set code = $2 where id = $1 and code is null returning code",
-              [affiliateId, cand]
-            );
-            if (r.rows[0]) { code = r.rows[0].code; break; }
-            const re = await pool.query("select code from affiliates where id = $1", [affiliateId]);
-            if (re.rows[0]?.code) { code = re.rows[0].code; break; }
-          } catch (err: any) {
-            if (err.code === "23505") continue;
-            throw err;
-          }
-        }
-        if (!code) throw new Error("could not allocate affiliate code");
-      }
+      const code = await mintAffiliateCode(affiliateId);
       const upd = await pool.query(
         `update affiliates set status = 'approved', approved_at = coalesce(approved_at, now()),
             review_note = null where id = $1 returning id`,
         [affiliateId]
       );
       return upd.rows[0] ? { id: affiliateId, code } : null;
+    },
+    // Self-serve affiliate enrollment for the extension "crew" feature. Ensures
+    // the user has an APPROVED affiliate row with a code — no social-handle
+    // application — idempotently, and returns { id, code }. Auto-approving here
+    // is the self-serve model: every signed-in earner can invite friends and
+    // collect their 10% without admin review.
+    async getOrCreateAffiliate(userId: string) {
+      const ins = await pool.query(
+        `insert into affiliates (user_id, status, approved_at)
+         values ($1, 'approved', now())
+         on conflict (user_id) do nothing
+         returning id`,
+        [userId]
+      );
+      let id = ins.rows[0]?.id;
+      if (!id) {
+        const ex = await pool.query("select id, status from affiliates where user_id = $1", [userId]);
+        id = ex.rows[0].id;
+        if (ex.rows[0].status !== "approved") {
+          await pool.query(
+            "update affiliates set status = 'approved', approved_at = coalesce(approved_at, now()) where id = $1",
+            [id]
+          );
+        }
+      }
+      const code = await mintAffiliateCode(id);
+      return { id, code };
+    },
+    // Per-friend crew breakdown for an affiliate: each attributed friend, the
+    // credits they've generated, and the affiliate's 10% cut earned from them.
+    async affiliateCrew(affiliateId: string, affiliateUserId: string) {
+      const credited = await pool.query(
+        "select coalesce(sum(amount_millicents), 0)::bigint as c from ledger where entry_type = 'affiliate_credit' and user_id = $1",
+        [affiliateUserId]
+      );
+      const { rows } = await pool.query(
+        `select u.email,
+          coalesce((select sum(amount_millicents) from ledger l
+                     where l.entry_type in ('impression_credit','click_credit')
+                       and (l.user_id = aa.affiliated_user_id
+                            or l.device_id in (select id from devices where user_id = aa.affiliated_user_id))), 0)::bigint as generated,
+          coalesce((select sum(amount_millicents) from ledger l
+                     where l.entry_type = 'affiliate_credit' and l.user_id = $2
+                       and l.meta->>'affiliatedUserId' = aa.affiliated_user_id::text), 0)::bigint as your_cut
+         from affiliate_attributions aa
+         join users u on u.id = aa.affiliated_user_id
+        where aa.affiliate_id = $1
+        order by your_cut desc, generated desc
+        limit 50`,
+        [affiliateId, affiliateUserId]
+      );
+      return {
+        count: rows.length,
+        creditedMillicents: Number(credited.rows[0].c),
+        friends: rows.map((r: any) => ({
+          name: maskEmail(r.email),
+          generatedUsd: Number(r.generated) / 100000,
+          youUsd: Number(r.your_cut) / 100000,
+        })),
+      };
     },
     async rejectAffiliate(affiliateId: string, note: string) {
       const { rows } = await pool.query(
@@ -1861,6 +1928,31 @@ route("GET", "/v1/me/earnings", async (ctx: any) => {
     earnedUsd: e.earnedMillicents / 100000, paidOutUsd: e.paidOutMillicents / 100000,
     redeemedUsd: e.redeemedMillicents / 100000, balanceUsd: e.balanceMillicents / 100000,
     payoutThresholdUsd: config.payoutThresholdCents / 100,
+  });
+});
+
+// Device-scoped affiliate "crew": the extension popup's earn-with-friends panel.
+// Anonymous until the device is linked to a user (via the magic link from
+// /v1/auth/request-link). Once linked, the user is auto-enrolled as an approved
+// affiliate and this returns their invite code/link plus the per-friend breakdown
+// — no web session needed, just device credentials.
+route("GET", "/v1/me/affiliate", async (ctx: any) => {
+  const device = await authDeviceFrom(ctx, true);
+  if (!device) return json(401, { error: "bad device credentials" });
+  const rewardPct = config.affiliateRewardBps / 100;
+  const user = await repo.userForDevice(device.id);
+  if (!user) return json(200, { linked: false, rewardPct });
+  const aff = await repo.getOrCreateAffiliate(user.id);
+  const crew = await repo.affiliateCrew(aff.id, user.id);
+  return json(200, {
+    linked: true,
+    email: user.email,
+    code: aff.code,
+    link: `${config.siteUrl}/redeem.html?ref=${aff.code}`,
+    rewardPct,
+    attributedCount: crew.count,
+    creditedUsd: crew.creditedMillicents / 100000,
+    friends: crew.friends,
   });
 });
 

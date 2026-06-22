@@ -212,39 +212,46 @@ async function refreshAll() {
   await flushEvents();
 }
 
-// ---------- crew (referrals) ----------
-// The popup's "Your crew" section. Referral data is user-scoped, so it only
-// resolves once the extension is linked to a signed-in account (a web-session
-// token kept in storage under `webSession`). The popup is anonymous today, so
-// with no session this returns the signed-out state and the popup shows the
-// invite CTA. Mapped from GET /v1/web/referrals; see supabase/functions/api.
+// ---------- crew (affiliate) ----------
+// The popup's "earn with your friends" panel. The extension stays anonymous; the
+// device links to a user via the magic link from /v1/auth/request-link. Once
+// linked, the user is auto-enrolled as an approved affiliate, and the
+// device-scoped /v1/me/affiliate returns the invite link + per-friend 10%
+// breakdown — no web session, just device credentials. While unlinked it returns
+// { linked:false } and the popup shows the sign-in CTA.
 async function getCrew() {
-  const { webSession } = await chrome.storage.local.get(["webSession"]);
-  if (!webSession || typeof fetch !== "function") return { signedIn: false, friends: [], fromFriendsUsd: 0 };
+  const device = await getDevice();
+  if (!device || typeof fetch !== "function") return { linked: false, friends: [] };
   try {
-    const res = await fetch(`${API_BASE}/v1/web/referrals`, {
-      headers: { Authorization: `Bearer ${webSession}` },
-    });
-    if (!res.ok) return { signedIn: false, friends: [], fromFriendsUsd: 0 };
-    const data = await res.json();
-    const labels = { invited: "invited", pending: "signed up", rewarded: "earning", capped: "capped" };
-    const subs = {
-      invited: "invite sent",
-      pending: "signed up — redeem to unlock your bonus",
-      rewarded: "redeemed — bonus paid",
-      capped: "referral cap reached",
-    };
-    const friends = (Array.isArray(data.referrals) ? data.referrals : []).map((r) => ({
-      name: r.email,
-      status: r.status,
-      statusLabel: labels[r.status] || r.status,
-      sub: subs[r.status] || "",
-      youUsd: r.status === "rewarded" ? data.rewardUsd || 0 : 0,
-      cutLabel: "referral bonus",
-    }));
-    return { signedIn: true, friends, fromFriendsUsd: data.creditsEarnedUsd || 0 };
+    const qs = `deviceId=${encodeURIComponent(device.deviceId)}&deviceKey=${encodeURIComponent(device.deviceKey)}`;
+    const res = await fetch(`${API_BASE}/v1/me/affiliate?${qs}`);
+    if (!res.ok) return { linked: false, friends: [] };
+    return await res.json();
   } catch (_) {
-    return { signedIn: false, friends: [], fromFriendsUsd: 0 };
+    return { linked: false, friends: [] };
+  }
+}
+
+// Kick off email sign-in from the popup: link this device to a user account via a
+// magic link. authed by the device credentials. The click in the email hits
+// /v1/auth/verify, which sets devices.user_id — after which getCrew() goes linked.
+async function requestSignInLink(email) {
+  if (typeof fetch !== "function") return { ok: false };
+  const device = await getOrRegisterDevice();
+  if (!device) return { ok: false, error: "no device" };
+  try {
+    const res = await fetch(`${API_BASE}/v1/auth/request-link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, deviceId: device.deviceId, deviceKey: device.deviceKey }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, error: data.error || "couldn't send the link" };
+    }
+    return { ok: true, sent: true };
+  } catch (_) {
+    return { ok: false, error: "network error" };
   }
 }
 
@@ -275,6 +282,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       case "BB_GET_CREW":
         sendResponse(await getCrew());
+        break;
+      case "BB_SIGNIN":
+        sendResponse(await requestSignInLink((msg.email || "").trim()));
         break;
       case "BB_GET_ADS": {
         const s = await getState();

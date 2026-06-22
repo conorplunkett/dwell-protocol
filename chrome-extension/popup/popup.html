@@ -46,17 +46,29 @@
     <a class="cta" id="redeem-cta" href="https://freeai.fyi/redeem" target="_blank" rel="noopener">Redeem for Claude →</a>
   </section>
 
-  <!-- CREW — friends you referred + the 10% of their credits you earn -->
+  <!-- CREW — friends you invited + the 10% of their credits you earn, forever -->
   <section class="sec" id="crew">
     <div class="sec-head">
       <span class="lbl" id="crew-label">Your crew</span>
       <span class="sum" id="crew-sum" hidden></span>
     </div>
+
+    <!-- linked: real per-friend breakdown -->
     <div id="crew-list"></div>
-    <p class="crew-empty" id="crew-empty">Refer a friend and earn <b>10%</b> of every credit they make — forever.</p>
-    <a class="invite" id="invite" href="https://freeai.fyi/redeem" target="_blank" rel="noopener">
-      <span class="plus">+</span>Invite a friend — earn 10% of their credits, forever
-    </a>
+
+    <!-- anonymous: value prop + sign-in -->
+    <div id="crew-signedout">
+      <p class="crew-empty">Earn <b>10%</b> of every credit your friends make — forever.</p>
+      <button class="invite" id="signin-btn"><span class="plus">+</span>Sign in to earn with your friends</button>
+      <form class="signin-form" id="signin-form" hidden>
+        <input id="signin-email" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" />
+        <button type="submit" class="cta" id="signin-send">Email me a magic link →</button>
+      </form>
+      <p class="hint" id="signin-msg" hidden></p>
+    </div>
+
+    <!-- linked: invite CTA (copies the user's affiliate link) -->
+    <button class="invite" id="invite" hidden><span class="plus">+</span>Invite a friend — copy your link</button>
   </section>
 
   <!-- STATS — ads watched + average per day -->

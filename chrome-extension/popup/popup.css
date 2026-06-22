@@ -107,6 +107,17 @@ body {
 .invite:hover { background: rgba(var(--accent-rgb), .12); }
 .invite .plus { width: 19px; height: 19px; border-radius: 50%; background: var(--accent-d); color: #fff; display: grid; place-items: center; font-size: 13px; flex: none; }
 
+/* sign-in (link this device to an account to start earning with friends) */
+.signin-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.signin-form input {
+  width: 100%; padding: 11px 12px; font-family: var(--sans); font-size: 13px; color: var(--ink);
+  background: var(--surface-inset); border: 1px solid var(--line); border-radius: var(--radius-md);
+}
+.signin-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .14); }
+.signin-form .cta { margin-top: 0; }
+#signin-msg { margin-top: 8px; }
+#signin-msg b { color: var(--ink); }
+
 /* STATS — ads watched + per day */
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .stat { background: var(--surface-inset); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px; text-align: center; }

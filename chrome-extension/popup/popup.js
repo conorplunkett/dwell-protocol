@@ -80,20 +80,19 @@ async function refresh() {
   }
 }
 
-// CREW — friends you referred and the credits they've earned you. Populated only
-// when the extension is linked to a signed-in account (a web session). Today the
-// popup is anonymous/device-scoped, so this resolves to the signed-out invite
-// state; the rendering is data-driven so it lights up once auth lands.
-function planClass(status) {
-  return status === "rewarded" ? "plan max" : "plan";
-}
+// CREW — the affiliate "earn with your friends" panel. The extension stays
+// anonymous: until the device is linked to an account it shows the sign-in CTA;
+// once linked (device-scoped /v1/me/affiliate via the background) it shows each
+// friend, what they've generated, and your 10% cut — which accrues forever.
+let inviteLink = null; // the user's affiliate link, set once linked
+
 function friendRow(f) {
-  const cut = f.youUsd ? `<div class="cut"><div class="v">+${esc(money(f.youUsd))}</div><div class="k">${esc(f.cutLabel || "to you")}</div></div>` : "";
+  const cut = `<div class="cut"><div class="v">+${esc(money(f.youUsd || 0))}</div><div class="k">your 10%</div></div>`;
   return (
     `<div class="friend">` +
     `<div class="meta">` +
-    `<div class="nm">${esc(f.name)} <span class="${planClass(f.status)}">${esc(f.statusLabel || f.status || "")}</span></div>` +
-    `<div class="sub">${esc(f.sub || "")}</div>` +
+    `<div class="nm">${esc(f.name || "a friend")}</div>` +
+    `<div class="sub">generated <b>${esc(money(f.generatedUsd || 0))}</b> in credits</div>` +
     `</div>${cut}</div>`
   );
 }
@@ -101,28 +100,84 @@ function friendRow(f) {
 async function refreshCrew() {
   const crew = (await send({ type: "BB_GET_CREW" })) || {};
   const list = $("crew-list");
-  const empty = $("crew-empty");
   const sum = $("crew-sum");
+  const signedout = $("crew-signedout");
+  const invite = $("invite");
+  const linked = crew.linked === true;
   const friends = Array.isArray(crew.friends) ? crew.friends : [];
 
-  if (friends.length) {
-    setText("crew-label", `Your crew · ${friends.length} ${friends.length === 1 ? "friend" : "friends"}`);
-    if (list) list.innerHTML = friends.map(friendRow).join("");
-    if (empty) empty.hidden = true;
-  } else {
+  if (signedout) signedout.hidden = linked;
+  if (invite) invite.hidden = !linked;
+
+  if (!linked) {
     setText("crew-label", "Your crew");
     if (list) list.innerHTML = "";
-    if (empty) empty.hidden = false;
+    if (sum) sum.hidden = true;
+    inviteLink = null;
+    return;
   }
 
+  inviteLink = crew.link || null;
+  setText("crew-label", friends.length
+    ? `Your crew · ${friends.length} ${friends.length === 1 ? "friend" : "friends"}`
+    : "Your crew");
+  if (list) {
+    list.innerHTML = friends.length
+      ? friends.map(friendRow).join("")
+      : `<p class="crew-empty">No friends yet — share your link and earn <b>10%</b> of their credits, forever.</p>`;
+  }
   if (sum) {
-    if (crew.fromFriendsUsd > 0) {
-      sum.textContent = `+${money(crew.fromFriendsUsd)} to you`;
+    if (crew.creditedUsd > 0) {
+      sum.textContent = `+${money(crew.creditedUsd)} to you`;
       sum.hidden = false;
     } else {
       sum.hidden = true;
     }
   }
+}
+
+// Sign-in: reveal the email field, then email a magic link that links this device
+// to an account (background → POST /v1/auth/request-link).
+if ($("signin-btn")) {
+  $("signin-btn").addEventListener("click", () => {
+    $("signin-btn").hidden = true;
+    $("signin-form").hidden = false;
+    $("signin-email").focus();
+  });
+}
+if ($("signin-form")) {
+  $("signin-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = $("signin-email").value.trim();
+    const msg = $("signin-msg");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      msg.hidden = false; msg.textContent = "Enter a valid email address."; return;
+    }
+    $("signin-send").disabled = true;
+    const r = (await send({ type: "BB_SIGNIN", email })) || {};
+    $("signin-send").disabled = false;
+    msg.hidden = false;
+    msg.innerHTML = r.ok
+      ? `Check <b>${esc(email)}</b> — click the link to start earning with friends.`
+      : esc(r.error || "Couldn't send the link. Try again.");
+    if (r.ok) { $("signin-form").hidden = true; }
+  });
+}
+
+// Invite (linked): copy the affiliate link; fall back to opening it.
+if ($("invite")) {
+  $("invite").addEventListener("click", async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      const el = $("invite");
+      const prev = el.innerHTML;
+      el.innerHTML = `<span class="plus">✓</span>Link copied — share it to start earning`;
+      setTimeout(() => { el.innerHTML = prev; }, 2200);
+    } catch (_) {
+      window.open(inviteLink, "_blank", "noopener");
+    }
+  });
 }
 
 // Top-5 of the live bid market.
@@ -197,3 +252,6 @@ refreshBoard();  // then swap in live inventory if available
 refresh();
 refreshCrew();
 setInterval(refresh, 1000);
+// Slower poll so the crew panel flips from signed-out → linked once the user
+// clicks the magic link in their email (no network spam on the 1s tick).
+setInterval(refreshCrew, 8000);
