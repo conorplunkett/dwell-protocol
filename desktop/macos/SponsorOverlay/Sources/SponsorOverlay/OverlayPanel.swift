@@ -77,7 +77,7 @@ final class OverlayPanelController {
 
         let width = panelWidth
         var x: CGFloat
-        let axTop: CGFloat // card's top edge in AX (top-left-origin) coordinates
+        var axTop: CGFloat // card's top edge in AX (top-left-origin) coordinates
         if let star, appBounds.intersects(star) {
             // Sit on the star; the lift doesn't apply — it tracks the star row.
             x = star.minX
