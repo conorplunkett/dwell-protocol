@@ -155,9 +155,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let credentials else { return }
         client.earnings(credentials: credentials) { [weak self] e in
             DispatchQueue.main.async {
-                if let e { self?.balanceItem.title = String(format: "Balance: $%.2f", e.balanceUsd) }
+                guard let self, let e else { return }
+                self.balanceItem.attributedTitle = Self.balanceTitle(amountUsd: e.balanceUsd)
             }
         }
+    }
+
+    /// "Balance: $X.XX" with the dollar amount in bold.
+    private static func balanceTitle(amountUsd: Double) -> NSAttributedString {
+        let base = NSFont.menuFont(ofSize: 0)
+        let bold = NSFontManager.shared.convert(base, toHaveTrait: .boldFontMask)
+        let s = NSMutableAttributedString(string: "Balance: ", attributes: [.font: base])
+        s.append(NSAttributedString(string: String(format: "$%.2f", amountUsd), attributes: [.font: bold]))
+        return s
     }
 
     private func rotateAd() {
@@ -316,7 +326,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Live slider so users place the card where it suits their window
         // (everyone runs the assistant full-width, so the right height varies).
         menu.addItem(makeOffsetMenuItem())
-        let redeem = NSMenuItem(title: "Redeem credits…", action: #selector(openRedeem), keyEquivalent: "")
+        let lock = NSMenuItem(title: "Lock to above prompt", action: #selector(toggleLock), keyEquivalent: "")
+        lock.target = self
+        menu.addItem(lock)
+        lockItem = lock
+        let redeem = NSMenuItem(title: "Redeem", action: #selector(openRedeem), keyEquivalent: "")
         redeem.target = self
         menu.addItem(redeem)
         let setup = NSMenuItem(title: "Setup", action: #selector(showSetup), keyEquivalent: "")
@@ -423,12 +437,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastTargetID: String?
     private weak var offsetSlider: NSSlider?
     private weak var offsetLabel: NSTextField?
+    private weak var lockItem: NSMenuItem?
 
     private func liftKey(_ id: String) -> String { "cardLift.\(id)" }
+    private func lockKey(_ id: String) -> String { "lockToPrompt.\(id)" }
 
-    /// Saved card height for an app id, or the default.
+    /// "Lock to above prompt": pin the card at the minimum height (just above
+    /// the chat box) and ignore the saved slider value.
+    private func isLocked(_ id: String?) -> Bool {
+        guard let id else { return false }
+        return UserDefaults.standard.bool(forKey: lockKey(id))
+    }
+
+    /// Effective card height for an app id: 0 when locked to the prompt, else
+    /// the saved value (or the default).
     private func lift(forAppID id: String?) -> CGFloat {
         guard let id else { return Self.defaultLift }
+        if UserDefaults.standard.bool(forKey: lockKey(id)) { return 0 }
         return CGFloat(UserDefaults.standard.object(forKey: liftKey(id)) as? Double ?? Double(Self.defaultLift))
     }
 
@@ -462,18 +487,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    /// Sync the slider + label to the app being edited (focus, hence the app,
-    /// may have changed since the menu last opened).
+    /// Sync the slider, label and lock checkbox to the app being edited (focus,
+    /// hence the app, may have changed since the menu last opened). While locked
+    /// the label says so; moving the slider is what unlocks it.
     private func refreshOffsetControl() {
+        let name = displayName(forAppID: lastTargetID)
+        let locked = isLocked(lastTargetID)
         offsetSlider?.doubleValue = Double(lift(forAppID: lastTargetID))
-        offsetLabel?.stringValue = "\(displayName(forAppID: lastTargetID)) card height"
+        offsetSlider?.toolTip = locked ? "Locked just above the prompt — move to unlock" : nil
+        offsetLabel?.stringValue = locked ? "\(name) card height — Locked 🔒" : "\(name) card height"
+        lockItem?.state = locked ? .on : .off
+        lockItem?.title = "\(name): Lock to above prompt"
     }
 
     @objc private func cardLiftChanged(_ sender: NSSlider) {
         let id = lastTargetID ?? AssistantTarget.claude.id
+        // Moving the slider means a custom height — release the lock.
+        if isLocked(id) { UserDefaults.standard.set(false, forKey: lockKey(id)) }
         UserDefaults.standard.set(sender.doubleValue, forKey: liftKey(id))
-        // The slider only ever edits the last-focused app, so apply live.
         overlay.verticalLift = CGFloat(sender.doubleValue)
+        repositionOverlay()
+        refreshOffsetControl()
+    }
+
+    /// Toggle "Lock to above prompt" for the last-focused app: pins the card at
+    /// the minimum height (or restores the saved height).
+    @objc private func toggleLock() {
+        let id = lastTargetID ?? AssistantTarget.claude.id
+        UserDefaults.standard.set(!isLocked(id), forKey: lockKey(id))
+        refreshOffsetControl()
+        overlay.verticalLift = lift(forAppID: id)
         repositionOverlay()
     }
 
