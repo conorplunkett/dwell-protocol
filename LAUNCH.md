@@ -9,13 +9,16 @@
 ## TL;DR
 
 - **All runnable test suites are green:** Chrome ext 21/21, terminal 23/23,
-  server 30/30 (real Postgres), Rust overlay-core 10/10.
+  server 33/33 (real Postgres), Rust overlay-core 10/10.
 - **The credit math is correct:** 50% user share is the default everywhere
   (server, Edge Function, extension). The "90%" in server test output is a
   deliberate test-only override to prove the multiplier is applied.
 - **Blocking for a clean launch:** wire the production secrets + external OAuth/
   Stripe consoles (below), and decide whether the **open Gemini placement bug**
   ships as a known issue. Everything else is ready.
+- **To test the product end-to-end before launch** (all surfaces, watch a real
+  account balance climb live, no real money / no Stripe): see
+  [`DEVNET.md`](DEVNET.md) — `make devnet` + `make devnet-earn`.
 
 ## Verified working (run in this audit)
 
@@ -25,7 +28,7 @@
 - [x] **Claude Code terminal client** — `cd terminal && npm test` → **23/23**.
       Default API base is the production Edge Function; reversible shell alias.
 - [x] **Server (Node reference + rollback)** — `npm run migrate` applies
-      `db/schema.sql` cleanly; `npm test` against a real Postgres 16 → **30/30**
+      `db/schema.sql` cleanly; `npm test` against a real Postgres 16 → **33/33**
       (checkout → webhook → moderation → auction → 50% credits → idempotency →
       caps → budget exhaustion → Connect onboarding → payout sweep → gift-card
       catalog → website login → redemption → referral rewards → dashboards →
@@ -47,7 +50,7 @@
 ## Couldn't run in this environment (verify on the right host)
 
 - [ ] **Supabase Edge Function (production API)** — needs **Deno** (absent here).
-      It's a verbatim port of `server/` (which passed 30/30) and ships via
+      It's a verbatim port of `server/` (which passed 33/33) and ships via
       `deploy-functions.yml`. Smoke the live `/healthz`, `/v1/config`, `/v1/ads`
       after deploy.
 - [ ] **macOS app build** — needs **Swift on a Mac** (absent here). CI builds it
@@ -115,7 +118,7 @@ complete index and fix drift, not to merge files. Fixes applied in this pass:
 
 - `server/README.md`: endpoint table was missing the gift-card, OAuth, and entire
   `/v1/web/*` website-redemption/referral surface, and listed the retired
-  `/v1/redemptions` as live — rebuilt and grouped; test count corrected 15 → 30.
+  `/v1/redemptions` as live — rebuilt and grouped; test count corrected 15 → 33.
 - `README.md` (root): added the missing `desktop/` (macOS) row plus the `redeem`
   portal and `admin` console.
 - `chrome-extension/`, `supabase/functions/` READMEs: aligned

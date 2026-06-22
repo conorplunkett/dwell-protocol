@@ -30,6 +30,8 @@ one-line description. The common ones:
 | Command | What it does |
 | --- | --- |
 | `make site` | Serve the static site at http://localhost:8000 |
+| `make devnet` | Full local stack (db + migrate + seed + API), **no Stripe needed** — see [`DEVNET.md`](DEVNET.md) |
+| `make devnet-earn` | Drive a real earning session and watch a portal balance climb live |
 | `make server-up` | Start Postgres, migrate, and run the API on :8787 |
 | `make server` | Start just the API (db already up) |
 | `make test-server` | Server end-to-end tests against the local DB |
@@ -40,6 +42,12 @@ one-line description. The common ones:
 | `make mac-run` | Build & run the macOS app against the real API |
 | `make mac-bundle` / `make mac-open` | Package then open `SponsorOverlay.app` |
 | `make test` | Every test suite |
+
+**Test the product end-to-end before launch** — run every surface against a
+local API and watch a real account balance climb live, with no Stripe account
+and no real money: see **[`DEVNET.md`](DEVNET.md)** (`make devnet` +
+`make devnet-earn`). The production cutover checklist is in
+[`LAUNCH.md`](LAUNCH.md).
 
 These wrap the per-component READMEs, which stay the source of truth:
 

@@ -67,7 +67,18 @@ function pgPoolConfig(env = process.env) {
 async function boot(env = process.env) {
   const config = loadConfig(env);
   if (!config.databaseUrl) throw new Error("DATABASE_URL is required");
-  if (!config.stripeSecretKey) throw new Error("STRIPE_SECRET_KEY is required");
+  // Stripe is only exercised by advertiser checkout / webhooks — never by the
+  // earning loop. In a local devnet (DEVNET=1) we let the API boot without it
+  // so you can test devices → ledger → portal end-to-end with no Stripe account;
+  // checkout simply isn't part of that flow. Production still requires the key.
+  if (!config.stripeSecretKey) {
+    if (env.DEVNET === "1") {
+      config.stripeSecretKey = "sk_test_devnet";
+      console.warn("[freeai] DEVNET=1 — no STRIPE_SECRET_KEY; advertiser checkout is disabled, earning loop works.");
+    } else {
+      throw new Error("STRIPE_SECRET_KEY is required");
+    }
+  }
 
   const { Pool } = require("pg");
   const pool = new Pool(pgPoolConfig(env));

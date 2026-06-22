@@ -74,6 +74,20 @@ server:
 ## server-up: Bring up db, migrate, then start the API (first-run friendly).
 server-up: db-up migrate server
 
+# ---------------------------------------------------------------------------
+# Devnet — full local stack + "mock money" earning (see DEVNET.md)
+# ---------------------------------------------------------------------------
+
+## devnet: Boot the whole stack locally (db + migrate + seed campaign + API, DEVNET=1, no Stripe needed).
+devnet: db-up migrate seed
+	cd server && DEVNET=1 STRIPE_SECRET_KEY= EMAIL_COOLDOWN_MS=0 \
+		ADMIN_KEY=$${ADMIN_KEY:-devnet-admin} SITE_URL=$${SITE_URL:-http://localhost:$(SITE_PORT)} \
+		npm start
+
+## devnet-earn: Drive a real earning session against the local API and watch a portal balance climb live.
+devnet-earn:
+	node tools/devnet-earn.mjs
+
 ## server-install: Install server dependencies.
 server-install:
 	cd server && npm install
@@ -145,6 +159,6 @@ mac-open:
 ## test: Run every test suite (server, extension, terminal, mac core).
 test: test-server test-ext test-terminal test-mac
 
-.PHONY: help site landers icons og db-up db-down migrate seed server server-up server-install \
+.PHONY: help site landers icons og db-up db-down migrate seed server server-up devnet devnet-earn server-install \
 	test-server test-ext lint-ext package-ext test-terminal test-mac mac-build mac-run mac-demo \
 	mac-probe mac-bundle mac-open test
