@@ -737,6 +737,30 @@ const fakeMailer = {
     assert.ok(dash.body.capUsd >= 10000000, "cap is effectively uncapped");
   });
 
+  await check("extension auto-links a device to the signed-in web account (no magic link)", async () => {
+    const dev = (await api("POST", "/v1/devices/register")).body;
+    const sess = await loginVia("linkme@example.com");
+    // bad device creds and bad session are both rejected
+    assert.strictEqual(
+      (await api("POST", "/v1/devices/link", { deviceId: dev.deviceId, deviceKey: "wrong", session: sess })).status,
+      401, "bad device creds rejected");
+    assert.strictEqual(
+      (await api("POST", "/v1/devices/link", { deviceId: dev.deviceId, deviceKey: dev.deviceKey, session: "bogus" })).status,
+      401, "bad web session rejected");
+    // valid creds + session links the device to the user
+    assert.strictEqual(
+      (await api("POST", "/v1/devices/link", { deviceId: dev.deviceId, deviceKey: dev.deviceKey, session: sess })).status,
+      200);
+    const uid = await userId("linkme@example.com");
+    assert.strictEqual(
+      (await poolNs.query("select user_id from devices where id = $1", [dev.deviceId])).rows[0].user_id, uid,
+      "device now belongs to the web user");
+    // and the device-scoped crew endpoint now reports linked, with a code
+    const aff = await api("GET", `/v1/me/affiliate?deviceId=${dev.deviceId}&deviceKey=${dev.deviceKey}`);
+    assert.strictEqual(aff.body.linked, true);
+    assert.ok(/^[A-Z0-9]{8}$/.test(aff.body.code), "linked device is auto-enrolled with an affiliate code");
+  });
+
   await check("affiliate codes apply retroactively; referred users can't; self/unknown codes rejected", async () => {
     const affSess = await loginVia("aff2@example.com");
     // self-serve enrollment mints the code straight away (no application/approval)

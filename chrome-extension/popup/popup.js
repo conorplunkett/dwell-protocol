@@ -55,20 +55,9 @@ async function refresh() {
 
   // Stats
   setText("impressions", (s.impressions || 0).toLocaleString());
-  setText("clicks", (s.clicks || 0).toLocaleString());
   $("enabled").checked = s.enabled !== false;
   const days = Math.max(1, Math.round((Date.now() - (s.installedAt || Date.now())) / 86400000));
   setText("perday", money(earnings / days));
-
-  // Live status line reflects the on/off switch.
-  const status = $("status");
-  if (status) {
-    const on = s.enabled !== false;
-    status.classList.toggle("off", !on);
-    status.querySelector(".status-txt").innerHTML = on
-      ? "Active on <b>chatgpt.com</b>, <b>claude.ai</b>"
-      : "Paused — flip the switch to start earning";
-  }
 
   // Test mode (developer tools)
   const on = !!s.testMode;
@@ -81,11 +70,10 @@ async function refresh() {
 }
 
 // CREW — the affiliate "earn with your friends" panel. The extension stays
-// anonymous: until the device is linked to an account it shows the sign-in CTA;
-// once linked (device-scoped /v1/me/affiliate via the background) it shows each
-// friend, what they've generated, and your 10% cut — which accrues forever.
-let inviteLink = null; // the user's affiliate link, set once linked
-
+// anonymous: until the device is linked to an account it shows the sign-in CTA
+// (which opens the freeai.fyi login page); once linked (device-scoped
+// /v1/me/affiliate via the background) it shows each friend, what they've
+// generated, and your 10% cut — which accrues forever.
 function friendRow(f) {
   const cut = `<div class="cut"><div class="v">+${esc(money(f.youUsd || 0))}</div><div class="k">your 10%</div></div>`;
   return (
@@ -102,22 +90,18 @@ async function refreshCrew() {
   const list = $("crew-list");
   const sum = $("crew-sum");
   const signedout = $("crew-signedout");
-  const invite = $("invite");
   const linked = crew.linked === true;
   const friends = Array.isArray(crew.friends) ? crew.friends : [];
 
   if (signedout) signedout.hidden = linked;
-  if (invite) invite.hidden = !linked;
 
   if (!linked) {
     setText("crew-label", "Your crew");
     if (list) list.innerHTML = "";
     if (sum) sum.hidden = true;
-    inviteLink = null;
     return;
   }
 
-  inviteLink = crew.link || null;
   setText("crew-label", friends.length
     ? `Your crew · ${friends.length} ${friends.length === 1 ? "friend" : "friends"}`
     : "Your crew");
@@ -136,47 +120,12 @@ async function refreshCrew() {
   }
 }
 
-// Sign-in: reveal the email field, then email a magic link that links this device
-// to an account (background → POST /v1/auth/request-link).
+// Sign-in: open the freeai.fyi login page in a new tab. No magic link in the
+// extension — once the user signs in there, the device auto-links and the crew
+// panel flips to linked on the next poll.
 if ($("signin-btn")) {
   $("signin-btn").addEventListener("click", () => {
-    $("signin-btn").hidden = true;
-    $("signin-form").hidden = false;
-    $("signin-email").focus();
-  });
-}
-if ($("signin-form")) {
-  $("signin-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const email = $("signin-email").value.trim();
-    const msg = $("signin-msg");
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      msg.hidden = false; msg.textContent = "Enter a valid email address."; return;
-    }
-    $("signin-send").disabled = true;
-    const r = (await send({ type: "BB_SIGNIN", email })) || {};
-    $("signin-send").disabled = false;
-    msg.hidden = false;
-    msg.innerHTML = r.ok
-      ? `Check <b>${esc(email)}</b> — click the link to start earning with friends.`
-      : esc(r.error || "Couldn't send the link. Try again.");
-    if (r.ok) { $("signin-form").hidden = true; }
-  });
-}
-
-// Invite (linked): copy the affiliate link; fall back to opening it.
-if ($("invite")) {
-  $("invite").addEventListener("click", async () => {
-    if (!inviteLink) return;
-    try {
-      await navigator.clipboard.writeText(inviteLink);
-      const el = $("invite");
-      const prev = el.innerHTML;
-      el.innerHTML = `<span class="plus">✓</span>Link copied — share it to start earning`;
-      setTimeout(() => { el.innerHTML = prev; }, 2200);
-    } catch (_) {
-      window.open(inviteLink, "_blank", "noopener");
-    }
+    chrome.tabs.create({ url: "https://freeai.fyi/redeem.html" });
   });
 }
 
@@ -223,20 +172,6 @@ if ($("testmode")) {
         }
       });
     }
-  });
-}
-
-if ($("demo")) {
-  $("demo").addEventListener("click", async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) return;
-    chrome.tabs.sendMessage(tab.id, { type: "BB_DEMO", ms: 30000 }, () => {
-      if (chrome.runtime.lastError) {
-        setText("hint", "Open a supported AI site (claude.ai, chatgpt.com…) and try the demo there.");
-      } else {
-        setText("hint", "Demo running on the active tab — watch the sponsored line for 30s.");
-      }
-    });
   });
 }
 

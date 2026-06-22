@@ -124,6 +124,19 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     json(res, 200, await repo.registerDevice());
   });
 
+  // Self-serve device→account link: the extension's freeai.fyi bridge posts the
+  // device creds + the site's web session; attach the device to that user and
+  // enroll them as an affiliate so the popup's crew lights up. No magic link.
+  route("POST", "/v1/devices/link", async (req, res, body, rawBody, query) => {
+    const device = await authDeviceFrom(body, query);
+    if (!device) return json(res, 401, { error: "bad device credentials" });
+    const user = await repo.userForSession(sessionFrom(req, body, query));
+    if (!user) return json(res, 401, { error: "not signed in" });
+    await repo.linkDeviceToUser(device.id, user.id);
+    await repo.getOrCreateAffiliate(user.id);
+    json(res, 200, { ok: true });
+  });
+
   route("POST", "/v1/events", async (req, res, body) => {
     const device = await authDeviceFrom(body);
     if (!device) return json(res, 401, { error: "bad device credentials" });

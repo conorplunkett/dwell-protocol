@@ -767,6 +767,12 @@ function createRepo(pool: any) {
         return u.rows[0];
       });
     },
+    // Link a device to a user (self-serve, from the freeai.fyi web session). Same
+    // association the magic-link verify makes — balance queries already roll up
+    // "this user OR any device linked to them", so no balance merge is needed.
+    async linkDeviceToUser(deviceId: string, userId: string) {
+      await pool.query("update devices set user_id = $2 where id = $1", [deviceId, userId]);
+    },
     async createClickToken(campaignId: string, deviceId: string, ttlMs: number) {
       if (!isUuid(campaignId)) return null;
       const camp = await pool.query("select 1 from campaigns where id = $1 and status = 'active'", [campaignId]);
@@ -1837,6 +1843,18 @@ route("GET", "/v1/leaderboard", async () => {
 
 // ── devices & events ──
 route("POST", "/v1/devices/register", async () => json(200, await repo.registerDevice()));
+// Self-serve device→account link: the extension's freeai.fyi bridge posts the
+// device creds + the site's web session; we attach the device to that user and
+// enroll them as an affiliate so the popup's crew lights up. No magic link.
+route("POST", "/v1/devices/link", async (ctx: any) => {
+  const device = await authDeviceFrom(ctx);
+  if (!device) return json(401, { error: "bad device credentials" });
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  await repo.linkDeviceToUser(device.id, user.id);
+  await repo.getOrCreateAffiliate(user.id);
+  return json(200, { ok: true });
+});
 route("POST", "/v1/events", async (ctx: any) => {
   const device = await authDeviceFrom(ctx);
   if (!device) return json(401, { error: "bad device credentials" });

@@ -623,6 +623,12 @@ function createRepo(pool) {
         return u.rows[0];
       });
     },
+    // Link a device to a user (self-serve, from the freeai.fyi web session). Same
+    // association the magic-link verify makes — balance queries already roll up
+    // "this user OR any device linked to them", so no balance merge is needed.
+    async linkDeviceToUser(deviceId, userId) {
+      await pool.query("update devices set user_id = $2 where id = $1", [deviceId, userId]);
+    },
 
     // ---------- server-side clicks ----------
     async createClickToken(campaignId, deviceId, ttlMs) {
