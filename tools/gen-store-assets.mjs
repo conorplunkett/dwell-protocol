@@ -11,13 +11,19 @@
 // incorrect" check demands for screenshots and promo tiles.
 //
 // Writes (overwrites) into store-assets/:
-//   store-icon-128x128.png            128×128   Store icon            (alpha ok)
-//   screenshot-1-light-1280x800.png   1280×800  Screenshots (light chat)
-//   screenshot-2-dark-1280x800.png    1280×800  Screenshots (dark chat)
-//   screenshot-3-hero-1280x800.png    1280×800  Screenshots (homepage hero)
-//   screenshot-4-install-1280x800.png 1280×800  Screenshots (install / CTA)
-//   marquee-1400x560.png              1400×560  Marquee promo tile
-//   promo-small-440x280.png           440×280   Small promo tile
+//   store-icon-128x128.png               128×128   Store icon            (alpha ok)
+//   screenshot-chatgpt-1280x800.png      1280×800  Screenshots (ChatGPT chat)
+//   screenshot-claude-1280x800.png       1280×800  Screenshots (Claude chat)
+//   screenshot-gemini-1280x800.png       1280×800  Screenshots (Gemini chat)
+//   screenshot-hero-1280x800.png         1280×800  Screenshots (homepage hero)
+//   screenshot-install-1280x800.png      1280×800  Screenshots (install / CTA)
+//   screenshot-popup-credits-640x400.png 640×400   Screenshots (popup — credits/crew)
+//   screenshot-popup-market-640x400.png  640×400   Screenshots (popup — bid market)
+//   marquee-1400x560.png                 1400×560  Marquee promo tile
+//   promo-small-440x280.png              440×280   Small promo tile
+//
+// Chrome allows at most 5 screenshots per listing — pick your 5 from the seven
+// screenshot-* files above (sizes may be mixed: 1280×800 and/or 640×400).
 //
 // Run:  make store-assets   (or:  node tools/gen-store-assets.mjs)
 
@@ -60,6 +66,8 @@ const C = {
   ovBg: tok("--ov-bar-bg"), ovText: tok("--ov-text"), ovLine: tok("--ov-line"),
   ovChipBg: tok("--ov-chip-bg"), ovChipInk: tok("--ov-chip-ink"),
 };
+// cream as "R,G,B" for png_fit padding (extension popup sits on the site's cream)
+const CREAM = (C.cream.replace("#", "").match(/../g) || []).map((h) => parseInt(h, 16)).join(",");
 
 const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -182,15 +190,58 @@ try {
   const smallPath = join(tmp, "small.png");
   await small.screenshot({ path: smallPath, clip: { x: 0, y: 0, width: 440, height: 280 } });
 
+  // ── extension popup, populated with sample data via a mocked chrome.* so it
+  //    renders the real UI (fuel ring, crew, bid market), clipped into two
+  //    states that png_fit pads onto cream → 640×400. ──
+  const POP_STATE = { earnings: 3.26, impressions: 394, enabled: true, installedAt: Date.now() - 10 * 86400000, testMode: false };
+  const POP_CREW = { linked: true, crewSize: 5, rewardPct: 10, creditedUsd: 0, friends: [],
+    invited: [{ email: "c•••@gmail.com" }, { email: "v•••@yahoo.com" }, { email: "j•••@gmail.com" }] };
+  const popup = await browser.newPage({ viewport: { width: 360, height: 1320 }, deviceScaleFactor: 2 });
+  await popup.addInitScript(({ S, K }) => {
+    window.chrome = {
+      runtime: { lastError: undefined, sendMessage: (m, cb) => {
+        const t = m && m.type; let r = {};
+        if (t === "BB_GET_STATE") r = S; else if (t === "BB_GET_CREW") r = K; else if (t === "BB_GET_ADS") r = null;
+        if (typeof cb === "function") cb(r);
+      } },
+      storage: { local: { get: () => Promise.resolve({}) } },
+      tabs: { query: () => Promise.resolve([]), create: () => {}, sendMessage: () => {} },
+    };
+  }, { S: POP_STATE, K: POP_CREW });
+  await popup.goto(`${base}/chrome-extension/popup/popup.html`, { waitUntil: "load" });
+  await popup.evaluate(() => document.fonts && document.fonts.ready).catch(() => {});
+  await popup.waitForTimeout(700);
+  const pm = await popup.evaluate(() => {
+    const W = document.body.offsetWidth, H = document.body.scrollHeight;
+    const inv = [...document.querySelectorAll("#crew-slots .invited")];
+    const aEnd = inv.length ? Math.ceil(inv[inv.length - 1].getBoundingClientRect().bottom) : Math.ceil(H * 0.5);
+    const statsSec = document.querySelector(".stats")?.closest("section");
+    const bStart = statsSec ? Math.floor(statsSec.getBoundingClientRect().top) : Math.floor(H * 0.6);
+    const foot = document.querySelector(".foot");
+    const bEnd = foot ? Math.ceil(foot.getBoundingClientRect().bottom) : H;
+    return { W, H, aEnd, bStart, bEnd };
+  });
+  const popupAPath = join(tmp, "popup-a.png"), popupBPath = join(tmp, "popup-b.png");
+  await popup.screenshot({ path: popupAPath, clip: { x: 0, y: 0, width: pm.W, height: pm.aEnd + 14 } });
+  await popup.screenshot({ path: popupBPath, clip: { x: 0, y: pm.bStart - 12, width: pm.W, height: (pm.bEnd + 16) - (pm.bStart - 12) } });
+
   // ── finalize each to exact size / 24-bit no-alpha via the Python fitter ──
   const fit = (src, name, w, h, mode, bg, fmt) =>
     execFileSync("python3", [PNG_FIT, src, join(OUT, name), String(w), String(h), mode, bg, fmt], { stdio: "inherit" });
 
+  const SS = join(ROOT, "screenshots");
   fit(ICON_SRC, "store-icon-128x128.png", 128, 128, "contain", "auto", "rgba");
-  fit(join(ROOT, "screenshots/Claude Browser Thinking Small.png"), "screenshot-1-light-1280x800.png", 1280, 800, "contain", "auto", "rgb");
-  fit(join(ROOT, "screenshots/Gemini Browser Thinking.png"), "screenshot-2-dark-1280x800.png", 1280, 800, "contain", "auto", "rgb");
-  fit(heroPath, "screenshot-3-hero-1280x800.png", 1280, 800, "cover", "auto", "rgb");
-  fit(installPath, "screenshot-4-install-1280x800.png", 1280, 800, "contain", "auto", "rgb");
+  // chat-in-context screenshots (1280×800) — the ad while the AI thinks
+  fit(join(SS, "ChatGPT Browser Thinking Cropped.png"), "screenshot-chatgpt-1280x800.png", 1280, 800, "contain", "auto", "rgb");
+  fit(join(SS, "Claude Browser Thinking Small.png"), "screenshot-claude-1280x800.png", 1280, 800, "contain", "auto", "rgb");
+  fit(join(SS, "Gemini Browser Thinking.png"), "screenshot-gemini-1280x800.png", 1280, 800, "contain", "auto", "rgb");
+  // live site screenshots (1280×800)
+  fit(heroPath, "screenshot-hero-1280x800.png", 1280, 800, "cover", "auto", "rgb");
+  fit(installPath, "screenshot-install-1280x800.png", 1280, 800, "contain", "auto", "rgb");
+  // extension popup states on cream (640×400)
+  fit(popupAPath, "screenshot-popup-credits-640x400.png", 640, 400, "contain", CREAM, "rgb");
+  fit(popupBPath, "screenshot-popup-market-640x400.png", 640, 400, "contain", CREAM, "rgb");
+  // promo tiles
   fit(marqueePath, "marquee-1400x560.png", 1400, 560, "contain", "white", "rgb");
   fit(smallPath, "promo-small-440x280.png", 440, 280, "contain", "white", "rgb");
   console.log("\ngen-store-assets: store-assets/ regenerated.");
