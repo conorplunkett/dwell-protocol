@@ -51,6 +51,9 @@ final class OverlayPanelController {
     private static let dotSize: CGFloat = 4
     private static let dotGap: CGFloat = 4
     private static let dotCount = 3
+    /// Small gap so the dots read as the message's own trailing "…" rather than
+    /// a separate group.
+    private static let dotLeadGap: CGFloat = 3
     private static var dotsWidth: CGFloat {
         CGFloat(dotCount) * dotSize + CGFloat(dotCount - 1) * dotGap
     }
@@ -189,8 +192,8 @@ final class OverlayPanelController {
         var lineW = ceil(lineText.size(withAttributes: [.font: lineFont]).width)
 
         // Everything except the (ellipsizable) line is fixed width:
-        // padX [chip] gap [line] gap [dots] padX.
-        let fixed = Self.padX + Self.chipSize + Self.gap + Self.gap + Self.dotsWidth + Self.padX
+        // padX [chip] gap [line] dotLeadGap [dots] padX.
+        let fixed = Self.padX + Self.chipSize + Self.gap + Self.dotLeadGap + Self.dotsWidth + Self.padX
         lineW = min(lineW, Self.maxWidth - fixed)
         let width = fixed + lineW
         panelWidth = width
@@ -217,9 +220,10 @@ final class OverlayPanelController {
         let line = NSTextField(labelWithString: lineText)
         line.font = lineFont
         line.textColor = Palette.line
-        line.lineBreakMode = .byTruncatingTail
+        // Clip rather than show its own "…" — the animated dots are the ellipsis.
+        line.lineBreakMode = .byClipping
         line.frame = NSRect(x: x, y: (h - 17) / 2, width: lineW, height: 17)
-        x += lineW + Self.gap
+        x += lineW + Self.dotLeadGap
 
         let dots = makeTypingDots()
         dots.frame = NSRect(x: x, y: 0, width: Self.dotsWidth, height: h)

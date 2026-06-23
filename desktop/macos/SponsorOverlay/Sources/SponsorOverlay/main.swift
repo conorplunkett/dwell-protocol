@@ -72,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpMenuBar()
+        installEditMenu()
         requestAccessibilityIfNeeded()
         showSetupOnFirstLaunch()
 
@@ -305,6 +306,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.recordClick(campaignId: campaignId)
     }
 
+    /// A menu-bar accessory app ships no main menu, so the standard editing key
+    /// equivalents (⌘X/C/V/A, ⌘Z) have nowhere to route — text in the onboarding
+    /// window (and any text field) can't be copied/pasted. Install a minimal
+    /// main menu with an Edit menu whose items target the first responder, which
+    /// restores copy/paste/select-all everywhere, including the WKWebView.
+    private func installEditMenu() {
+        let mainMenu = NSMenu()
+
+        let appItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Quit FreeAI", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+
+        let editItem = NSMenuItem()
+        mainMenu.addItem(editItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: Selector(("cut:")), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: Selector(("copy:")), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: Selector(("paste:")), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: Selector(("selectAll:")), keyEquivalent: "a")
+        editItem.submenu = editMenu
+
+        NSApp.mainMenu = mainMenu
+    }
+
     // MARK: menu bar
 
     private func setUpMenuBar() {
@@ -491,15 +522,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         heightSlider.frame = NSRect(x: lx, y: 76, width: lw, height: 20)
         // Checkbox lives in the same custom view so toggling it does NOT dismiss
         // the menu (a control inside a view-based item handles its own click).
-        let lock = NSButton(checkboxWithTitle: "Lock height above prompt",
+        let lock = NSButton(checkboxWithTitle: "Lock height above prompt bar",
                             target: self, action: #selector(lockCheckboxToggled(_:)))
         lock.font = .systemFont(ofSize: 12)
         lock.frame = NSRect(x: 12, y: 50, width: width - 24, height: 20)
 
-        let posLabel = NSTextField(labelWithString: "Card position")
+        let posLabel = NSTextField(labelWithString: "Card horizontal position")
         posLabel.font = .systemFont(ofSize: 12)
         posLabel.textColor = .secondaryLabelColor
-        posLabel.frame = NSRect(x: lx, y: 28, width: lw, height: 16)
+        posLabel.frame = NSRect(x: lx, y: 28, width: lw - 76, height: 16)
+        // "Recenter" snaps the position slider back to the middle (shift 0).
+        let recenter = NSButton(title: "Recenter", target: self, action: #selector(recenterPosition))
+        recenter.isBordered = false
+        recenter.font = .systemFont(ofSize: 11)
+        recenter.contentTintColor = .controlAccentColor
+        recenter.alignment = .right
+        recenter.frame = NSRect(x: width - 14 - 72, y: 27, width: 72, height: 18)
         // Symmetric around 0 so the default (current anchor position) is the
         // centre — the clamp in OverlayPanel.show keeps it inside the window.
         let maxShift = Double((NSScreen.screens.map(\.frame.width).max() ?? 1600) / 2)
@@ -508,7 +546,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         posSlider.isContinuous = true
         posSlider.frame = NSRect(x: lx, y: 6, width: lw, height: 20)
 
-        for v in [heightLabel, heightSlider, lock, posLabel, posSlider] { container.addSubview(v) }
+        for v in [heightLabel, heightSlider, lock, posLabel, recenter, posSlider] { container.addSubview(v) }
         offsetSlider = heightSlider
         offsetLabel = heightLabel
         lockCheckbox = lock
@@ -546,6 +584,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let id = lastTargetID ?? AssistantTarget.claude.id
         UserDefaults.standard.set(sender.doubleValue, forKey: shiftKey(id))
         overlay.horizontalShift = CGFloat(sender.doubleValue)
+        repositionOverlay()
+    }
+
+    /// Snap the horizontal position back to the middle (shift 0).
+    @objc private func recenterPosition() {
+        let id = lastTargetID ?? AssistantTarget.claude.id
+        UserDefaults.standard.set(0.0, forKey: shiftKey(id))
+        positionSlider?.doubleValue = 0
+        overlay.horizontalShift = 0
         repositionOverlay()
     }
 
