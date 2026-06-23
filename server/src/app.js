@@ -762,8 +762,8 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     await repo.getOrCreateAffiliate(user.id);
     const data = await repo.affiliateForUser(user.id);
     const app = data.application;
-    // Influencer upgrade = a higher rate or a raised cap above the base config.
-    const upgraded = app.rewardBps > config.affiliateRewardBps || app.capMillicents > config.affiliateCapCents * 1000;
+    // Influencer upgrade = a higher rate or a raised people cap above the base config.
+    const upgraded = app.rewardBps > config.affiliateRewardBps || app.capPeople > config.affiliateCapPeople;
     // Upgrade requested = the user attached socials (auto-enrolled rows have none).
     const upgradeRequested = !!(app.socials.instagram || app.socials.linkedin || app.socials.twitter);
     json(res, 200, {
@@ -772,13 +772,42 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
       link: app.code ? `${config.siteUrl}/redeem.html?ref=${app.code}` : null,
       socials: app.socials,
       rewardPct: app.rewardBps / 100,
-      capUsd: app.capMillicents / 100000,
+      capPeople: app.capPeople,
       creditedUsd: app.creditedMillicents / 100000,
       attributedCount: app.attributedCount,
       upgraded, upgradeRequested,
       attributed: data.attributed,
       hasReferrer: data.hasReferrer,
       canApplyCode: !data.attributed && !data.hasReferrer,
+    });
+  });
+
+  // Invite a friend to your crew from the website (session-authed mirror of the
+  // device-scoped /v1/me/affiliate/invite). Sends the inviter's affiliate link so
+  // the friend is attributed to them — earning the affiliate's cut forever. This
+  // also writes the referral_invites row that satisfies the onboarding gate.
+  route("POST", "/v1/web/affiliate/invite", async (req, res, body) => {
+    const user = await repo.userForSession(sessionFrom(req, body));
+    if (!user) return json(res, 401, { error: "not signed in" });
+    const email = String(body?.email || "").trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return json(res, 400, { error: "valid email required" });
+    }
+    if (email.toLowerCase() === String(user.email || "").toLowerCase()) {
+      return json(res, 400, { error: "you can't invite your own email" });
+    }
+    const aff = await repo.getOrCreateAffiliate(user.id);
+    const link = `${config.siteUrl}/redeem.html?ref=${aff.code}`;
+    const invite = await repo.createReferralInvite(user.id, email, aff.code);
+    await mailer.sendCrewInviteEmail(email, {
+      inviterEmail: user.email,
+      link,
+      rewardPct: config.affiliateRewardBps / 100,
+    });
+    json(res, 200, {
+      ok: true,
+      sent: true,
+      invite: { email: invite.email, status: invite.status, createdAt: invite.sent_at },
     });
   });
 
@@ -863,8 +892,6 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     });
     const recorded = await repo.recordGiftRedemptionForUser({
       id: redemptionId, userId: user.id, plan: plan.id, months, amountCents, recipientEmail,
-      referralRewardMillicents: config.referralRewardCents * 1000,
-      referralCap: config.referralCap,
     });
     if (!recorded) return json(res, 409, { error: "insufficient credits" });
 
@@ -947,10 +974,10 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
   route("POST", "/v1/admin/affiliates/grant", async (req, res, body) => {
     if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
     const rewardBps = Number(body.rewardBps);
-    const capMillicents = Number(body.capMillicents);
+    const capPeople = Number(body.capPeople);
     if (!Number.isInteger(rewardBps) || rewardBps < 1 || rewardBps > 10000) return json(res, 400, { error: "rewardBps must be 1–10000 (0.01%–100%)" });
-    if (!Number.isInteger(capMillicents) || capMillicents < 0) return json(res, 400, { error: "capMillicents must be a whole number ≥ 0" });
-    const result = await repo.grantAffiliateUpgrade(body.affiliateId, { rewardBps, capMillicents, code: body.code });
+    if (!Number.isInteger(capPeople) || capPeople < 0) return json(res, 400, { error: "capPeople must be a whole number ≥ 0" });
+    const result = await repo.grantAffiliateUpgrade(body.affiliateId, { rewardBps, capPeople, code: body.code });
     json(res, result.ok ? 200 : (result.error === "not found" ? 404 : 400), result);
   });
 

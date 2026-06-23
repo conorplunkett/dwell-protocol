@@ -124,7 +124,7 @@
             class="auth-input"
             type="text"
             id="referral-code"
-            placeholder="Referral code (optional)"
+            placeholder="Affiliate code (optional)"
             autocomplete="off"
             maxlength="16"
           />
@@ -260,11 +260,12 @@
       </header>
 
       <div class="portal-hero">
-        <h1 class="portal-h1">Refer a friend to start earning.</h1>
+        <h1 class="portal-h1">Build your crew to start earning.</h1>
         <p class="portal-lead">
-          FreeAI grows by word of mouth. Invite at least one friend to unlock your
-          dashboard. They don't have to sign up — a valid email is all it takes to
-          get you started.
+          FreeAI grows by word of mouth. Invite friends to your crew and you earn
+          10% of their ad revenue for life — they keep 100% of their own. Invite
+          two to unlock your dashboard; a valid email is all it takes to get you
+          started.
         </p>
       </div>
 
@@ -277,9 +278,9 @@
     <!-- RIGHT — invite card -->
     <div class="portal-right">
       <div class="auth-card">
-        <div class="auth-sent-icon">🎁</div>
-        <h2 class="onboard-title">Invite two friends</h2>
-        <p class="auth-sent-msg">Send two invites to open your earnings dashboard.</p>
+        <div class="auth-sent-icon">🤝</div>
+        <h2 class="onboard-title">Invite two to your crew</h2>
+        <p class="auth-sent-msg">Send two crew invites to open your earnings dashboard — you earn 10% of their ad revenue for life.</p>
 
         <form id="onboard-form">
           <input
@@ -301,13 +302,14 @@
             aria-label="Second friend's email"
           />
           <button class="auth-btn-primary" id="onboard-btn" type="submit">
-            Send invites &amp; continue
+            Send crew invites &amp; continue
           </button>
         </form>
 
         <p class="auth-referral-note">
           Their emails just need to be valid — they don't have to sign up for you
-          to continue.
+          to continue. When they join your crew, you earn 10% of their ad revenue
+          for life.
         </p>
         <p class="auth-error" id="onboard-error" hidden></p>
       </div>
@@ -340,7 +342,7 @@
       </button>
       <button class="dash-tab" data-section="referrals" type="button" role="tab" aria-selected="false">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.5"/><path d="M17.5 19a5 5 0 0 0-3-4.6"/></svg></span>
-        <span class="dash-tab-label">Referrals</span>
+        <span class="dash-tab-label">Crew</span>
       </button>
       <button class="dash-tab" data-section="ledger" type="button" role="tab" aria-selected="false">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12"/><path d="M8 12h12"/><path d="M8 18h12"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg></span>
@@ -420,6 +422,7 @@
             <option value="all">All events</option>
             <option value="impression_credit">Impressions</option>
             <option value="click_credit">Clicks</option>
+            <option value="affiliate_credit">Crew bonus</option>
             <option value="referral_credit">Referral bonus</option>
           </select>
           <span class="act-count" id="act-count">0 of 0 rows</span>
@@ -470,73 +473,15 @@
       </section>
 
       <section class="redeem-card" id="referrals-view" hidden>
-        <div class="balance-row">
-          <div>
-            <span class="eyebrow">Refer friends, earn credits</span>
-            <div class="balance" id="ref-earned">$0.00</div>
-            <div class="balance-sub">earned from referrals</div>
-          </div>
-        </div>
-
-        <h2>Give friends FreeAI, get <span id="ref-reward">$20</span></h2>
-        <p class="redeem-lead">
-          Share your link. When a friend signs up with it and redeems their first
-          Claude gift card, we drop <strong id="ref-reward-2">$20</strong> in
-          credits into your balance — for up to <span id="ref-cap">10</span> friends.
-        </p>
-
-        <div class="ref-link-row">
-          <input type="text" id="ref-link" readonly aria-label="Your referral link" />
-          <button class="btn-green" id="ref-copy" type="button">Copy link</button>
-        </div>
-
-        <h3 class="ref-invite-h">Invite a friend by email</h3>
-        <form class="ref-invite-row" id="ref-invite-form">
-          <input
-            type="email"
-            id="ref-invite-email"
-            class="auth-input"
-            placeholder="friend@example.com"
-            autocomplete="off"
-            required
-            aria-label="Friend's email"
-          />
-          <button class="btn-green" id="ref-invite-btn" type="submit">Send invite</button>
-        </form>
-        <p class="ref-invite-msg" id="ref-invite-msg" hidden></p>
-
-        <div class="ref-stats">
-          <div class="ref-stat">
-            <span class="rs-num" id="ref-invited">0</span>
-            <span class="rs-label">invited</span>
-          </div>
-          <div class="ref-stat">
-            <span class="rs-num" id="ref-count">0/10</span>
-            <span class="rs-label">friends referred</span>
-          </div>
-          <div class="ref-stat">
-            <span class="rs-num" id="ref-pending">0</span>
-            <span class="rs-label">pending</span>
-          </div>
-          <div class="ref-stat">
-            <span class="rs-num" id="ref-earned-2">$0.00</span>
-            <span class="rs-label">credits earned</span>
-          </div>
-        </div>
-
-        <div class="ref-list" id="ref-list"></div>
-
         <!-- Affiliate: every signed-in earner is auto-enrolled at the base 10%
              (self-serve, no application). The form below is the influencer
-             upgrade — apply for a higher rate, uncapped earnings + a custom link. -->
+             upgrade — apply for a higher rate, more friends + a custom link. -->
         <div class="affiliate-block" id="affiliate-block" hidden>
-          <hr class="aff-sep" />
-          <span class="eyebrow">Affiliate</span>
           <h2>Earn with your crew</h2>
           <p class="redeem-lead">
             You earn <strong id="aff-pct">10%</strong> of the ad revenue of everyone who
-            joins with your link — for life, dropped into your balance as credits, up to
-            <span id="aff-cap">$1,000</span>.
+            joins with your link — for life, dropped into your balance as credits, for up to
+            <span id="aff-cap">1,000 friends</span>.
           </p>
 
           <!-- Auto-enrolled: shareable link + stats (shown to everyone). -->
@@ -556,8 +501,8 @@
                 <span class="rs-label">credits earned</span>
               </div>
               <div class="ref-stat">
-                <span class="rs-num" id="aff-remaining">$1,000</span>
-                <span class="rs-label">cap remaining</span>
+                <span class="rs-num" id="aff-remaining">1,000</span>
+                <span class="rs-label">friends remaining</span>
               </div>
             </div>
           </div>
