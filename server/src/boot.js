@@ -45,6 +45,7 @@ function loadConfig(env = process.env) {
     mailProvider: env.MAIL_PROVIDER || "console",
     resendApiKey: env.RESEND_API_KEY,
     mailFrom: env.MAIL_FROM,
+    mailFromAds: env.MAIL_FROM_ADS,
     // rate limit
     rateLimitCapacity: parseInt(env.RATE_LIMIT_CAPACITY || "120", 10),
     rateLimitRefillPerSec: parseFloat(env.RATE_LIMIT_REFILL_PER_SEC || "5"),
