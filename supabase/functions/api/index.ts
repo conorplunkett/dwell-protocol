@@ -71,6 +71,7 @@ function loadConfig() {
     mailProvider: env("MAIL_PROVIDER", "console"),
     resendApiKey: env("RESEND_API_KEY"),
     mailFrom: env("MAIL_FROM"),
+    mailFromAds: env("MAIL_FROM_ADS"),
   };
 }
 const config = loadConfig();
@@ -218,18 +219,30 @@ const stripe = createStripe(config.stripeSecretKey);
 // ───────────────────────────── mailer.js ───────────────────────────────────
 function createMailer(cfg: any) {
   const provider = cfg.mailProvider || "console";
-  async function send(to: string, subject: string, htmlBody: string) {
+  // Per-audience senders, all on the Resend-verified contact.freeai.fyi domain.
+  // User mail comes from hello@ with replies routed to support@; advertiser mail
+  // comes from ads@. Overridable via MAIL_FROM / MAIL_FROM_ADS.
+  const userFrom = cfg.mailFrom || "FreeAI <hello@contact.freeai.fyi>";
+  const adsFrom = cfg.mailFromAds || "FreeAI <ads@contact.freeai.fyi>";
+  const supportReplyTo = "support@contact.freeai.fyi";
+  const adsReplyTo = "ads@contact.freeai.fyi";
+  async function send(to: string, subject: string, htmlBody: string, opts: any = {}) {
+    const from = opts.from || userFrom;
+    const replyTo = opts.replyTo !== undefined ? opts.replyTo : supportReplyTo;
     if (provider === "resend" && cfg.resendApiKey) {
+      const payload: any = { from, to, subject, html: htmlBody };
+      if (replyTo) payload.reply_to = replyTo;
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${cfg.resendApiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: cfg.mailFrom || "FreeAI <ads@contact.freeai.fyi>", to, subject, html: htmlBody }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("resend send failed: " + res.status + " " + (await res.text().catch(() => "")).slice(0, 300));
       return;
     }
-    console.log(`[freeai][mail] to=${to} subject="${subject}"`);
+    console.log(`[freeai][mail] to=${to} subject="${subject}" from=${from}`);
   }
+  const sendAds = (to: string, subject: string, htmlBody: string) => send(to, subject, htmlBody, { from: adsFrom, replyTo: adsReplyTo });
   // ── Branded shell for user-facing emails (sign-in, verify, invites,
   // redemption, reward). Table layout + inline styles so it renders across mail
   // clients; palette mirrors theme.css (Claude coral on cream). The advertiser
@@ -252,8 +265,7 @@ function createMailer(cfg: any) {
       + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#faf9f5;"><tr><td align="center" style="padding:30px 16px;">`
       + `<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="width:480px;max-width:100%;">`
       + `<tr><td align="center" style="padding:2px 0 22px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr>`
-      + `<td width="40" height="40" align="center" valign="middle" bgcolor="#d97757" style="width:40px;height:40px;border-radius:10px;background:#d97757;background:linear-gradient(180deg,#e08a6a,#cf6b4a);font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:18px;font-weight:800;color:#ffffff;">F$</td>`
-      + `<td style="padding-left:10px;font-family:${FONT};font-size:18px;font-weight:800;letter-spacing:-0.02em;color:#1f1e1d;">FreeAI.fyi</td>`
+      + `<td width="44" height="44" align="center" valign="middle" bgcolor="#d97757" style="width:44px;height:44px;border-radius:11px;background:#d97757;background:linear-gradient(180deg,#e08a6a,#cf6b4a);font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:20px;font-weight:800;color:#ffffff;">F$</td>`
       + `</tr></table></td></tr>`
       + `<tr><td style="background:#ffffff;border:1px solid #e6e2d8;border-radius:16px;padding:34px 32px;">`
       + (hero ? `<div style="text-align:center;font-size:40px;line-height:1;margin:0 0 12px;">${hero}</div>` : "")
@@ -280,7 +292,7 @@ function createMailer(cfg: any) {
       shell({
         preheader: "Confirm your email to start receiving FreeAI payouts.",
         hero: "✅", heading: "Verify your email to get paid",
-        body: `<p style="margin:0 0 14px;">Confirm this address so your FreeAI credits land in the right place. Once it's verified, every subtle sponsored line you see while using Claude, ChatGPT or Gemini pays you back in credits.</p>`,
+        body: `<p style="margin:0 0 14px;">Confirm this address so your FreeAI credits land in the right place.</p>`,
         cta: { href: link, label: "Verify my email" },
         note: "This link expires in 30 minutes. If you didn't request it, you can safely ignore this email.",
       })),
@@ -293,7 +305,7 @@ function createMailer(cfg: any) {
         note: "This link expires in 30 minutes and can only be used once. If you didn't request it, ignore this email.",
       })),
     sendAdvertiserReceiptEmail: (to: string, { campaignId, brand, adLine, pricePerBlockCents, blocks }: any) =>
-      send(to, "Your FreeAI campaign receipt",
+      sendAds(to, "Your FreeAI campaign receipt",
       shell({
         preheader: "Your FreeAI campaign payment is confirmed — now in review.",
         hero: "💳", heading: "Payment confirmed",
@@ -309,7 +321,7 @@ function createMailer(cfg: any) {
         note: "It goes live once we approve it — usually within a day. Stripe has emailed a separate itemized receipt for your records.",
       })),
     sendCampaignLiveEmail: (to: string, { campaignId, brand, adLine, blocks }: any) =>
-      send(to, "Your FreeAI ad is live 🎉",
+      sendAds(to, "Your FreeAI ad is live 🎉",
       shell({
         preheader: "Approved — your ad is now live on FreeAI.",
         hero: "🚀", heading: "Your ad is live",
@@ -323,7 +335,7 @@ function createMailer(cfg: any) {
         note: "It's showing in the spinner while people use ChatGPT, Claude & Gemini. Higher bids serve first — come back any time to boost your bid and climb the leaderboard.",
       })),
     sendCampaignRejectedEmail: (to: string, { campaignId, brand, adLine, pricePerBlockCents, blocks, note }: any) =>
-      send(to, "Your FreeAI campaign was refunded",
+      sendAds(to, "Your FreeAI campaign was refunded",
       shell({
         preheader: "Your FreeAI campaign wasn't approved — refunded in full.",
         hero: "💸", heading: "Your campaign was refunded",
@@ -354,7 +366,7 @@ function createMailer(cfg: any) {
         preheader: `${inviterEmail} invited you to FreeAI — earn free Claude credits.`,
         hero: "🎁", heading: "You're invited to FreeAI",
         body: `<p style="margin:0 0 14px;"><strong style="color:#1f1e1d;">${inviterEmail}</strong> is earning free Claude credits with FreeAI and wants you in.</p>`
-          + `<p style="margin:0 0 14px;">FreeAI shows one subtle sponsored line while you use ChatGPT, Claude or Gemini, and pays you back <strong>50% of the revenue</strong> as Claude credits — cash out anytime for gift cards.</p>`,
+          + `<p style="margin:0 0 14px;">Earn Claude credits as you use ChatGPT, Claude or Gemini — cash out anytime for gift cards.</p>`,
         cta: { href: link, label: "Accept the invite" },
         note: `When you sign up with this link and redeem your first Claude gift card, ${inviterEmail} earns a one-time $${Math.round(rewardUsd)} bonus — at no cost to you.`,
       })),
@@ -367,7 +379,7 @@ function createMailer(cfg: any) {
         preheader: `${inviterEmail} added you to their FreeAI crew — earn free Claude credits.`,
         hero: "🤝", heading: "Join your friend's FreeAI crew",
         body: `<p style="margin:0 0 14px;"><strong style="color:#1f1e1d;">${inviterEmail}</strong> is earning free Claude credits with FreeAI and added you to their crew.</p>`
-          + `<p style="margin:0 0 14px;">FreeAI shows one subtle sponsored line while you use ChatGPT, Claude or Gemini, and pays you back <strong>50% of the revenue</strong> as Claude credits.</p>`,
+          + `<p style="margin:0 0 14px;">Earn Claude credits as you use ChatGPT, Claude or Gemini.</p>`,
         cta: { href: link, label: "Join the crew" },
         note: `You keep 100% of what you earn. ${inviterEmail} earns an extra ${Math.round(rewardPct)}% on top — at no cost to you.`,
       })),
