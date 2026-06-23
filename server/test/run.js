@@ -47,6 +47,8 @@ const fakeMailer = {
   sendGiftRedemptionEmail: async (to, details) => { mailbox.push({ to, ...details }); },
   sendReferralInviteEmail: async (to, details) => { mailbox.push({ to, ...details }); },
   sendCrewInviteEmail: async (to, details) => { mailbox.push({ to, ...details }); },
+  sendRedemptionConfirmationEmail: async (to, details) => { mailbox.push({ to, ...details }); },
+  sendReferralRewardEmail: async (to, details) => { mailbox.push({ to, ...details }); },
 };
 
 (async () => {
@@ -624,6 +626,11 @@ const fakeMailer = {
     assert.strictEqual(
       (await poolNs.query("select status from referral_invites where lower(email) = 'invitee@example.com'")).rows[0].status,
       "rewarded");
+    // the redeemer gets a confirmation, and the referrer is told they earned the bonus
+    assert.ok(mailbox.some((m) => m.to === "invitee@example.com" && m.planName),
+      "redeemer receives a gift-card redemption confirmation");
+    assert.ok(mailbox.some((m) => m.to === "inviter@example.com" && m.rewardUsd > 0),
+      "referrer is emailed the referral bonus they just earned");
   });
 
   // ---------- affiliates ----------
