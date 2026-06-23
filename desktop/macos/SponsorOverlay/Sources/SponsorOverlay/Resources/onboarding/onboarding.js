@@ -235,7 +235,7 @@
             '</ul>' +
           '</div>' +
         '</div>' +
-        '<div class="callout">Find FreeAI as the ' + MENUBAR_WIRE_SVG + ' icon up in your menu bar anytime.</div>' +
+        '<div class="callout">Find FreeAI as the ' + MENUBAR_WIRE_SVG + ' icon.</div>' +
       '</div>';
   }
 
