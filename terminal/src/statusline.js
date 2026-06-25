@@ -59,9 +59,9 @@ export function buildAdLine(state, { now = Date.now() } = {}) {
   const text = composeAdText(ad.brand, ad.line);
   if (!text) return "";
 
-  // Advertiser color when set, else a stable per-brand fallback so the line
-  // always looks deliberate.
-  const rgb = resolveAdColor({ color: ad.color, seed: ad.brand || ad.line });
+  // Advertiser color when set, else the FreeAI accent orange so the line reads
+  // as native next to Claude's spinner.
+  const rgb = resolveAdColor({ color: ad.color });
   // Bold + colored + underlined, with a shimmer band sweeping across — reads
   // as a live, clickable link like the Chrome extension's ad bar.
   const styled = `${dimLabel("ad\u00b7")} ${shimmer(text, rgb, { now })}`;

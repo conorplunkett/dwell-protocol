@@ -26,10 +26,12 @@ test("brandColor is deterministic per seed and in range", () => {
   }
 });
 
-test("resolveAdColor prefers advertiser color, falls back to brand color", () => {
-  assert.deepEqual(resolveAdColor({ color: "#5b5bd6", seed: "Linear" }), { r: 91, g: 91, b: 214 });
-  assert.deepEqual(resolveAdColor({ color: "", seed: "Linear" }), brandColor("Linear"));
-  assert.deepEqual(resolveAdColor({ color: "garbage", seed: "Linear" }), brandColor("Linear"));
+test("resolveAdColor prefers advertiser color, falls back to the FreeAI accent orange", () => {
+  const orange = { r: 217, g: 119, b: 87 };
+  assert.deepEqual(resolveAdColor({ color: "#5b5bd6" }), { r: 91, g: 91, b: 214 });
+  assert.deepEqual(resolveAdColor({ color: "" }), orange);
+  assert.deepEqual(resolveAdColor({ color: "garbage" }), orange);
+  assert.deepEqual(resolveAdColor(), orange);
 });
 
 test("shimmer emits a truecolor base and advances with time", () => {
