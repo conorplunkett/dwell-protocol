@@ -427,7 +427,26 @@ function initWaitlist() {
       '<a class="wl-adv" href="#advertisers">Want to advertise?</a>' +
     '</div>' +
     '<p class="wl-note" id="wl-note">Chrome extension is in review — be first in line.</p>';
-  note.insertAdjacentElement("afterend", wl);
+  // On the home page the waitlist sits BELOW the 3-up downloads grid (so "Get it
+  // on your platform" reads directly under the hero note); the landers have no
+  // downloads section, so it stays right under the hero note there. .wl--wide
+  // widens the home variant to sit as one row under the three product columns.
+  const downloads = document.querySelector(".downloads");
+  if (downloads) {
+    wl.classList.add("wl--wide");
+    downloads.insertAdjacentElement("afterend", wl);
+  } else {
+    note.insertAdjacentElement("afterend", wl);
+  }
+
+  // The greyed "Coming soon" Chrome/Desktop tiles now read "Join the waitlist"
+  // and scroll down to the email field instead of doing nothing.
+  document.querySelectorAll("[data-wl-jump]").forEach((b) => {
+    b.addEventListener("click", () => {
+      wl.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => wl.querySelector("#wl-email")?.focus({ preventScroll: true }), 500);
+    });
+  });
 
   // Drop the redundant hero "FOR ADVERTISERS · BID ON THIS LINE" jump (landers
   // only) — the new "Want to advertise?" button now owns that jump.

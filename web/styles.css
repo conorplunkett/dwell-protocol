@@ -272,8 +272,17 @@ a { color: inherit; text-decoration: none; }
   background: var(--ok-bg); color: var(--ok-fg); border: 1px solid var(--ok-line);
   border-radius: 11px; padding: 13px 16px;
 }
+/* Home variant: the waitlist sits below the 3-up downloads grid as one row —
+   column 1 is the email + Join button, column 2 is the advertise button — so it
+   widens to roughly span under the three product columns. */
+.wl--wide { max-width: 860px; margin-top: 22px; padding: 0 28px; }
+.wl--wide .wl-row { flex-wrap: nowrap; }
+
 @media (max-width: 560px) {
-  .wl-form, .wl-adv { flex-basis: 100%; }
+  /* Stack vertically on mobile, advertise button on top of the waitlist. */
+  .wl-row { flex-direction: column; flex-wrap: wrap; }
+  .wl-form, .wl-adv { flex-basis: 100%; width: 100%; }
+  .wl-adv { order: -1; }
 }
 
 /* The "FOR ADVERTISERS" scroll cue now sits between the surfaces section and
