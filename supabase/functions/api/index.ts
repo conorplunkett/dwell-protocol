@@ -519,7 +519,7 @@ function createRepo(pool: any) {
     }
     await client.query(
       `insert into ledger (entry_type, amount_millicents, user_id, meta)
-       values ('referral_credit', $1, $2, $3::jsonb)`,
+       values ('referral_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
       [String(rewardMillicents), referrer_user_id, JSON.stringify({ referralId: id, referredUserId })]
     );
     await client.query(
@@ -606,7 +606,7 @@ function createRepo(pool: any) {
     if (share <= 0n) return;
     await client.query(
       `insert into ledger (entry_type, amount_millicents, user_id, meta)
-       values ('affiliate_credit', $1, $2, $3::jsonb)`,
+       values ('affiliate_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
       [share.toString(), aff.user_id, JSON.stringify({ affiliateId: aff.id, affiliatedUserId })]
     );
     await client.query(
@@ -745,7 +745,7 @@ function createRepo(pool: any) {
         const funded = chargeCents * 1000n;
         await c.query(
           `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
-           values ('campaign_credit', $1, $2, $3::jsonb)`,
+           values ('campaign_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
           [funded.toString(), campaignId, JSON.stringify({ impressions: rows[0].impressions_total })]
         );
         return {
@@ -799,7 +799,7 @@ function createRepo(pool: any) {
         const refund = chargeCents * 1000n;
         await c.query(
           `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
-           values ('campaign_refund', $1, $2, $3::jsonb)`,
+           values ('campaign_refund', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
           [(-refund).toString(), campaignId, JSON.stringify({ note: note || null })]
         );
         return {
@@ -884,9 +884,13 @@ function createRepo(pool: any) {
           const dev = (gross * BigInt(Math.round(revenueShare * 1000))) / 1000n;
           const fee = gross - dev;
           credited += dev;
+          // postgres.js double-encodes a JSON.stringify'd string bound to a jsonb
+          // column (stores it as a JSON *string scalar*, so meta->>'key' is null).
+          // ($N::jsonb #>> '{}')::jsonb unwraps that back to a real object; it's a
+          // no-op on values that are already objects. Applied to every meta insert.
           await c.query(
             `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
-             values ('impression_credit', $1, $2, $3, $4::jsonb)`,
+             values ('impression_credit', $1, $2, $3, ($4::jsonb #>> '{}')::jsonb)`,
             [dev.toString(), deviceId, ev.campaignId, JSON.stringify(source ? { impressions: imp, billed, source } : { impressions: imp, billed })]
           );
           await c.query(
@@ -1025,7 +1029,7 @@ function createRepo(pool: any) {
           const fee = gross - dev;
           await c.query(
             `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
-             values ('click_credit', $1, $2, $3, $4::jsonb)`,
+             values ('click_credit', $1, $2, $3, ($4::jsonb #>> '{}')::jsonb)`,
             [dev.toString(), device_id, campaign_id, JSON.stringify({ via: "go", billed })]
           );
           await c.query(
@@ -1245,7 +1249,7 @@ function createRepo(pool: any) {
         );
         await c.query(
           `insert into ledger (entry_type, amount_millicents, user_id, meta)
-           values ('gift_redemption_debit', $1, $2, $3::jsonb)`,
+           values ('gift_redemption_debit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
           [(-costMillicents).toString(), userId, JSON.stringify({ redemptionId: rows[0].id, plan, months })]
         );
         // The $20 referral program is retired — redeeming no longer rewards any
@@ -1324,7 +1328,7 @@ function createRepo(pool: any) {
     async saveOnboardingSurvey(userId: string, { models, surfaces, surfaceOther }: any) {
       await pool.query(
         `insert into onboarding_surveys (user_id, models, surfaces, surface_other)
-           values ($1, $2::jsonb, $3::jsonb, $4)
+           values ($1, ($2::jsonb #>> '{}')::jsonb, ($3::jsonb #>> '{}')::jsonb, $4)
          on conflict (user_id) do update
            set models = excluded.models, surfaces = excluded.surfaces,
                surface_other = excluded.surface_other, updated_at = now()`,
@@ -1548,7 +1552,7 @@ function createRepo(pool: any) {
       return tx(async (c: any) => {
         await c.query(
           `insert into ledger (entry_type, amount_millicents, user_id, meta)
-           values ('payout_debit', $1, $2, $3::jsonb)`,
+           values ('payout_debit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
           [(-BigInt(amountCents) * 1000n).toString(), userId, JSON.stringify({ transferId })]
         );
         await c.query("insert into payouts (user_id, amount_cents, stripe_transfer_id) values ($1,$2,$3)", [userId, amountCents, transferId]);
@@ -1609,7 +1613,7 @@ function createRepo(pool: any) {
     },
     async setSetting(key: string, value: any) {
       await pool.query(
-        `insert into settings (key, value, updated_at) values ($1, $2::jsonb, now())
+        `insert into settings (key, value, updated_at) values ($1, ($2::jsonb #>> '{}')::jsonb, now())
          on conflict (key) do update set value = excluded.value, updated_at = now()`,
         [key, JSON.stringify(value)]
       );
@@ -1645,7 +1649,7 @@ function createRepo(pool: any) {
     },
     async setPricing(next: any) {
       await pool.query(
-        `insert into settings (key, value, updated_at) values ('pricing', $1::jsonb, now())
+        `insert into settings (key, value, updated_at) values ('pricing', ($1::jsonb #>> '{}')::jsonb, now())
          on conflict (key) do update set value = excluded.value, updated_at = now()`,
         [JSON.stringify(next)]
       );
@@ -1795,7 +1799,7 @@ function createRepo(pool: any) {
           const mc = (BigInt(rows[0].amount_cents) * 1000n).toString();
           await c.query(
             `insert into ledger (entry_type, amount_millicents, user_id, device_id, meta)
-             values ('admin_credit', $1, $2, $3, $4::jsonb)`,
+             values ('admin_credit', $1, $2, $3, ($4::jsonb #>> '{}')::jsonb)`,
             [mc, rows[0].user_id || null, rows[0].device_id || null, JSON.stringify({ reason: "redemption_cancelled", redemptionId: id })]
           );
           refunded = true;
@@ -1931,7 +1935,7 @@ function createRepo(pool: any) {
       const mc = (BigInt(cents) * 1000n) * (isCredit ? 1n : -1n);
       const { rows } = await pool.query(
         `insert into ledger (entry_type, amount_millicents, user_id, device_id, meta)
-         values ($1, $2, $3, $4, $5::jsonb) returning id`,
+         values ($1, $2, $3, $4, ($5::jsonb #>> '{}')::jsonb) returning id`,
         [entryType, mc.toString(), userId || null, deviceId || null, JSON.stringify({ note: note || null, source: "admin" })]
       );
       return rows[0]?.id || null;
