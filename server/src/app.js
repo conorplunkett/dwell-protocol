@@ -141,9 +141,10 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
   route("GET", "/healthz", async (req, res) => json(res, 200, { ok: true }));
 
   route("GET", "/v1/config", async (req, res) => {
-    let leaderboardPublic = false;
+    let leaderboardPublic = false, liveTopCpm = false;
     try { leaderboardPublic = (await repo.getSetting("leaderboard_public")) === true; } catch { /* settings table absent */ }
-    json(res, 200, { serving, revenueShare: config.revenueShare, leaderboardPublic });
+    try { liveTopCpm = (await repo.getSetting("live_top_cpm")) === true; } catch { /* settings table absent */ }
+    json(res, 200, { serving, revenueShare: config.revenueShare, leaderboardPublic, liveTopCpm });
   });
 
   route("GET", "/v1/ads", async (req, res) => {
@@ -1063,6 +1064,20 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     if (typeof body.public !== "boolean") return json(res, 400, { error: "public (boolean) required" });
     await repo.setSetting("leaderboard_public", body.public);
     json(res, 200, { ok: true, public: body.public });
+  });
+
+  // ---------- CPM slider "live top CPM" ghost toggle (off by default) ----------
+  route("GET", "/v1/admin/live-top-cpm", async (req, res, body, rawBody, query) => {
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    let enabled = false;
+    try { enabled = (await repo.getSetting("live_top_cpm")) === true; } catch { /* settings table absent */ }
+    json(res, 200, { enabled });
+  });
+  route("POST", "/v1/admin/live-top-cpm", async (req, res, body) => {
+    if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
+    if (typeof body.enabled !== "boolean") return json(res, 400, { error: "enabled (boolean) required" });
+    await repo.setSetting("live_top_cpm", body.enabled);
+    json(res, 200, { ok: true, enabled: body.enabled });
   });
 
   // ---------- completion-receipt auto-send toggle + batched sweep ----------

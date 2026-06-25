@@ -197,20 +197,37 @@ if (urlInput) {
 const budgetEl = document.getElementById("budget");
 const cpmEl = document.getElementById("cpm");
 const cpmBubble = document.getElementById("cpm-bubble");
+const cpmGhost = document.getElementById("cpm-ghost");
+const cpmGhostLbl = document.getElementById("cpm-ghost-lbl");
 const fmt = (n) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n) => n.toLocaleString();
 
 let MIN_BUDGET = 100, MAX_BUDGET = 100000, SUGGESTED_BUDGET = 2500, MIN_CPM = 5, MAX_CPM = 100; // overridden by loadPricing()
+// The ghost marker = the current top bid on the marketplace. Hardcoded to $50
+// until the admin turns on "live top CPM" (then loadPricing copies the real top).
+let TOP_CPM = 50;
 const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
+// Map a CPM value to the thumb-aligned x position on the track. The 22px thumb
+// is centered, so nudge by (0.5 - pct) * 22px so markers sit over the thumb at
+// both ends.
+function cpmLeft(val) {
+  const min = Number(cpmEl.min) || MIN_CPM, max = Number(cpmEl.max) || MAX_CPM;
+  const v = Math.min(max, Math.max(min, val));
+  const pct = max > min ? (v - min) / (max - min) : 0;
+  return `calc(${pct * 100}% + ${(0.5 - pct) * 22}px)`;
+}
 function positionCpmBubble() {
   if (!cpmEl || !cpmBubble) return;
-  const min = Number(cpmEl.min) || MIN_CPM, max = Number(cpmEl.max) || MAX_CPM;
-  const val = Number(cpmEl.value) || min;
-  const pct = max > min ? (val - min) / (max - min) : 0;
-  // 22px thumb: nudge the bubble so it stays over the thumb at both ends.
-  cpmBubble.style.left = `calc(${pct * 100}% + ${(0.5 - pct) * 22}px)`;
+  const val = Number(cpmEl.value) || (Number(cpmEl.min) || MIN_CPM);
+  cpmBubble.style.left = cpmLeft(val);
   cpmBubble.textContent = fmt(val);
+}
+// The read-only ghost thumb marking the current top bid (TOP_CPM).
+function positionCpmGhost() {
+  if (!cpmEl || !cpmGhost) return;
+  cpmGhost.style.left = cpmLeft(TOP_CPM);
+  if (cpmGhostLbl) cpmGhostLbl.textContent = "top $" + Math.round(TOP_CPM).toLocaleString();
 }
 
 function recompute() {
@@ -228,12 +245,15 @@ function recompute() {
   setTxt("sum-cpm", fmt(cpm));
   setTxt("sum-imp", fmtInt(impressions));
   positionCpmBubble();
+  positionCpmGhost();
 }
 if (budgetEl && cpmEl) {
   budgetEl.addEventListener("input", recompute);
   cpmEl.addEventListener("input", recompute);
   // Don't let the mouse wheel scrub the budget number — scroll the page instead.
   budgetEl.addEventListener("wheel", (e) => { if (document.activeElement === budgetEl) e.preventDefault(); }, { passive: false });
+  // The thumb-aligned marker positions are width-dependent — re-place on resize.
+  window.addEventListener("resize", () => { positionCpmBubble(); positionCpmGhost(); });
   recompute();
 }
 
@@ -293,6 +313,15 @@ const escapeHtml = (s) =>
   String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// Site config (/v1/config), fetched once and shared across the lander widgets
+// that need its admin-tunable flags (leaderboardPublic, liveTopCpm).
+let _cfgPromise = null;
+function getConfig() {
+  if (!API_BASE) return Promise.resolve(null);
+  if (!_cfgPromise) _cfgPromise = fetch(`${API_BASE}/v1/config`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  return _cfgPromise;
+}
+
 // Pull the live bid market into the leaderboard (escaped — advertiser text).
 // The whole section is hidden by default; it's only revealed when the admin has
 // turned the "Live bid market" switch on (surfaced via /v1/config →
@@ -302,7 +331,7 @@ async function loadLeaderboard() {
   const board = document.getElementById("board");
   if (!section || !board || !API_BASE) return;
   try {
-    const cfg = await fetch(`${API_BASE}/v1/config`).then((r) => (r.ok ? r.json() : null));
+    const cfg = await getConfig();
     if (!cfg || !cfg.leaderboardPublic) return; // switch is off — stay hidden
     const res = await fetch(`${API_BASE}/v1/leaderboard`);
     if (res.ok) {
@@ -347,8 +376,12 @@ async function loadPricing() {
     if (budgetEl) { budgetEl.min = String(minBudget); budgetEl.max = String(maxBudget); budgetEl.placeholder = String(Math.round(sugBudget)); }
     setTxt("budget-hint", `min ${money0(minBudget)} · max ${money0(maxBudget)}`);
     setTxt("cpm-min-lbl", money0(minCpm));
-    setTxt("cpm-top-lbl", money0(topCpm));
-    setTxt("note-top", money(topCpm));
+    setTxt("cpm-max-lbl", money0(maxCpm));
+    // The "top bid" the ghost marker + note point at: the live marketplace top
+    // only when the admin has flipped "live top CPM" on; otherwise hardcoded $50.
+    const cfg = await getConfig();
+    TOP_CPM = (cfg && cfg.liveTopCpm && Number.isFinite(topCpm)) ? topCpm : 50;
+    setTxt("note-top", money(TOP_CPM));
     setTxt("note-min", money(minCpm));
     recompute();
   } catch (_) {
