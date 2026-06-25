@@ -34,7 +34,7 @@ make package-ext          # or: tools/package-extension.sh
 ```
 
 This writes `chrome-extension/dist/freeai-chrome-v<version>.zip` containing
-**only** the 12 runtime files (manifest, icons, `src/*`, `popup/*`). It will
+**only** the runtime files the manifest references (manifest, icons, `src/*`, `popup/*`). It will
 **refuse to build** if `popup/theme.css` has drifted from the root `theme.css`
 (the AGENTS.md mirror rule) or if any JS fails the syntax lint — fix those first.
 
@@ -65,13 +65,13 @@ manifest and pre-fills name, version, and icons. Then complete the tabs below.
 **Detailed description** (paste into the description box):
 
 ```
-FreeAI turns the AI "thinking" spinner into a tiny ad marketplace — and gives
+FreeAI turns the AI "thinking" spinner into a tiny ad marketplace and gives
 you half the money back as credits.
 
-While ChatGPT, Claude, or Gemini is generating an answer, FreeAI shows a
-sponsored line right by the reply. That's it. When the model finishes, it goes
-away. 50% of the ad revenue accrues to you as credits you can redeem for AI
-subscriptions like Claude.
+While ChatGPT, Claude, or Gemini is generating an answer, instead of sitting
+idle, FreeAI shows a sponsored line right by the reply. That's it. When the
+model finishes, it goes away. 50% of the ad revenue accrues to you as credits
+you can redeem for AI subscriptions like Claude.
 
 WHAT IT DOES
 • Shows a sponsored line only while the assistant is thinking.
@@ -81,7 +81,7 @@ WHAT IT DOES
 WHAT IT DOES NOT DO
 • It never reads, stores, or transmits your prompts or the model's answers.
 • It only detects the on/off "is it generating right now?" state of the page.
-• No keystroke logging. No selling your data — the only data we have is
+• No keystroke logging. No selling your data the only data we have is
   "a spinner showed an ad."
 
 SUPPORTED SITES
@@ -104,17 +104,31 @@ the #1 cause of rejection. Answer it to match what the code actually does
   > response, and returns 50% of that ad revenue to the user as credits to redeem
   > for gift cards.
 
-- **Data usage disclosures** — check honestly:
-  - **Does NOT collect** prompts, page content, model output, keystrokes,
-    personal communications, health/financial/location/web-history data, or
-    authentication info.
-  - **Collects** only anonymous, aggregate **ad impression/click counts** tied
-    to an **anonymous device ID** (no account, no PII), reported to the FreeAI
-    backend to compute earnings.
+- **Data usage disclosures** — check honestly. In the "What user data do you
+  collect?" checklist, **tick exactly these** (and nothing else):
+  - ☑ **User activity** — ad impression/click counts (a click is user activity).
+  - ☑ **Personally identifiable information** — an **email address**, in two
+    cases: the email you sign in with to redeem, and a **friend's email** you
+    type into the referral "invite" form (sent once to deliver the invite).
+  - ☑ **Authentication information** — only your **own freeai.fyi session
+    token**, read on **freeai.fyi only**, sent to our server to link this device
+    to your account so earnings show in your portal. It's first-party and used
+    solely for that link; we never read auth tokens on the AI chat sites.
+  - **Leave UNCHECKED:** prompts/page content/model output (Website content),
+    keystrokes, Personal communications, Health, Financial, Location, Web
+    history — none are collected. The extension only detects the on/off "is it
+    generating?" state on the AI sites.
+  - Tie it to an **anonymous device ID** (no account until you sign in).
   - Affirm: data is **not sold**, **not used for unrelated purposes**, and
     **not used for creditworthiness/lending**.
-  - You **do** transmit data to a remote server (the impression/click counts) —
-    declare it and point to the privacy policy.
+  - You **do** transmit data to a remote server — declare it and point to the
+    privacy policy (which now lists email, the friend-invite email, and the
+    account-link session).
+
+  > Note: ticking PII + Authentication is the honest answer given the referral
+  > invite and the account link, and it matches the privacy policy. It can mean
+  > a slightly deeper review, but a disclosure that doesn't match observed
+  > behavior is the faster path to rejection.
 
 - **Remote code**: Answer **No** — the extension executes no remotely-hosted
   code. It only `fetch`es JSON ad data/config from the backend; it never loads or
@@ -131,6 +145,7 @@ specific justifications keep review fast:
 | `alarms` | Schedules periodic background tasks: refreshing the ad inventory/config and flushing batched impression events to the ledger (`chrome.alarms`, every 1–10 min). |
 | **Host permissions** (claude.ai, chatgpt.com, chat.openai.com, gemini.google.com) | The content script must run on these AI chat sites to detect the "generating" state and inject the single sponsored line at the reply. |
 | Host permission: `wpjfhezklpczxzocgxsb.supabase.co` | The backend API: registers the anonymous device, pulls live ad inventory/config, and reports impression/click counts to compute earnings. |
+| Host permission: `freeai.fyi` | A small content script (`src/link.js`) runs on the FreeAI website to link the user's anonymous device to their signed-in account so earnings appear in their portal. It reads only the site's own session token from the page; no AI chat-site data is involved. |
 
 ---
 
@@ -168,7 +183,7 @@ labelled mock ad renders on demand, see `README.md`):
 - [ ] `make test-ext` and `make lint-ext` pass.
 - [ ] `manifest.json` `version` bumped (for updates) and matches the zip name.
 - [ ] `make package-ext` succeeded (mirror + lint gates green).
-- [ ] Zip contains only the 12 runtime files — no `test/`, `node_modules/`,
+- [ ] Zip contains only the runtime files — no `test/`, `node_modules/`,
       or `README.md` (the script guarantees this).
 - [ ] Privacy policy is live at `https://freeai.fyi/privacy` and **matches the
       data-usage answers** (see the note in [§8](#8-anything-else--open-items)).
