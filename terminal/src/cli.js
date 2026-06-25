@@ -46,6 +46,7 @@ async function setup(argv) {
   });
   const result = installShellBlock({ shell, rcPath, force: flags.force === true });
   console.log(`FreeAI Claude setup complete`);
+  console.log(`We never read or write the contents of your prompts or Claude's replies.`);
   console.log(`real claude: ${realClaudePath}`);
   console.log(`shell rc: ${result.rcPath}`);
   console.log(`restart your shell or source ${result.rcPath}`);
@@ -98,6 +99,7 @@ async function linkStep({ home, emailArg, allowPrompt, wait = true }) {
       linkRequestedAt: new Date().toISOString(),
     });
     console.log(`Magic link sent to ${res.email}. Open it to finish linking your FreeAI account.`);
+    console.log(`You won't receive credits until you link your account.`);
   } catch (err) {
     console.error(`Could not send the link: ${String(err?.message || err)} (run \`freeai claude link\` to retry).`);
     return { error: String(err?.message || err) };
