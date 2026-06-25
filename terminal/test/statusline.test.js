@@ -91,14 +91,21 @@ test("buildAdLine falls back to styled, non-clickable text when tracking URL is 
   assert.doesNotMatch(out, /\u001b]8;;/); // no hyperlink without a tracking URL
 });
 
-test("buildAdLine renders brand in FreeAI orange with a clickable link, ignoring advertiser color", () => {
+test("buildAdLine renders brand, advertiser color and a clickable link", () => {
   const out = buildAdLine({
     ad: { brand: "Linear", line: "Plan your next sprint faster", color: "#5b5bd6" },
     trackingUrl: "https://api.example/v1/go/tok",
   }, { now: 0 });
   assert.equal(stripAnsi(out), "ad· Linear — Plan your next sprint faster");
   assert.match(out, /\u001b\[1m/);              // bold
-  assert.match(out, /\u001b\[38;2;217;119;87m/);   // FreeAI accent orange #d97757
-  assert.doesNotMatch(out, /\[38;2;91;91;214m/); // advertiser color is ignored
+  assert.match(out, /\u001b\[38;2;91;91;214m/); // advertiser color #5b5bd6 wins
   assert.match(out, /\u001b]8;;https:\/\/api\.example\/v1\/go\/tok/); // clickable
+});
+
+test("buildAdLine falls back to the FreeAI accent orange when the ad has no color", () => {
+  const out = buildAdLine({
+    ad: { brand: "FreeAI", line: "get Claude for free with ads.", color: "" },
+    trackingUrl: "https://api.example/v1/go/tok",
+  }, { now: 0 });
+  assert.match(out, /\[38;2;217;119;87m/); // #d97757
 });
