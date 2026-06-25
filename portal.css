@@ -635,3 +635,28 @@ html.auth-pending #portal-loading { display: flex; }
   .install-active { flex-direction: row; justify-content: space-between; min-width: 0; padding: 10px 14px; }
   .install-active .ic-link { margin-left: auto; }
 }
+
+/* Earnings tab: per-surface connection status row — same logo/label visuals as the
+   install tiles (reuses .logo.is-inactive + .ia-label), but a 3-up row with the
+   surface name on top. Driven by the same applyServiceActivation() / GET /v1/web/sources. */
+.earn-surfaces-card {
+  margin-top: 16px; padding: 20px 22px;
+  border: 1px solid var(--line); border-radius: 18px; background: #fff;
+}
+.ess-title { font-size: 15px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 3px; }
+.ess-sub { font-size: 13px; font-weight: 500; color: var(--gray); margin: 0 0 16px; }
+.earn-surfaces { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.earn-surface {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 16px 12px; text-align: center;
+  border: 1px solid var(--line); border-radius: 12px; background: #fff;
+}
+.es-surface-name { font-size: 14px; font-weight: 700; color: var(--ink); }
+.earn-surface .logo { transition: filter .45s ease, box-shadow .45s ease; }
+.earn-surface.is-live { border-color: var(--ok-line); background: var(--ok-bg); }
+.earn-surface.is-live .ia-label { color: var(--ok-fg); }
+
+@media (max-width: 560px) {
+  .earn-surfaces { grid-template-columns: 1fr; }
+  .earn-surface { flex-direction: row; justify-content: space-between; text-align: left; }
+}

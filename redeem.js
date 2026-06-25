@@ -206,14 +206,16 @@ function applyServiceActivation(sources) {
   for (const product of INSTALL_PRODUCTS) {
     const live = !!(sources && sources[product]);
     anyLive = anyLive || live;
-    const logo = document.querySelector(`.logo[data-active="${product}"]`);
-    const label = document.querySelector(`[data-active-label="${product}"]`);
-    if (logo) {
+    // querySelectorAll: the same product tile appears on both the Install tab and
+    // the Earnings tab's status row — toggle every instance so they stay in sync.
+    document.querySelectorAll(`.logo[data-active="${product}"]`).forEach((logo) => {
       logo.classList.toggle("is-inactive", !live);
-      const wrap = logo.closest(".install-active");
+      const wrap = logo.closest(".install-active, .earn-surface");
       if (wrap) wrap.classList.toggle("is-live", live);
-    }
-    if (label) label.textContent = live ? "Active" : "Inactive";
+    });
+    document.querySelectorAll(`[data-active-label="${product}"]`).forEach((label) => {
+      label.textContent = live ? "Active" : "Inactive";
+    });
   }
   const heroLogo = $("install-hero-logo");
   if (heroLogo) heroLogo.classList.toggle("is-inactive", !anyLive);
@@ -227,15 +229,20 @@ function applyServiceActivation(sources) {
   }
 }
 
-let installSourcesLoaded = false;
-async function loadInstall() {
-  renderInstallChecks();
-  // Logos only flip on real server data; render greyed until /v1/web/sources answers.
+// Per-surface activation, shared by the Install tab and the Earnings tab's status
+// row. Logos only flip on real server data; they stay greyed until this answers.
+async function loadServiceActivation() {
   const { status, body } = await apiGet("/v1/web/sources");
   if (status === 401) { localStorage.removeItem(SESSION_KEY); location.reload(); return; }
   if (status !== 200) return;
-  installSourcesLoaded = true;
   applyServiceActivation(body && body.sources ? body.sources : body);
+}
+
+let installSourcesLoaded = false;
+async function loadInstall() {
+  renderInstallChecks();
+  await loadServiceActivation();
+  installSourcesLoaded = true;
 }
 
 // Toggle the local "installed" checklist; logos are unaffected (server-driven).
@@ -656,6 +663,7 @@ async function loadEarnings(window = earnWindow) {
   $("earn-month").textContent = usd(body.monthUsd || 0);
   $("earn-lifetime").textContent = usd(body.lifetimeUsd || 0);
   renderChart(body.series || [], window);
+  loadServiceActivation(); // light up the "Where you're earning" status row
 }
 
 // Snap a Date to the start of its hour/day bucket (local time) for axis fill.
@@ -835,32 +843,38 @@ $("act-filter").addEventListener("change", renderActivity);
 
 // ---- boot ----
 // Link a pending desktop device (creds stashed by captureDeviceLink) to the
-// now-signed-in account. Same call the extension makes. Leaves the pending key
-// on failure so it retries on the next signed-in load.
+// now-signed-in account. Same call the extension makes. On failure we keep the
+// pending key (so it retries on the next signed-in load) AND tell the user, so a
+// silent failure can't strand their credits without explanation.
 async function maybeLinkDevice() {
   let pend = null;
   try { pend = JSON.parse(localStorage.getItem(PENDING_LINK_KEY) || "null"); } catch (e) {}
   if (!pend || !pend.deviceId || !pend.deviceKey) return;
-  const { status } = await apiPost("/v1/devices/link", {
+  const { status, body } = await apiPost("/v1/devices/link", {
     deviceId: pend.deviceId,
     deviceKey: pend.deviceKey,
   });
   if (status === 200) {
     localStorage.removeItem(PENDING_LINK_KEY);
-    showLinkedToast();
+    toast("✓ Desktop app linked to your account", "ok");
+  } else {
+    console.warn("[link] /v1/devices/link failed:", status, body);
+    toast("Couldn't link your desktop app — try again from the app's menu.", "err");
   }
 }
 
-function showLinkedToast() {
+// Small bottom-center toast. kind: "ok" (default, dark) or "err" (red, sticks longer).
+function toast(msg, kind = "ok") {
   try {
     const t = document.createElement("div");
-    t.textContent = "✓ Desktop app linked to your account";
+    t.textContent = msg;
     t.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);" +
-      "background:#1f1e1d;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;" +
-      "box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:9999;opacity:0;transition:opacity .25s";
+      "background:" + (kind === "err" ? "#b42318" : "#1f1e1d") + ";color:#fff;padding:10px 16px;" +
+      "border-radius:999px;font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:9999;" +
+      "opacity:0;transition:opacity .25s";
     document.body.appendChild(t);
     requestAnimationFrame(() => { t.style.opacity = "1"; });
-    setTimeout(() => { t.style.opacity = "0"; setTimeout(() => t.remove(), 400); }, 3500);
+    setTimeout(() => { t.style.opacity = "0"; setTimeout(() => t.remove(), 400); }, kind === "err" ? 5000 : 3500);
   } catch (e) {}
 }
 

@@ -304,7 +304,10 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
   route("GET", "/v1/me/earnings", async (req, res, body, rawBody, query) => {
     const device = await authDeviceFrom(null, query);
     if (!device) return json(res, 401, { error: "bad device credentials" });
-    const e = await repo.earningsForDevice(device.id);
+    // Linked devices report the pooled account balance (all surfaces) so the
+    // desktop menu matches the web dashboard; anonymous devices see only their own.
+    const user = await repo.userForDevice(device.id);
+    const e = user ? await repo.balanceForUser(user.id) : await repo.earningsForDevice(device.id);
     json(res, 200, {
       revenueShare: config.revenueShare,
       earnedUsd: e.earnedMillicents / 100000,

@@ -478,7 +478,7 @@ function createRepo(pool: any) {
     }
     await client.query(
       `insert into ledger (entry_type, amount_millicents, user_id, meta)
-       values ('referral_credit', $1, $2, $3)`,
+       values ('referral_credit', $1, $2, $3::jsonb)`,
       [String(rewardMillicents), referrer_user_id, JSON.stringify({ referralId: id, referredUserId })]
     );
     await client.query(
@@ -565,7 +565,7 @@ function createRepo(pool: any) {
     if (share <= 0n) return;
     await client.query(
       `insert into ledger (entry_type, amount_millicents, user_id, meta)
-       values ('affiliate_credit', $1, $2, $3)`,
+       values ('affiliate_credit', $1, $2, $3::jsonb)`,
       [share.toString(), aff.user_id, JSON.stringify({ affiliateId: aff.id, affiliatedUserId })]
     );
     await client.query(
@@ -704,7 +704,7 @@ function createRepo(pool: any) {
         const funded = chargeCents * 1000n;
         await c.query(
           `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
-           values ('campaign_credit', $1, $2, $3)`,
+           values ('campaign_credit', $1, $2, $3::jsonb)`,
           [funded.toString(), campaignId, JSON.stringify({ impressions: rows[0].impressions_total })]
         );
         return {
@@ -758,7 +758,7 @@ function createRepo(pool: any) {
         const refund = chargeCents * 1000n;
         await c.query(
           `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
-           values ('campaign_refund', $1, $2, $3)`,
+           values ('campaign_refund', $1, $2, $3::jsonb)`,
           [(-refund).toString(), campaignId, JSON.stringify({ note: note || null })]
         );
         return {
@@ -845,7 +845,7 @@ function createRepo(pool: any) {
           credited += dev;
           await c.query(
             `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
-             values ('impression_credit', $1, $2, $3, $4)`,
+             values ('impression_credit', $1, $2, $3, $4::jsonb)`,
             [dev.toString(), deviceId, ev.campaignId, JSON.stringify(source ? { impressions: imp, billed, source } : { impressions: imp, billed })]
           );
           await c.query(
@@ -984,7 +984,7 @@ function createRepo(pool: any) {
           const fee = gross - dev;
           await c.query(
             `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
-             values ('click_credit', $1, $2, $3, $4)`,
+             values ('click_credit', $1, $2, $3, $4::jsonb)`,
             [dev.toString(), device_id, campaign_id, JSON.stringify({ via: "go", billed })]
           );
           await c.query(
@@ -1204,7 +1204,7 @@ function createRepo(pool: any) {
         );
         await c.query(
           `insert into ledger (entry_type, amount_millicents, user_id, meta)
-           values ('gift_redemption_debit', $1, $2, $3)`,
+           values ('gift_redemption_debit', $1, $2, $3::jsonb)`,
           [(-costMillicents).toString(), userId, JSON.stringify({ redemptionId: rows[0].id, plan, months })]
         );
         // The $20 referral program is retired — redeeming no longer rewards any
@@ -1507,7 +1507,7 @@ function createRepo(pool: any) {
       return tx(async (c: any) => {
         await c.query(
           `insert into ledger (entry_type, amount_millicents, user_id, meta)
-           values ('payout_debit', $1, $2, $3)`,
+           values ('payout_debit', $1, $2, $3::jsonb)`,
           [(-BigInt(amountCents) * 1000n).toString(), userId, JSON.stringify({ transferId })]
         );
         await c.query("insert into payouts (user_id, amount_cents, stripe_transfer_id) values ($1,$2,$3)", [userId, amountCents, transferId]);
@@ -1728,7 +1728,7 @@ function createRepo(pool: any) {
           const mc = (BigInt(rows[0].amount_cents) * 1000n).toString();
           await c.query(
             `insert into ledger (entry_type, amount_millicents, user_id, device_id, meta)
-             values ('admin_credit', $1, $2, $3, $4)`,
+             values ('admin_credit', $1, $2, $3, $4::jsonb)`,
             [mc, rows[0].user_id || null, rows[0].device_id || null, JSON.stringify({ reason: "redemption_cancelled", redemptionId: id })]
           );
           refunded = true;
@@ -1864,7 +1864,7 @@ function createRepo(pool: any) {
       const mc = (BigInt(cents) * 1000n) * (isCredit ? 1n : -1n);
       const { rows } = await pool.query(
         `insert into ledger (entry_type, amount_millicents, user_id, device_id, meta)
-         values ($1, $2, $3, $4, $5) returning id`,
+         values ($1, $2, $3, $4, $5::jsonb) returning id`,
         [entryType, mc.toString(), userId || null, deviceId || null, JSON.stringify({ note: note || null, source: "admin" })]
       );
       return rows[0]?.id || null;
@@ -2083,11 +2083,12 @@ route("POST", "/v1/devices/register", async () => json(200, await repo.registerD
 // enroll them as an affiliate so the popup's crew lights up. No magic link.
 route("POST", "/v1/devices/link", async (ctx: any) => {
   const device = await authDeviceFrom(ctx);
-  if (!device) return json(401, { error: "bad device credentials" });
+  if (!device) { console.warn("[devices/link] rejected: bad device credentials"); return json(401, { error: "bad device credentials" }); }
   const user = await repo.userForSession(sessionFrom(ctx));
-  if (!user) return json(401, { error: "not signed in" });
+  if (!user) { console.warn(`[devices/link] rejected: device ${device.id} not signed in`); return json(401, { error: "not signed in" }); }
   await repo.linkDeviceToUser(device.id, user.id);
   await repo.getOrCreateAffiliate(user.id);
+  console.log(`[devices/link] linked device ${device.id} -> user ${user.id}`);
   return json(200, { ok: true });
 });
 route("POST", "/v1/events", async (ctx: any) => {
@@ -2232,7 +2233,11 @@ route("POST", "/v1/connect/onboard", async (ctx: any) => {
 route("GET", "/v1/me/earnings", async (ctx: any) => {
   const device = await authDeviceFrom(ctx, true);
   if (!device) return json(401, { error: "bad device credentials" });
-  const e = await repo.earningsForDevice(device.id);
+  // Once the device is linked, report the pooled account balance (every surface
+  // the user has) so the desktop menu matches the web dashboard exactly; an
+  // anonymous device still sees only its own earnings.
+  const user = await repo.userForDevice(device.id);
+  const e = user ? await repo.balanceForUser(user.id) : await repo.earningsForDevice(device.id);
   return json(200, {
     revenueShare: config.revenueShare,
     earnedUsd: e.earnedMillicents / 100000, paidOutUsd: e.paidOutMillicents / 100000,
