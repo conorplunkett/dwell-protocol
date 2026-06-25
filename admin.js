@@ -773,7 +773,7 @@ async function pricingCard(view) {
   const maxCpmI = h("input", { type: "number", step: "1", min: "0.50", value: dollar(p.maxCpmCents ?? 10000) });
   const topI = h("input", { type: "number", step: "1", min: "0", value: dollar(p.topCpmAnchorCents ?? p.topBidAnchorCents) });
   const minBudI = h("input", { type: "number", step: "1", min: "1", value: dollar(p.minBudgetCents ?? 10000) });
-  const sugBudI = h("input", { type: "number", step: "1", min: "1", value: dollar(p.suggestedBudgetCents ?? 50000) });
+  const sugBudI = h("input", { type: "number", step: "1", min: "1", value: dollar(p.suggestedBudgetCents ?? 250000) });
   const maxBudI = h("input", { type: "number", step: "1", min: "1", value: dollar(p.maxBudgetCents ?? 10000000) });
   view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Advertiser pricing"),

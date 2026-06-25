@@ -1557,7 +1557,7 @@ function createRepo(pool: any) {
       // floored at 50 (the Stripe/price_per_block_cents floor).
       const defaults = {
         minCpmCents: 500, suggestedCpmCents: 1500, maxCpmCents: 10000, topCpmAnchorCents: 5000,
-        minBudgetCents: 10000, suggestedBudgetCents: 50000, maxBudgetCents: 10000000,
+        minBudgetCents: 10000, suggestedBudgetCents: 250000, maxBudgetCents: 10000000,
       };
       try {
         const { rows } = await pool.query("select value from settings where key = 'pricing'");

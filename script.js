@@ -200,7 +200,7 @@ const cpmBubble = document.getElementById("cpm-bubble");
 const fmt = (n) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n) => n.toLocaleString();
 
-let MIN_BUDGET = 100, MAX_BUDGET = 100000, MIN_CPM = 5, MAX_CPM = 100; // overridden by loadPricing()
+let MIN_BUDGET = 100, MAX_BUDGET = 100000, SUGGESTED_BUDGET = 2500, MIN_CPM = 5, MAX_CPM = 100; // overridden by loadPricing()
 const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
 function positionCpmBubble() {
@@ -215,19 +215,21 @@ function positionCpmBubble() {
 
 function recompute() {
   if (!budgetEl || !cpmEl) return;
-  const budget = Math.min(MAX_BUDGET, Math.max(MIN_BUDGET, parseFloat(budgetEl.value) || 0));
+  // Blank budget falls back to the suggested (the placeholder), so the estimate
+  // reflects the soft default until the advertiser types their own number.
+  const raw = parseFloat(budgetEl.value);
+  const budget = Math.min(MAX_BUDGET, Math.max(MIN_BUDGET, Number.isFinite(raw) && raw > 0 ? raw : SUGGESTED_BUDGET));
   const cpm = Math.max(MIN_CPM, parseInt(cpmEl.value, 10) || MIN_CPM);
   const impressions = Math.floor((budget * 1000) / cpm); // round down — advertiser pays full budget
-  setTxt("est-sub", `${fmt(budget)} budget at ${fmt(cpm)} CPM`);
-  setTxt("est-total", fmt(budget));
   setTxt("est-cpm", fmt(cpm));
   setTxt("est-imp", fmtInt(impressions));
-  setTxt("est-charge", fmt(budget));
   positionCpmBubble();
 }
 if (budgetEl && cpmEl) {
   budgetEl.addEventListener("input", recompute);
   cpmEl.addEventListener("input", recompute);
+  // Don't let the mouse wheel scrub the budget number — scroll the page instead.
+  budgetEl.addEventListener("wheel", (e) => { if (document.activeElement === budgetEl) e.preventDefault(); }, { passive: false });
   recompute();
 }
 
@@ -321,21 +323,21 @@ async function loadPricing() {
     const topCpm = dollars(c.topCpmCents ?? c.topBidCents, 110);
     const maxCpm = dollars(c.maxCpmCents, 100);
     const minBudget = dollars(c.minBudgetCents, 100);
-    const sugBudget = dollars(c.suggestedBudgetCents, 500);
+    const sugBudget = dollars(c.suggestedBudgetCents, 2500);
     const maxBudget = dollars(c.maxBudgetCents, 100000);
     const money = (n) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const money0 = (n) => "$" + Math.round(n).toLocaleString();
 
-    MIN_CPM = minCpm; MAX_CPM = maxCpm; MIN_BUDGET = minBudget; MAX_BUDGET = maxBudget;
+    MIN_CPM = minCpm; MAX_CPM = maxCpm; MIN_BUDGET = minBudget; MAX_BUDGET = maxBudget; SUGGESTED_BUDGET = sugBudget;
+    // Start the slider at the suggested CPM (no "suggested" label shown).
     if (cpmEl) { cpmEl.min = minCpm; cpmEl.max = maxCpm; cpmEl.value = sugCpm; }
-    if (budgetEl) { budgetEl.min = String(minBudget); budgetEl.max = String(maxBudget); budgetEl.value = String(sugBudget); }
-    setTxt("budget-hint", `(min ${money0(minBudget)} · max ${money0(maxBudget)})`);
+    // Budget stays blank; the suggested becomes the placeholder + the soft default.
+    if (budgetEl) { budgetEl.min = String(minBudget); budgetEl.max = String(maxBudget); budgetEl.placeholder = String(Math.round(sugBudget)); }
+    setTxt("budget-hint", `min ${money0(minBudget)} · max ${money0(maxBudget)}`);
     setTxt("cpm-min-lbl", money0(minCpm));
-    setTxt("cpm-sug-lbl", money0(sugCpm));
     setTxt("cpm-top-lbl", money0(topCpm));
     setTxt("note-top", money(topCpm));
     setTxt("note-min", money(minCpm));
-    setTxt("note-suggested", money(sugCpm));
     recompute();
   } catch (_) {
     /* offline — keep the hardcoded defaults */
