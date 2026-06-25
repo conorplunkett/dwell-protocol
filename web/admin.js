@@ -784,6 +784,22 @@ async function renderSettings(view) {
       ? "On — the “Live bid market” leaderboard is visible on the public landing page."
       : "Off — the leaderboard is hidden from the public landing page (the lander reads this from /v1/config).")));
 
+  // CPM slider "live top CPM" ghost (off by default). On: the advertiser slider's
+  // ghost marker tracks the real marketplace top; off: it's hardcoded to $50.
+  const ltc = await tryApi("/v1/admin/live-top-cpm");
+  const ltcOn = !!(ltc && ltc.enabled);
+  view.append(h("div", { class: "card" },
+    h("div", { class: "card-head" }, h("h2", {}, "Live top CPM"),
+      h("button", { class: "btn " + (ltcOn ? "btn-danger" : "btn-accent"), onclick: async () => {
+        const next = !ltcOn;
+        if (!confirm(next ? "Make the advertiser CPM slider's “top bid” marker track the live marketplace top?" : "Pin the CPM slider's “top bid” marker back to the hardcoded $50?")) return;
+        try { await api("/v1/admin/live-top-cpm", { method: "POST", body: { enabled: next } }); toast(next ? "Live top CPM on" : "Live top CPM off"); route(true); }
+        catch (e) { toast(e.message, true); }
+      } }, ltcOn ? "Pin to $50" : "Use live top")),
+    h("p", { class: "hint" }, ltcOn
+      ? "On — the CPM slider's “top bid” ghost marker copies the live marketplace top CPM (from /v1/pricing)."
+      : "Off — the “top bid” ghost marker is hardcoded to $50 (the lander reads this from /v1/config).")));
+
   // Completion-receipt auto-send (off by default). On: a scheduled sweep emails each
   // advertiser a final CPC/eCPM receipt as their campaign exhausts. "Send now" runs
   // the sweep immediately regardless of the toggle.
