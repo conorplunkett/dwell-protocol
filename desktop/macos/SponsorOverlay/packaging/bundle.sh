@@ -14,6 +14,9 @@
 #   xcrun notarytool submit build/SponsorOverlay.dmg \
 #     --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PASSWORD" --wait
 #   xcrun stapler staple build/SponsorOverlay.dmg
+#
+# Builds are universal2 (arm64 + x86_64) by default so one dmg runs on Intel and
+# Apple Silicon. Set UNIVERSAL=0 for a quicker host-arch-only bundle when iterating.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."        # -> SponsorOverlay package root
@@ -24,6 +27,9 @@ VOL_NAME="FreeAI Sponsor Overlay"
 VERSION="${VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"   # default "-" = ad-hoc
+# Universal2 (arm64 + x86_64) by default so one dmg runs on Intel *and* Apple
+# Silicon. Set UNIVERSAL=0 for a faster host-arch-only bundle when iterating locally.
+UNIVERSAL="${UNIVERSAL:-1}"
 
 BUILD_DIR="build"
 # The bundle on disk is "freeai.fyi.app" so Finder + System Settings ▸ Login
@@ -34,9 +40,17 @@ APP="$BUILD_DIR/$PRODUCT_NAME.app"
 MACOS_DIR="$APP/Contents/MacOS"
 RES_DIR="$APP/Contents/Resources"
 
-echo "==> swift build -c release"
-swift build -c release
-BIN=".build/release/$APP_NAME"
+# Multi-arch builds land in .build/apple/Products/Release/, not .build/release/.
+if [ "$UNIVERSAL" = "1" ]; then
+  echo "==> swift build -c release (universal: arm64 + x86_64)"
+  swift build -c release --arch arm64 --arch x86_64
+  REL_DIR=".build/apple/Products/Release"
+else
+  echo "==> swift build -c release (host arch only)"
+  swift build -c release
+  REL_DIR=".build/release"
+fi
+BIN="$REL_DIR/$APP_NAME"
 
 echo "==> assembling $APP (version $VERSION build $BUILD_NUMBER)"
 rm -rf "$APP"
@@ -49,7 +63,7 @@ sed -e "s/__VERSION__/$VERSION/g" -e "s/__BUILD__/$BUILD_NUMBER/g" \
 # Copy it next to the app's other resources so Bundle.module (which checks
 # Bundle.main.resourceURL) resolves it in the shipped app, as it does under
 # `swift run`. Without this the Setup window falls back to the plain text sheet.
-RES_BUNDLE=".build/release/${APP_NAME}_${APP_NAME}.bundle"
+RES_BUNDLE="$REL_DIR/${APP_NAME}_${APP_NAME}.bundle"
 if [ -d "$RES_BUNDLE" ]; then
   cp -R "$RES_BUNDLE" "$RES_DIR/"
 else
@@ -68,7 +82,7 @@ iconutil -c icns "$ICONSET" -o "$RES_DIR/AppIcon.icns"
 rm -rf "$ICONSET"
 
 echo "==> embedding Sparkle.framework"
-SPARKLE_FW=".build/release/Sparkle.framework"
+SPARKLE_FW="$REL_DIR/Sparkle.framework"
 if [ -d "$SPARKLE_FW" ]; then
   mkdir -p "$APP/Contents/Frameworks"
   cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/"
@@ -77,6 +91,13 @@ if [ -d "$SPARKLE_FW" ]; then
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$APP_NAME" 2>/dev/null || true
 else
   echo "    WARNING: $SPARKLE_FW not found — did 'swift build -c release' resolve Sparkle?" >&2
+fi
+
+ARCHS="$(lipo -archs "$MACOS_DIR/$APP_NAME")"
+echo "==> architectures: $ARCHS"
+if [ "$UNIVERSAL" = "1" ] && { [[ "$ARCHS" != *arm64* ]] || [[ "$ARCHS" != *x86_64* ]]; }; then
+  echo "    ERROR: UNIVERSAL=1 but binary is not universal (need arm64 + x86_64), got: $ARCHS" >&2
+  exit 1
 fi
 
 echo "==> codesign (identity: $SIGN_IDENTITY)"

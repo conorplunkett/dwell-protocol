@@ -259,10 +259,11 @@ the **Download for macOS** button in `products.html` (the `#desktop` section)
 points at `/download/mac`. So every `gh release create` automatically becomes the
 live download — the button only 404s until the *first* release exists.
 
-**Architecture:** `bundle.sh` runs a plain `swift build -c release`, which builds
-for the **host arch only**. A dmg built on Apple Silicon will not run on Intel
-Macs — build universal with `swift build -c release --arch arm64 --arch x86_64`
-if you need to cover both.
+**Architecture:** `bundle.sh` builds **universal2 (arm64 + x86_64) by default**, so
+one dmg runs on both Apple Silicon and Intel Macs (the script verifies the slices
+with `lipo` and aborts if either is missing). Multi-arch products land in
+`.build/apple/Products/Release/`, which the script accounts for. For a faster
+host-arch-only bundle while iterating locally, set `UNIVERSAL=0`.
 
 Distribute the stapled `.dmg` only. **Mac App Store is not a viable channel**:
 sandboxed apps can't use the Accessibility API to read another app's window,
