@@ -256,6 +256,12 @@ a { color: inherit; text-decoration: none; }
   font-family: var(--sans); transition: background .15s, border-color .15s;
 }
 .cli-copy:hover { background: rgba(var(--accent-rgb),.26); border-color: rgba(var(--accent-rgb),.5); }
+/* "Earn up to $X/mo" on the CLI card's beige bar, just left of Copy — plain text
+   on the existing background, no pill. */
+.cli-earn { flex: none; white-space: nowrap; font: 600 13px/1 var(--sans); color: var(--gray); }
+.cli-earn .earn-amt { color: var(--accent-d); font-weight: 800; font-size: 14px; }
+.cli-earn .per { opacity: .75; font-weight: 600; font-size: 11px; }
+@media (max-width: 560px) { .cli-earn { display: none; } }
 .cli-sub {
   display: block; margin-top: 12px; font-size: 12.5px; line-height: 1.55; color: var(--ov-dots);
 }
@@ -264,6 +270,8 @@ a { color: inherit; text-decoration: none; }
 
 .hero-note { font-size: 14.5px; color: var(--gray-2); margin: 0 auto 8px; line-height: 1.55; max-width: 620px; }
 .hero-note strong { color: var(--gray); }
+/* Advertiser CTA under the hero note (centered; hidden until enabled). */
+.hero-adv { margin-top: 14px; text-align: center; }
 
 /* ── Hero waitlist — pre-account email capture, injected under .hero-note by
    script.js on the home page and every lander. Reuses the .btn-green gradient

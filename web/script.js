@@ -112,12 +112,13 @@ setInterval(() => {
 if (rotator) { rotator.style.transition = "opacity .26s"; }
 if (chip) { chip.style.transition = "opacity .26s, background .26s"; }
 
-// --- Hero earnings pill: gently ticks up ---
-const earnPill = document.getElementById("earn-pill");
+// --- Earnings figures gently tick up (the Chrome card pill + the CLI card line) ---
+const earnEls = document.querySelectorAll(".earn-amt");
 let earn = 76.71;
 setInterval(() => {
   earn += Math.random() * 0.14;
-  if (earnPill) earnPill.innerHTML = "$" + earn.toFixed(2) + '<span class="per">/mo</span>';
+  const html = "$" + earn.toFixed(2) + '<span class="per">/mo</span>';
+  earnEls.forEach((el) => { el.innerHTML = html; });
 }, 1400);
 
 // --- Ad line character counter ---
@@ -450,6 +451,11 @@ if (adForm) {
 // button just jumps to the on-page advertiser form (#advertisers exists on all
 // of these pages). Where a lander already shows the big "FOR ADVERTISERS" jump
 // chevron under the tagline, we hide it so there's exactly one advertiser CTA.
+// Single switch for the hero "Want to advertise?" CTA (under the hero note).
+// Off for now — set to true to reveal it everywhere it's present.
+const SHOW_ADV_CTA = false;
+if (SHOW_ADV_CTA) document.getElementById("hero-adv")?.removeAttribute("hidden");
+
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 // Tag each signup with the page it came from so a lead's `source` is useful
 // later (e.g. "index", "lander:gemini").
