@@ -458,15 +458,17 @@ a { color: inherit; text-decoration: none; }
 .surfaces .scopy .idx { font-family: var(--mono); font-size: var(--text-label-sm); color: var(--accent); letter-spacing: var(--tracking-label); font-weight: var(--fw-bold); }
 .surfaces .scopy h3 { font-size: var(--text-h3); font-weight: var(--fw-extrabold); letter-spacing: var(--tracking-snug); margin: 12px 0 0; }
 .surfaces .scopy p { color: var(--gray); font-size: var(--text-body-lg); line-height: var(--leading-relaxed); margin: 14px 0 0; max-width: 420px; text-wrap: pretty; }
-/* Smaller "Download for Mac" button, full width of the copy column. */
+/* "Download for Mac" — a chunky orange CTA, full width of the copy column. */
 .surfaces .scopy-dl {
   display: flex; align-items: center; justify-content: center; gap: 9px;
-  width: 100%; margin: 20px 0 0; padding: 11px 16px;
-  border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink);
-  font-family: var(--sans); font-weight: 700; font-size: 14px; box-shadow: var(--shadow-sm);
-  transition: transform .12s ease, border-color .12s ease;
+  width: 100%; margin: 22px 0 0; padding: 15px 18px; min-height: 54px;
+  border: none; border-radius: 12px; color: #fff;
+  background: linear-gradient(180deg, var(--green-grad-a), var(--green-grad-b));
+  font-family: var(--sans); font-weight: 800; font-size: 15px;
+  box-shadow: 0 12px 28px -14px rgba(var(--accent-rgb), .7);
+  transition: transform .15s ease, filter .15s ease;
 }
-.surfaces .scopy-dl:hover { transform: translateY(-2px); border-color: rgba(var(--accent-rgb), .5); }
+.surfaces .scopy-dl:hover { transform: translateY(-2px); filter: brightness(1.04); }
 
 /* Window chrome (shared) */
 .surfaces .win { border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-card); border: 1px solid var(--line); }

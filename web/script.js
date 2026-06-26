@@ -302,16 +302,8 @@ const API_BASE = DEV_MODE
       ""
     ).replace(/\/+$/, "");
 
-if (DEV_MODE) {
-  const badge = document.createElement("div");
-  badge.textContent = "DEV · mock data";
-  badge.title = "Developer mode — mock data, no live API. Append ?dev=0 to exit.";
-  badge.style.cssText =
-    "position:fixed;bottom:14px;left:14px;z-index:99999;background:#1b1e25;color:#ffd54a;" +
-    "font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:8px 12px;border-radius:999px;" +
-    "border:1px solid #ffd54a;box-shadow:0 4px 16px rgba(0,0,0,.25);letter-spacing:.02em;";
-  (document.body || document.documentElement).appendChild(badge);
-}
+// (Dev mode still works via ?dev=1; the on-screen "DEV · mock data" badge was
+// removed by request.)
 
 const escapeHtml = (s) =>
   String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
