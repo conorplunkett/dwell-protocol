@@ -223,10 +223,13 @@ function positionCpmBubble() {
   cpmBubble.style.left = cpmLeft(val);
   cpmBubble.textContent = fmt(val);
 }
-// The read-only ghost thumb marking the current top bid (TOP_CPM).
+// The read-only ghost thumb marking the current top bid (TOP_CPM). Vertically
+// centered on the slider's own box so it sits exactly where the real thumb does
+// — move the thumb to TOP_CPM and the two circles overlap perfectly.
 function positionCpmGhost() {
   if (!cpmEl || !cpmGhost) return;
   cpmGhost.style.left = cpmLeft(TOP_CPM);
+  cpmGhost.style.top = (cpmEl.offsetTop + cpmEl.offsetHeight / 2) + "px";
   if (cpmGhostLbl) cpmGhostLbl.textContent = "top $" + Math.round(TOP_CPM).toLocaleString();
 }
 
