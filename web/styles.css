@@ -556,6 +556,100 @@ a { color: inherit; text-decoration: none; }
   .surfaces .scopy p { max-width: none; }
 }
 
+/* REWARDS — "Get rewards for doing what you already do". Sibling of .surfaces
+   with the same measure and heading treatment (its type-scale tokens are local
+   to .surfaces, so they're redeclared here). Two static, inert previews of the
+   /redeem portal: the Claude gift-card menu (mirrors .gift-menu on the redeem
+   page and GIFT_PLANS/GIFT_MONTHS in server/src/giftcards.js) and a Stripe
+   cash payout with its confirm modal (coming soon). Scoped under .rewards. */
+.rewards {
+  --measure: 1180px;
+  --text-h2: 34px; --text-h3: 24px; --text-body-lg: 17px; --text-label-sm: 11px;
+  --fw-bold: 700; --fw-extrabold: 800;
+  --tracking-tight: -.03em; --tracking-snug: -.02em; --tracking-label: .14em;
+  --leading-relaxed: 1.6;
+  text-align: left; padding: 24px 0 40px;
+}
+.rewards .wrap { max-width: var(--measure); margin: 0 auto; padding: 0 28px; }
+/* Hairline between the last surface and this section, matching .surface + .surface. */
+.rewards .secthead { text-align: center; margin: 0 auto 12px; padding-top: 52px; border-top: 1px solid var(--line); }
+.rewards .secthead h2 {
+  font-weight: var(--fw-extrabold); font-size: var(--text-h2);
+  letter-spacing: var(--tracking-tight); margin: 10px 0 0;
+}
+
+.rewards-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 56px; row-gap: 44px; align-items: start; padding: 40px 0 8px; }
+.rewards-grid > * { min-width: 0; }
+.reward-col .idx { font-family: var(--mono); font-size: var(--text-label-sm); color: var(--accent); letter-spacing: var(--tracking-label); font-weight: var(--fw-bold); }
+.reward-col h3 { font-size: var(--text-h3); font-weight: var(--fw-extrabold); letter-spacing: var(--tracking-snug); margin: 12px 0 0; }
+.reward-col > p { color: var(--gray); font-size: var(--text-body-lg); line-height: var(--leading-relaxed); margin: 14px 0 0; max-width: 460px; text-wrap: pretty; }
+.reward-star { color: var(--accent); }
+.reward-note { font-family: var(--mono); font-size: 11.5px; color: var(--gray-2); letter-spacing: .04em; margin: 14px 2px 0; }
+
+/* Portal window mockup — same light-window treatment as .surfaces .win.light. */
+.rw-win { margin-top: 24px; border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-card); border: 1px solid var(--line); background: #fff; }
+.rw-chrome { display: flex; align-items: center; gap: 7px; padding: 11px 14px; background: #fbfaf7; border-bottom: 1px solid var(--line); }
+.rw-chrome i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.rw-chrome .label { margin-left: 10px; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; color: var(--gray-2); }
+.rw-body { padding: 16px; }
+
+/* Gift-card menu recreation — .gift-menu/.gift-row/.gift-cell from the redeem
+   page, compacted to fit a half-width column and inert (spans, not buttons). */
+.rw-menu { display: grid; gap: 10px; }
+.rw-row { display: grid; gap: 10px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 14px; background: #fcfbf9; }
+.rw-plan { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.rw-name { font-size: 14.5px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; }
+.rw-tag { font-family: var(--mono); font-size: 10px; color: var(--gray-2); text-transform: uppercase; letter-spacing: .06em; text-align: right; }
+.rw-cells { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.rw-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 9px 4px; border: 1px solid var(--line); border-radius: 10px; background: #fff;
+}
+.rw-cell.sel { border-color: var(--accent); background: #fbf0ea; box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .18); }
+.rw-term { font-family: var(--mono); font-size: 10px; color: var(--gray); text-transform: uppercase; letter-spacing: .06em; }
+.rw-price { font-size: 14.5px; font-weight: 800; letter-spacing: -.02em; }
+
+/* Cash payout preview — the portal balance + Stripe button dimmed under a
+   scrim (as if just clicked, see .rw-cursor) with the confirm modal on top.
+   Modal treatment mirrors .modal-overlay/.modal-card in admin.css. */
+/* Deep bottom padding reserves room for the modal below the Stripe button. */
+.rw-cash-body { position: relative; padding: 22px 22px 235px; overflow: hidden; }
+.rw-portal { display: flex; flex-direction: column; align-items: flex-start; }
+.rw-balance-label { font-family: var(--mono); font-size: 11px; color: var(--gray-2); text-transform: uppercase; letter-spacing: .08em; }
+.rw-balance { font-size: 40px; font-weight: 900; letter-spacing: -.04em; line-height: 1; margin-top: 8px; }
+.rw-balance-sub { font-size: 13px; color: var(--gray-2); margin-top: 6px; }
+.rw-payout { position: relative; margin-top: 22px; width: 100%; }
+.rw-payout-btn {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  background: var(--stripe); color: #fff; border-radius: 12px; padding: 14px;
+  font-size: 15px; font-weight: 600;
+  box-shadow: 0 12px 30px -12px rgba(99,91,255,.55); filter: brightness(1.06);
+}
+.rw-payout-btn .stripe-logo { height: 19px; width: auto; display: block; }
+/* The click that opened the modal — sits above the scrim, on the button edge. */
+.rw-cursor { position: absolute; right: 42px; bottom: -11px; width: 23px; height: 23px; z-index: 2; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.rw-scrim { position: absolute; inset: 0; z-index: 1; background: rgba(30,28,26,.5); }
+.rw-modal {
+  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 3;
+  width: min(88%, 380px); background: #fff; border: 1px solid var(--line); border-radius: 14px;
+  padding: 20px; box-shadow: 0 24px 60px rgba(0,0,0,.28);
+}
+.rw-modal h4 { font-size: 17px; font-weight: 800; letter-spacing: -.02em; line-height: 1.3; margin: 0; }
+.rw-modal p { font-size: 13.5px; color: var(--gray); line-height: 1.55; margin: 8px 0 0; }
+.rw-modal-actions { display: flex; align-items: center; gap: 16px; margin-top: 16px; }
+.rw-modal-primary {
+  display: inline-flex; align-items: center; justify-content: center; padding: 10px 18px;
+  border-radius: 10px; color: #fff; font-size: 14px; font-weight: 800;
+  background: linear-gradient(180deg, var(--accent-grad-a), var(--accent-grad-b));
+  box-shadow: 0 12px 28px -14px rgba(var(--accent-rgb), .7);
+}
+.rw-modal-cancel { font-size: 14px; font-weight: 600; color: var(--gray); }
+
+@media (max-width: 860px) {
+  .rewards-grid { grid-template-columns: 1fr; }
+  .reward-col > p { max-width: none; }
+}
+
 /* ADVERTISERS */
 .advertisers { max-width: 1100px; margin: 40px auto 0; padding: 0 32px; }
 .adv-card {
