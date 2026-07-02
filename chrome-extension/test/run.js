@@ -223,6 +223,35 @@ function makeChrome(stateRef, sentRef) {
     assert.strictEqual(T.currentAd().id, "ramp", "the ad rotated — should stay put");
   });
 
+  await check("clicking the bar opens the ad URL synchronously (popup blockers)", () => {
+    // The sendMessage callback deliberately never fires — the SW may be asleep.
+    // window.open must NOT wait on the round-trip, or the user-activation is
+    // gone and popup blockers eat the navigation.
+    const orig = sandbox.chrome.runtime.sendMessage;
+    sandbox.chrome.runtime.sendMessage = () => {};
+    try {
+      T.setState({ enabled: true, testMode: false, ads: [{ id: "x", chip: "X", line: "X ad", url: "https://freeai.fyi/go/x" }] });
+      opened.length = 0;
+      T.bar._click();
+      assert.deepStrictEqual(opened, ["https://freeai.fyi/go/x"], "ad did not open synchronously");
+    } finally {
+      sandbox.chrome.runtime.sendMessage = orig;
+    }
+  });
+
+  await check("hidden tab ⇒ bar stops serving (no billing for unseen ads)", () => {
+    page.clear()
+      .add("button", { "data-testid": "stop-button" })
+      .add("div", { "data-message-author-role": "assistant" });
+    T.setState({ enabled: true, testMode: false, ads: sandbox.BB_ADS });
+    documentMock.hidden = true;
+    T.evaluate();
+    assert.strictEqual(T.isActive(), false, "served an ad in a hidden tab");
+    documentMock.hidden = false;
+    T.evaluate();
+    assert.strictEqual(T.isActive(), true, "did not resume when the tab became visible");
+  });
+
   // ---------- background.js earnings vs mock ----------
   const bg = {};
   bg.self = bg;

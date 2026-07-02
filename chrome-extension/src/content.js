@@ -117,12 +117,15 @@
     return ads.length ? ads[0] : null;
   }
 
-  bar.addEventListener("click", async () => {
+  bar.addEventListener("click", () => {
     const ad = currentAd();
     if (!ad) return;
     // Live ads carry a campaign id so the click is recorded server-side through
     // a single-use token; mock/bundled ads have none and just open the URL.
-    await send({ type: "BB_CLICK", mock: !!ad.mock, campaignId: ad.id });
+    // window.open MUST run synchronously inside the click gesture — awaiting
+    // the service-worker round-trip first drops the user-activation and popup
+    // blockers silently eat the navigation. The click report rides along async.
+    send({ type: "BB_CLICK", mock: !!ad.mock, campaignId: ad.id });
     window.open(ad.url, "_blank", "noopener");
   });
 
@@ -133,6 +136,7 @@
   // tick because these apps re-render aggressively (React may evict us) and
   // the anchor often appears a beat after the Stop button.
   let anchorEl = null;
+  let lastReposition = 0;
   function findAnchor() {
     // Gemini: anchor to the conversation turn that holds the NEWEST user
     // message, not the last <model-response> in the DOM. Gemini wraps each Q&A
@@ -192,9 +196,24 @@
       try {
         if (typeof el.appendChild === "function") {
           // keep the bar as the last child of the reply container, below the
-          // thinking indicator and any streamed text
-          if (!(bar.parentElement === el && el.lastElementChild === bar)) {
+          // thinking indicator and any streamed text.
+          //
+          // CRITICAL: while a reply streams, the site appends new nodes after
+          // the bar on nearly every frame, so "am I still last?" fails on
+          // nearly every tick. Re-appending on each tick moved a
+          // backdrop-filtered element inside a React/Angular-managed container
+          // ~10x/second — fighting the framework's reconciliation (the classic
+          // removeChild NotFoundError that white-screens the whole app) and
+          // forcing constant GPU re-rasterization. That is what made the host
+          // tab lock up / crash. So: re-attach immediately only when the bar
+          // was evicted entirely, and re-assert "last child" at most ~1x/sec.
+          const now = Date.now();
+          if (bar.parentElement !== el) {
             el.appendChild(bar);
+            lastReposition = now;
+          } else if (el.lastElementChild !== bar && now - lastReposition >= 1000) {
+            el.appendChild(bar);
+            lastReposition = now;
           }
           anchorEl = el;
           bar.classList.add("bb-inline");
@@ -264,7 +283,9 @@
     if (mount()) bar.classList.add("bb-show"); // else: tick() shows it once the reply area exists
     render();
     lastImpressionAt = 0;
-    spinTimer = setInterval(tick, 100);
+    // 250ms is plenty: the bar re-anchors at most ~1x/sec and impressions tick
+    // every 5s. The old 100ms loop was a large part of the CPU/layout churn.
+    spinTimer = setInterval(tick, 250);
   }
   function stopActive() {
     if (!active) return;
@@ -289,7 +310,9 @@
   }
 
   function evaluate() {
-    if (!enabled) {
+    // Hidden tab: nobody can see the bar, so don't serve (or bill) there —
+    // and skip the whole selector/layout sweep while backgrounded.
+    if (!enabled || document.hidden === true) {
       stopActive();
       return;
     }
