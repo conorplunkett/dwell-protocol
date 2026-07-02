@@ -152,34 +152,40 @@ async function foldBackPending(impressions) {
 }
 async function flushEvents() {
   if (typeof fetch !== "function" || flushing) return;
-  const { pendingImpressions = 0 } = await chrome.storage.local.get(["pendingImpressions"]);
-  if (pendingImpressions <= 0) return;
-  const device = await getOrRegisterDevice();
-  if (!device) return;
+  // Claim the guard BEFORE the first await: the 1-minute alarm and a
+  // per-impression flush can interleave, and if both get past this check they
+  // both read the same pending count and double-report it (their batchKeys
+  // differ, so the server dedup can't save us).
   flushing = true;
-  await chrome.storage.local.set({ pendingImpressions: 0 }); // claim
-  const batchKey =
-    typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `b_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   try {
-    const res = await fetch(`${API_BASE}/v1/events`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        deviceId: device.deviceId,
-        deviceKey: device.deviceKey,
-        batchKey,
-        // Tags credits with the surface so the portal's Install tab can light up
-        // the per-service "active" logo (grey → colored on the first credit).
-        source: "chrome",
-        events: [{ impressions: pendingImpressions, clicks: 0 }],
-      }),
-    });
-    // 429 = daily cap; drop those (they reset next UTC day). Other failures retry.
-    if (!res.ok && res.status !== 429) await foldBackPending(pendingImpressions);
-  } catch (_) {
-    await foldBackPending(pendingImpressions);
+    const { pendingImpressions = 0 } = await chrome.storage.local.get(["pendingImpressions"]);
+    if (pendingImpressions <= 0) return;
+    const device = await getOrRegisterDevice();
+    if (!device) return;
+    await chrome.storage.local.set({ pendingImpressions: 0 }); // claim
+    const batchKey =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `b_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    try {
+      const res = await fetch(`${API_BASE}/v1/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: device.deviceId,
+          deviceKey: device.deviceKey,
+          batchKey,
+          // Tags credits with the surface so the portal's Install tab can light up
+          // the per-service "active" logo (grey → colored on the first credit).
+          source: "chrome",
+          events: [{ impressions: pendingImpressions, clicks: 0 }],
+        }),
+      });
+      // 429 = daily cap; drop those (they reset next UTC day). Other failures retry.
+      if (!res.ok && res.status !== 429) await foldBackPending(pendingImpressions);
+    } catch (_) {
+      await foldBackPending(pendingImpressions);
+    }
   } finally {
     flushing = false;
   }
