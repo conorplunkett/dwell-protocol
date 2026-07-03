@@ -60,8 +60,11 @@ function loadConfig() {
     giftFulfillmentEmail: env("GIFT_FULFILLMENT_EMAIL", "hello@contact.freeai.fyi"),
     emailTokenTtlMs: parseInt(env("EMAIL_TOKEN_TTL_MS", "1800000"), 10),
     emailCooldownMs: parseInt(env("EMAIL_COOLDOWN_MS", "60000"), 10), // min gap between magic-link sends per email; 0 disables. DB-backed, so it holds even though the in-memory rate limiter is dropped here.
+    emailIpDailyCap: parseInt(env("EMAIL_IP_DAILY_CAP", "50"), 10), // magic-link/login email sends per source IP per UTC day; 0 disables (shared-NAT/CGNAT). DB-backed replacement for the dropped per-IP limiter.
     webSessionTtlMs: parseInt(env("WEB_SESSION_TTL_MS", "2592000000"), 10),
     clickTokenTtlMs: parseInt(env("CLICK_TOKEN_TTL_MS", "120000"), 10),
+    impressionTokenTtlMs: parseInt(env("IMPRESSION_TOKEN_TTL_MS", "120000"), 10), // 2 min: enough to dwell + redeem a served impression
+    impressionMinDwellMs: parseInt(env("IMPRESSION_MIN_DWELL_MS", "5000"), 10), // min ms between serve and a billable redeem (the 5s qualifying view); 0 disables
     maxBodyBytes: parseInt(env("MAX_BODY_BYTES", "65536"), 10),
     googleClientId: env("GOOGLE_CLIENT_ID"),
     googleClientSecret: env("GOOGLE_CLIENT_SECRET"),
@@ -964,7 +967,26 @@ function createRepo(pool: any) {
       const { rows } = await pool.query(`select u.* from users u join devices d on d.user_id = u.id where d.id = $1`, [deviceId]);
       return rows[0] || null;
     },
-    async createEmailToken(email: string, deviceId: string | null, ttlMs: number, referralCode?: any, cooldownMs?: number) {
+    async createEmailToken(email: string, deviceId: string | null, ttlMs: number, referralCode?: any, cooldownMs?: number, ipHash?: string | null, ipDailyCap?: number) {
+      // Per-IP daily cap: the per-email cooldown below only throttles a single
+      // address, so one host can still blast magic links to many DISTINCT
+      // addresses (spam-cannon / sender-reputation abuse). This bounds sends per
+      // source IP per UTC day. Hashed, fail-open (skipped when no IP is known),
+      // disabled when ipDailyCap is not positive (shared-NAT/CGNAT opt-out).
+      // Throws CAP_EXCEEDED so the route can 429 — a per-IP limit, unlike the
+      // per-email cooldown, reveals nothing about whether an address exists.
+      if (ipHash && Number.isFinite(ipDailyCap as any) && (ipDailyCap as number) > 0) {
+        const ipCap = await pool.query(
+          `select count(*)::int as n from email_tokens
+            where ip_hash = $1 and created_at >= date_trunc('day', now())`,
+          [ipHash]
+        );
+        if (ipCap.rows[0].n >= (ipDailyCap as number)) {
+          const err: any = new Error("daily email cap exceeded");
+          err.code = "CAP_EXCEEDED";
+          throw err;
+        }
+      }
       // Per-email send cooldown: collapse rapid repeat requests so the magic-link
       // endpoints can't be used to email-bomb or probe an address. Scoped by
       // device so verify-email (device-linked) and website-login (device-null)
@@ -983,9 +1005,9 @@ function createRepo(pool: any) {
       }
       const token = crypto.randomBytes(32).toString("base64url");
       await pool.query(
-        `insert into email_tokens (token, email, device_id, referral_code, expires_at)
-         values ($1, $2, $3, $4, now() + ($5 || ' milliseconds')::interval)`,
-        [token, email, deviceId || null, referralCode || null, String(ttlMs)]
+        `insert into email_tokens (token, email, device_id, referral_code, ip_hash, expires_at)
+         values ($1, $2, $3, $4, $5, now() + ($6 || ' milliseconds')::interval)`,
+        [token, email, deviceId || null, referralCode || null, ipHash || null, String(ttlMs)]
       );
       return token;
     },
@@ -1064,6 +1086,105 @@ function createRepo(pool: any) {
           );
         }
         return { url: camp.rows[0].url };
+      });
+    },
+    // ---------- server-authoritative impressions (single-use tokens) ----------
+    // An impression is billable only when the server SERVED that ad to this
+    // device (mint here) and only ONCE (redeem below, after the qualifying
+    // dwell). Replaces trust in the client's self-reported /v1/events count.
+    // Caps are enforced here on tokens served today, so billed <= served <= cap.
+    async serveImpression({ deviceId, ipHash, ttlMs, dailyCap, ipDailyCap }: any) {
+      if (Number.isFinite(dailyCap) && dailyCap > 0) {
+        const n = await pool.query(
+          `select count(*)::int as n from impression_tokens
+            where device_id = $1 and created_at >= date_trunc('day', now())`,
+          [deviceId]
+        );
+        if (n.rows[0].n >= dailyCap) return { capped: true };
+      }
+      if (ipHash && Number.isFinite(ipDailyCap) && ipDailyCap > 0) {
+        const n = await pool.query(
+          `select count(*)::int as n from impression_tokens
+            where ip_hash = $1 and created_at >= date_trunc('day', now())`,
+          [ipHash]
+        );
+        if (n.rows[0].n >= ipDailyCap) return { capped: true };
+      }
+      // Auction winner: highest bid, oldest activated (same order as activeAds).
+      const pick = await pool.query(
+        `select id, brand, ad_line, url, category, color, price_per_block_cents
+           from campaigns
+          where status = 'active' and impressions_remaining > 0
+          order by price_per_block_cents desc, activated_at asc
+          limit 1`
+      );
+      const ad = pick.rows[0];
+      if (!ad) return { ad: null };
+      const token = crypto.randomBytes(24).toString("base64url");
+      await pool.query(
+        `insert into impression_tokens (token, campaign_id, device_id, ip_hash, expires_at)
+         values ($1, $2, $3, $4, now() + ($5 || ' milliseconds')::interval)`,
+        [token, ad.id, deviceId, ipHash || null, String(ttlMs)]
+      );
+      return { token, ad };
+    },
+    // Redeem a served impression EXACTLY ONCE, after the dwell. Bills one
+    // impression against the (locked) campaign, credits the device its share and
+    // the affiliate, records the platform fee — identical math to ingestBatch for
+    // a single billed impression. A redeem before minDwellMs does NOT consume the
+    // token, so an honest client can retry once the 5s dwell completes.
+    async redeemImpression({ token, deviceId, revenueShare, minDwellMs, source }: any) {
+      return tx(async (c: any) => {
+        const t = await c.query(
+          `select campaign_id,
+                  used_at is not null                                       as used,
+                  expires_at <= now()                                       as expired,
+                  (now() - created_at) < ($2 || ' milliseconds')::interval  as too_soon
+             from impression_tokens
+            where token = $1 and device_id = $3
+            for update`,
+          [token, String(Math.max(0, minDwellMs | 0)), deviceId]
+        );
+        const row = t.rows[0];
+        if (!row) return { ok: false, reason: "not_found" };
+        if (row.used) return { ok: false, reason: "used" };
+        if (row.expired) return { ok: false, reason: "expired" };
+        if (row.too_soon) return { ok: false, reason: "too_soon" }; // unconsumed → retryable
+
+        await c.query("update impression_tokens set used_at = now() where token = $1", [token]);
+
+        const camp = await c.query(
+          `select price_per_block_cents, impressions_remaining from campaigns
+            where id = $1 and status = 'active' for update`,
+          [row.campaign_id]
+        );
+        if (!camp.rows[0] || camp.rows[0].impressions_remaining < 1) {
+          return { ok: true, creditedMillicents: 0, campaignId: row.campaign_id };
+        }
+        await c.query(
+          `update campaigns set
+             impressions_remaining = impressions_remaining - 1,
+             status = case when impressions_remaining - 1 <= 0 then 'exhausted' else status end
+           where id = $1`,
+          [row.campaign_id]
+        );
+        const gross = BigInt(camp.rows[0].price_per_block_cents); // billed = 1
+        const dev = (gross * BigInt(Math.round(revenueShare * 1000))) / 1000n;
+        const fee = gross - dev;
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
+           values ('impression_credit', $1, $2, $3, ($4::jsonb #>> '{}')::jsonb)`,
+          [dev.toString(), deviceId, row.campaign_id,
+           JSON.stringify(source ? { impressions: 1, billed: 1, via: "token", source } : { impressions: 1, billed: 1, via: "token" })]
+        );
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+           values ('platform_fee', $1, $2, '{}')`,
+          [fee.toString(), row.campaign_id]
+        );
+        const du = await c.query("select user_id from devices where id = $1", [deviceId]);
+        await creditAffiliate(c, du.rows[0]?.user_id, dev);
+        return { ok: true, creditedMillicents: Number(dev), campaignId: row.campaign_id };
       });
     },
     async setStripeAccount(userId: string, accountId: string) {
@@ -2289,6 +2410,12 @@ route("POST", "/v1/events", async (ctx: any) => {
   const device = await authDeviceFrom(ctx);
   if (!device) return json(401, { error: "bad device credentials" });
   const body = ctx.body || {};
+  // A client on the server-authoritative impression-token path must NOT also
+  // post self-reported batches (that would double-credit the same views). It
+  // advertises the capability, so we refuse its legacy batches outright.
+  if (Array.isArray(body.capabilities) && body.capabilities.includes("impression_tokens")) {
+    return json(409, { error: "migrated client must use /v1/impressions/serve+redeem" });
+  }
   if (!body.batchKey || !Array.isArray(body.events)) return json(400, { error: "batchKey and events[] required" });
   try {
     const result = await repo.ingestBatch({
@@ -2318,6 +2445,45 @@ route("POST", "/v1/clicks/intent", async (ctx: any) => {
 route("GET", "/v1/go/:token", async (ctx: any) => {
   const result = await repo.redeemClickToken(ctx.params.token, config.dailyClickCap);
   return redirect(result?.url || config.siteUrl);
+});
+
+// ── server-authoritative impressions ──
+// serve: the server picks the auction winner and mints a single-use token for
+// THIS device; redeem: after the qualifying dwell, bill that impression once.
+// Forged/inflated counts are impossible — every billed impression maps to a
+// server serve. Runs alongside /v1/events until every client has migrated.
+route("POST", "/v1/impressions/serve", async (ctx: any) => {
+  const device = await authDeviceFrom(ctx);
+  if (!device) return json(401, { error: "bad device credentials" });
+  await syncServing();
+  if (!serving) return json(200, { ad: null, serving: false });
+  const result = await repo.serveImpression({
+    deviceId: device.id, ipHash: hashIp(ctx), ttlMs: config.impressionTokenTtlMs,
+    dailyCap: config.dailyImpressionCap, ipDailyCap: config.ipDailyImpressionCap,
+  });
+  if (result.capped) return json(200, { ad: null, capped: true });
+  if (!result.ad) return json(200, { ad: null });
+  const a = result.ad;
+  return json(200, {
+    token: result.token,
+    ad: { id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined },
+    revenueShare: config.revenueShare,
+  });
+});
+route("POST", "/v1/impressions/redeem", async (ctx: any) => {
+  const device = await authDeviceFrom(ctx);
+  if (!device) return json(401, { error: "bad device credentials" });
+  if (!ctx.body?.token) return json(400, { error: "token required" });
+  const result = await repo.redeemImpression({
+    token: ctx.body.token, deviceId: device.id, revenueShare: config.revenueShare,
+    minDwellMs: config.impressionMinDwellMs,
+    source: ["chrome", "claude_code", "desktop"].includes(ctx.body.source) ? ctx.body.source : null,
+  });
+  if (!result.ok) {
+    const status = result.reason === "not_found" ? 404 : 409; // used / expired / too_soon
+    return json(status, { ok: false, reason: result.reason });
+  }
+  return json(200, { ok: true, creditedMillicents: result.creditedMillicents });
 });
 
 // ── advertiser checkout ──
@@ -2423,7 +2589,13 @@ route("POST", "/v1/auth/request-link", async (ctx: any) => {
   const device = await authDeviceFrom(ctx);
   if (!device) return json(401, { error: "bad device credentials" });
   if (!ctx.body?.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ctx.body.email)) return json(400, { error: "valid email required" });
-  const token = await repo.createEmailToken(ctx.body.email, device.id, config.emailTokenTtlMs, null, config.emailCooldownMs);
+  let token: any;
+  try {
+    token = await repo.createEmailToken(ctx.body.email, device.id, config.emailTokenTtlMs, null, config.emailCooldownMs, hashIp(ctx), config.emailIpDailyCap);
+  } catch (err: any) {
+    if (err.code === "CAP_EXCEEDED") return json(429, { error: "too many email requests from here today — try again later" });
+    throw err;
+  }
   if (token) await mailer.sendVerifyEmail(ctx.body.email, `${config.apiBaseUrl}/v1/auth/verify?token=${token}`);
   return json(200, { ok: true, sent: true });
 });
@@ -2655,7 +2827,13 @@ route("GET", "/v1/auth/apple/callback", async (ctx: any) => {
 route("POST", "/v1/web/login", async (ctx: any) => {
   const body = ctx.body || {};
   if (!body.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) return json(400, { error: "valid email required" });
-  const token = await repo.createEmailToken(body.email, null, config.emailTokenTtlMs, body.referralCode, config.emailCooldownMs);
+  let token: any;
+  try {
+    token = await repo.createEmailToken(body.email, null, config.emailTokenTtlMs, body.referralCode, config.emailCooldownMs, hashIp(ctx), config.emailIpDailyCap);
+  } catch (err: any) {
+    if (err.code === "CAP_EXCEEDED") return json(429, { error: "too many sign-in requests from here today — try again later" });
+    throw err;
+  }
   if (token) await mailer.sendWebLoginEmail(body.email, `${config.apiBaseUrl}/v1/web/session?token=${token}`);
   return json(200, { ok: true, sent: true });
 });

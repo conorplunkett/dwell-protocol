@@ -203,6 +203,27 @@ create table if not exists click_tokens (
   created_at timestamptz not null default now()
 );
 
+-- Server-authoritative impressions. An impression is billable only when the
+-- server actually SERVED that ad to that device (mint on /v1/impressions/serve),
+-- and only ONCE (single-use at /v1/impressions/redeem after the qualifying
+-- dwell). This closes the forged/inflated-count path that trusting the client's
+-- self-reported /v1/events batch leaves open — the batch path stays live during
+-- the client transition. Mirrors click_tokens; ip_hash + device_id back the
+-- per-IP / per-device daily serve caps.
+create table if not exists impression_tokens (
+  token text primary key,
+  campaign_id uuid not null references campaigns(id),
+  device_id uuid not null references devices(id),
+  ip_hash text,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists impression_tokens_device_day_idx
+  on impression_tokens (device_id, created_at);
+create index if not exists impression_tokens_ip_day_idx
+  on impression_tokens (ip_hash, created_at);
+
 -- ── Referrals ──────────────────────────────────────────────────────────────
 -- Every user gets a shareable referral_code (generated lazily). A new user may
 -- be attributed to one referrer (referred_by), set only at first sign-in. When a
@@ -214,6 +235,14 @@ alter table users add column if not exists referred_by uuid references users(id)
 -- The referral code is entered on the signup form, so it must travel with the
 -- magic-link token from /v1/web/login through to user creation.
 alter table email_tokens add column if not exists referral_code text;
+
+-- Hashed source IP (HMAC, never the raw address) recorded per magic-link/login
+-- token. Backs a per-IP daily cap on email sends so one host can't blast magic
+-- links to many distinct addresses (a spam-cannon / sender-reputation abuse the
+-- per-email cooldown alone doesn't stop). Added post-launch, so add-if-missing.
+alter table email_tokens add column if not exists ip_hash text;
+create index if not exists email_tokens_ip_day_idx
+  on email_tokens (ip_hash, created_at);
 
 -- One row per referred user. The status transition pending -> rewarded is the
 -- idempotency guard that pays the referrer exactly once.

@@ -74,7 +74,8 @@ const fakeMailer = {
     affiliateRewardBps: 1000, affiliateCapPeople: 1000,
     stripeWebhookSecret: WEBHOOK_SECRET, siteUrl: "https://freeai.fyi",
     apiBaseUrl: "", corsOrigin: "https://freeai.fyi", adminKey: "test-admin",
-    emailTokenTtlMs: 1800000, emailCooldownMs: 0, webSessionTtlMs: 2592000000, clickTokenTtlMs: 120000, maxBodyBytes: 65536,
+    emailTokenTtlMs: 1800000, emailCooldownMs: 0, emailIpDailyCap: 0, webSessionTtlMs: 2592000000, clickTokenTtlMs: 120000, maxBodyBytes: 65536,
+    impressionTokenTtlMs: 120000, impressionMinDwellMs: 0, // dwell off for the main suite; a dedicated test exercises it
     logRequests: false, giftFulfillmentEmail: "hello@contact.freeai.fyi",
   };
   const repo = createRepo(poolNs);
@@ -271,6 +272,91 @@ const fakeMailer = {
     assert.strictEqual(
       (await poolNs.query("select count(*)::int n from ledger where device_id = $1 and entry_type = 'click_event'", [capDev.deviceId])).rows[0].n,
       5, "daily cap bounds recorded clicks");
+  });
+
+  // ---------- server-authoritative impressions (single-use tokens) ----------
+  let impCampaign;
+  await check("impression serve mints a token; redeem bills exactly one (90%) and is single-use / device-scoped", async () => {
+    // Highest bid among active campaigns → this one wins the serve auction, so we
+    // know which campaign was served and can assert its budget + the credit.
+    const camp = await api("POST", "/v1/checkout", {
+      email: "adv@imp.co", adLine: "Impression token campaign", url: "https://imp.example/",
+      brand: "ImpTok", pricePerBlock: 999, blocks: 2,
+    });
+    await payWebhook(camp.body.campaignId);
+    await approve(camp.body.campaignId);
+    impCampaign = camp.body.campaignId;
+    const remainingOf = async (id) => (await poolNs.query("select impressions_remaining from campaigns where id = $1", [id])).rows[0].impressions_remaining;
+
+    const dev = (await api("POST", "/v1/devices/register")).body;
+    const serve = await api("POST", "/v1/impressions/serve", { ...dev });
+    assert.strictEqual(serve.status, 200);
+    assert.ok(serve.body.token, "serve returns a single-use token");
+    assert.strictEqual(serve.body.ad.id, impCampaign, "top bid wins the serve auction");
+    const price = (await poolNs.query("select price_per_block_cents from campaigns where id = $1", [impCampaign])).rows[0].price_per_block_cents;
+    const expectDev = Number((BigInt(price) * 900n) / 1000n); // revenueShare 0.9, billed 1
+    const before = await remainingOf(impCampaign);
+
+    // base config dwell = 0, so an immediate redeem is billable
+    const redeem = await api("POST", "/v1/impressions/redeem", { ...dev, token: serve.body.token, source: "chrome" });
+    assert.strictEqual(redeem.status, 200);
+    assert.strictEqual(redeem.body.ok, true);
+    assert.strictEqual(redeem.body.creditedMillicents, expectDev, "device earns exactly its share of one impression");
+    assert.strictEqual(await remainingOf(impCampaign), before - 1, "exactly one impression billed against the campaign");
+    assert.strictEqual((await api("GET", `/v1/me/earnings?deviceId=${dev.deviceId}&deviceKey=${dev.deviceKey}`)).body.earnedUsd, expectDev / 100000);
+
+    // single-use: a replay is refused and never double-bills
+    const replay = await api("POST", "/v1/impressions/redeem", { ...dev, token: serve.body.token });
+    assert.strictEqual(replay.status, 409);
+    assert.strictEqual(replay.body.reason, "used");
+    assert.strictEqual(await remainingOf(impCampaign), before - 1, "a replay must not draw budget");
+
+    // unknown token → 404; another device can't redeem your token → 404 (device-scoped)
+    assert.strictEqual((await api("POST", "/v1/impressions/redeem", { ...dev, token: "not-a-real-token" })).status, 404);
+    const serve2 = await api("POST", "/v1/impressions/serve", { ...dev });
+    const other = (await api("POST", "/v1/devices/register")).body;
+    assert.strictEqual((await api("POST", "/v1/impressions/redeem", { ...other, token: serve2.body.token })).status, 404, "device-scoped");
+  });
+
+  await check("impression redeem enforces the qualifying dwell (too_soon, non-consuming so an honest client retries)", async () => {
+    const cfgDwell = { ...config, impressionMinDwellMs: 60000 };
+    const { server: sD } = createApp({ repo, stripe, mailer: fakeMailer, rateLimiter: bigLimiter, config: cfgDwell });
+    await new Promise((r) => sD.listen(0, r));
+    const bD = `http://127.0.0.1:${sD.address().port}`;
+    const postD = (p, b) => fetch(bD + p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+    const dev = (await api("POST", "/v1/devices/register")).body;
+    const serve = await postD("/v1/impressions/serve", { ...dev });
+    assert.ok(serve.body.token);
+    // redeem before the dwell elapses is refused …
+    const early = await postD("/v1/impressions/redeem", { ...dev, token: serve.body.token });
+    assert.strictEqual(early.status, 409);
+    assert.strictEqual(early.body.reason, "too_soon");
+    // … and did NOT consume the token: it still redeems on the dwell-0 main app
+    const later = await api("POST", "/v1/impressions/redeem", { ...dev, token: serve.body.token });
+    assert.strictEqual(later.status, 200);
+    assert.strictEqual(later.body.ok, true);
+    sD.close();
+  });
+
+  await check("impression serve enforces the per-device daily cap (billed <= served <= cap)", async () => {
+    const cfgCap = { ...config, dailyImpressionCap: 2 };
+    const { server: sC } = createApp({ repo, stripe, mailer: fakeMailer, rateLimiter: bigLimiter, config: cfgCap });
+    await new Promise((r) => sC.listen(0, r));
+    const bC = `http://127.0.0.1:${sC.address().port}`;
+    const postC = (p, b) => fetch(bC + p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+    const dev = (await api("POST", "/v1/devices/register")).body; // fresh device → today's count starts at 0
+    assert.ok((await postC("/v1/impressions/serve", { ...dev })).body.token, "1st serve ok");
+    assert.ok((await postC("/v1/impressions/serve", { ...dev })).body.token, "2nd serve ok");
+    const third = await postC("/v1/impressions/serve", { ...dev });
+    assert.strictEqual(third.body.ad, null);
+    assert.strictEqual(third.body.capped, true, "past the daily cap, serve returns no ad");
+    sC.close();
+  });
+
+  await check("a token-capable client's legacy /v1/events batch is refused (no double-credit during transition)", async () => {
+    const dev = (await api("POST", "/v1/devices/register")).body;
+    const r = await api("POST", "/v1/events", { ...dev, capabilities: ["impression_tokens"], batchKey: "capguard", events: [{ campaignId: campA, impressions: 100, clicks: 0 }] });
+    assert.strictEqual(r.status, 409, "migrated client must not also post self-reported batches");
   });
 
   await check("concurrent gift redemptions can't double-spend the same balance", async () => {
@@ -485,6 +571,36 @@ const fakeMailer = {
     // … but only one email actually went out within the cooldown window
     assert.strictEqual(mailbox.length - before, 1, "second rapid send is suppressed");
     s4.close();
+  });
+
+  await check("magic-link sends are capped per source IP per day (anti spam-cannon; other IPs unaffected)", async () => {
+    // The per-email cooldown above only guards one address; this bounds a single
+    // IP blasting magic links to many DISTINCT addresses. Fresh app instance with
+    // a small cap; a unique X-Forwarded-For isolates the count from other tests.
+    const cfgIpEmail = { ...config, emailIpDailyCap: 3, emailCooldownMs: 0 };
+    const { server: s5 } = createApp({ repo, stripe, mailer: fakeMailer, rateLimiter: bigLimiter, config: cfgIpEmail });
+    await new Promise((r) => s5.listen(0, r));
+    const b5 = `http://127.0.0.1:${s5.address().port}`;
+    const login = (email, ip) => fetch(b5 + "/v1/web/login", {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Forwarded-For": ip },
+      body: JSON.stringify({ email }),
+    }).then((r) => r.status);
+    const attacker = "203.0.113.7";
+    // three distinct addresses from one IP get through, the fourth is capped
+    assert.strictEqual(await login("v1@spam.example", attacker), 200);
+    assert.strictEqual(await login("v2@spam.example", attacker), 200);
+    assert.strictEqual(await login("v3@spam.example", attacker), 200);
+    assert.strictEqual(await login("v4@spam.example", attacker), 429);
+    // a different source IP is unaffected
+    assert.strictEqual(await login("real@user.example", "198.51.100.22"), 200);
+    // request-link (device-authed) shares the same per-IP budget → also capped
+    const dev = (await api("POST", "/v1/devices/register")).body;
+    const reqLink = await fetch(b5 + "/v1/auth/request-link", {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Forwarded-For": attacker },
+      body: JSON.stringify({ ...dev, email: "v5@spam.example" }),
+    });
+    assert.strictEqual(reqLink.status, 429);
+    s5.close();
   });
 
   // ---------- referrals ----------

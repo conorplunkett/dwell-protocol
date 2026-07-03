@@ -714,7 +714,26 @@ function createRepo(pool) {
     },
 
     // ---------- email verification (magic link) ----------
-    async createEmailToken(email, deviceId, ttlMs, referralCode, cooldownMs) {
+    async createEmailToken(email, deviceId, ttlMs, referralCode, cooldownMs, ipHash, ipDailyCap) {
+      // Per-IP daily cap: the per-email cooldown below only throttles a single
+      // address, so one host can still blast magic links to many DISTINCT
+      // addresses (spam-cannon / sender-reputation abuse). This bounds sends per
+      // source IP per UTC day. Hashed, fail-open (skipped when no IP is known),
+      // and disabled when ipDailyCap is not positive (shared-NAT/CGNAT opt-out).
+      // Throws CAP_EXCEEDED so the route can answer 429 — unlike the per-email
+      // cooldown, a per-IP limit reveals nothing about whether an address exists.
+      if (ipHash && Number.isFinite(ipDailyCap) && ipDailyCap > 0) {
+        const ipCap = await pool.query(
+          `select count(*)::int as n from email_tokens
+            where ip_hash = $1 and created_at >= date_trunc('day', now())`,
+          [ipHash]
+        );
+        if (ipCap.rows[0].n >= ipDailyCap) {
+          const err = new Error("daily email cap exceeded");
+          err.code = "CAP_EXCEEDED";
+          throw err;
+        }
+      }
       // Per-email send cooldown: collapse rapid repeat requests so the
       // magic-link endpoints can't be used to email-bomb or probe an address.
       // Scoped by device so the verify-email (device-linked) and website-login
@@ -734,9 +753,9 @@ function createRepo(pool) {
       }
       const token = crypto.randomBytes(32).toString("base64url");
       await pool.query(
-        `insert into email_tokens (token, email, device_id, referral_code, expires_at)
-         values ($1, $2, $3, $4, now() + ($5 || ' milliseconds')::interval)`,
-        [token, email, deviceId || null, referralCode || null, String(ttlMs)]
+        `insert into email_tokens (token, email, device_id, referral_code, ip_hash, expires_at)
+         values ($1, $2, $3, $4, $5, now() + ($6 || ' milliseconds')::interval)`,
+        [token, email, deviceId || null, referralCode || null, ipHash || null, String(ttlMs)]
       );
       return token;
     },
@@ -833,6 +852,110 @@ function createRepo(pool) {
           );
         }
         return { url: camp.rows[0].url };
+      });
+    },
+
+    // ---------- server-authoritative impressions (single-use tokens) ----------
+    // An impression is billable only when the server SERVED that ad to this
+    // device (mint here) and only ONCE (redeem below, after the qualifying
+    // dwell). Replaces trust in the client's self-reported /v1/events count.
+    // Caps are enforced here on tokens served today, so billed <= served <= cap.
+    async serveImpression({ deviceId, ipHash, ttlMs, dailyCap, ipDailyCap }) {
+      if (Number.isFinite(dailyCap) && dailyCap > 0) {
+        const n = await pool.query(
+          `select count(*)::int as n from impression_tokens
+            where device_id = $1 and created_at >= date_trunc('day', now())`,
+          [deviceId]
+        );
+        if (n.rows[0].n >= dailyCap) return { capped: true };
+      }
+      // Per source IP per UTC day — bounds farming across many anonymous devices.
+      if (ipHash && Number.isFinite(ipDailyCap) && ipDailyCap > 0) {
+        const n = await pool.query(
+          `select count(*)::int as n from impression_tokens
+            where ip_hash = $1 and created_at >= date_trunc('day', now())`,
+          [ipHash]
+        );
+        if (n.rows[0].n >= ipDailyCap) return { capped: true };
+      }
+      // Auction winner: highest bid, oldest activated (same order as activeAds).
+      const pick = await pool.query(
+        `select id, brand, ad_line, url, category, color, price_per_block_cents
+           from campaigns
+          where status = 'active' and impressions_remaining > 0
+          order by price_per_block_cents desc, activated_at asc
+          limit 1`
+      );
+      const ad = pick.rows[0];
+      if (!ad) return { ad: null };
+      const token = crypto.randomBytes(24).toString("base64url");
+      await pool.query(
+        `insert into impression_tokens (token, campaign_id, device_id, ip_hash, expires_at)
+         values ($1, $2, $3, $4, now() + ($5 || ' milliseconds')::interval)`,
+        [token, ad.id, deviceId, ipHash || null, String(ttlMs)]
+      );
+      return { token, ad };
+    },
+
+    // Redeem a served impression EXACTLY ONCE, after the dwell. Bills one
+    // impression against the (locked) campaign, credits the device its share and
+    // the affiliate, records the platform fee — identical math to ingestBatch for
+    // a single billed impression. A redeem before minDwellMs does NOT consume the
+    // token, so an honest client can retry once the 5s dwell completes.
+    async redeemImpression({ token, deviceId, revenueShare, minDwellMs, source }) {
+      return tx(async (c) => {
+        const t = await c.query(
+          `select campaign_id,
+                  used_at is not null                                       as used,
+                  expires_at <= now()                                       as expired,
+                  (now() - created_at) < ($2 || ' milliseconds')::interval  as too_soon
+             from impression_tokens
+            where token = $1 and device_id = $3
+            for update`,
+          [token, String(Math.max(0, minDwellMs | 0)), deviceId]
+        );
+        const row = t.rows[0];
+        if (!row) return { ok: false, reason: "not_found" };
+        if (row.used) return { ok: false, reason: "used" };
+        if (row.expired) return { ok: false, reason: "expired" };
+        if (row.too_soon) return { ok: false, reason: "too_soon" }; // unconsumed → retryable
+
+        await c.query("update impression_tokens set used_at = now() where token = $1", [token]);
+
+        // Bill one impression, never past the campaign's remaining budget.
+        const camp = await c.query(
+          `select price_per_block_cents, impressions_remaining from campaigns
+            where id = $1 and status = 'active' for update`,
+          [row.campaign_id]
+        );
+        if (!camp.rows[0] || camp.rows[0].impressions_remaining < 1) {
+          return { ok: true, creditedMillicents: 0, campaignId: row.campaign_id }; // spent, nothing billable
+        }
+        await c.query(
+          `update campaigns set
+             impressions_remaining = impressions_remaining - 1,
+             status = case when impressions_remaining - 1 <= 0 then 'exhausted' else status end
+           where id = $1`,
+          [row.campaign_id]
+        );
+        const gross = BigInt(camp.rows[0].price_per_block_cents); // billed = 1
+        const dev = (gross * BigInt(Math.round(revenueShare * 1000))) / 1000n;
+        const fee = gross - dev;
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
+           values ('impression_credit', $1, $2, $3, $4)`,
+          [dev.toString(), deviceId, row.campaign_id,
+           JSON.stringify(source ? { impressions: 1, billed: 1, via: "token", source } : { impressions: 1, billed: 1, via: "token" })]
+        );
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+           values ('platform_fee', $1, $2, '{}')`,
+          [fee.toString(), row.campaign_id]
+        );
+        // Affiliate cut (platform-funded, on top) if the device's user is attributed.
+        const du = await c.query("select user_id from devices where id = $1", [deviceId]);
+        await creditAffiliate(c, du.rows[0]?.user_id, dev);
+        return { ok: true, creditedMillicents: Number(dev), campaignId: row.campaign_id };
       });
     },
 
