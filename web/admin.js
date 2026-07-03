@@ -946,13 +946,15 @@ function pricingCard(view, p) {
     h("div", { class: "card-head" }, h("h2", {}, "Advertiser pricing"),
       h("p", { class: "hint" }, `Shown on the advertiser page. Advertisers set a budget and a CPM (cost per 1,000 impressions). Displayed “top CPM” = the higher of your anchor and the current highest active bid (${usd((p.topActiveBidCents || 0) / 100)}), capped at Max CPM.`)),
     h("div", { class: "inline-form", style: "margin-top:6px" },
-      h("label", { class: "fld" }, "Min CPM $", minCpmI),
-      h("label", { class: "fld" }, "Suggested CPM $", sugCpmI),
-      h("label", { class: "fld" }, "Max CPM $", maxCpmI),
-      h("label", { class: "fld" }, "Top-CPM anchor $", topI),
-      h("label", { class: "fld" }, "Min budget $", minBudI),
-      h("label", { class: "fld" }, "Suggested budget $", sugBudI),
-      h("label", { class: "fld" }, "Max budget $", maxBudI),
+      // The (default …) note above each box mirrors the API's fallback pricing
+      // (index.ts PRICING defaults) — what the lander shows if you never saved.
+      h("label", { class: "fld" }, h("span", {}, "Min CPM $ ", h("span", { class: "fld-def" }, "(default 5)")), minCpmI),
+      h("label", { class: "fld" }, h("span", {}, "Suggested CPM $ ", h("span", { class: "fld-def" }, "(default 15)")), sugCpmI),
+      h("label", { class: "fld" }, h("span", {}, "Max CPM $ ", h("span", { class: "fld-def" }, "(default 100)")), maxCpmI),
+      h("label", { class: "fld" }, h("span", {}, "Top-CPM anchor $ ", h("span", { class: "fld-def" }, "(default 50)")), topI),
+      h("label", { class: "fld" }, h("span", {}, "Min budget $ ", h("span", { class: "fld-def" }, "(default 100)")), minBudI),
+      h("label", { class: "fld" }, h("span", {}, "Suggested budget $ ", h("span", { class: "fld-def" }, "(default 2,500)")), sugBudI),
+      h("label", { class: "fld" }, h("span", {}, "Max budget $ ", h("span", { class: "fld-def" }, "(default 100,000)")), maxBudI),
       h("button", { class: "btn btn-accent", onclick: async (ev) => {
         const cents = (el) => Math.round((parseFloat(el.value) || 0) * 100);
         const b = ev.target; b.disabled = true;
