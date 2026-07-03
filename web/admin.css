@@ -110,6 +110,7 @@ input[type=text], input[type=number], input[type=search], select {
 }
 input:focus, select:focus { outline: 2px solid rgba(var(--accent-rgb), .3); border-color: var(--accent); }
 label.fld { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: var(--gray); }
+.fld-def { font-weight: 400; color: var(--gray-2); }
 
 /* ── charts (zero-dependency CSS bars) ── */
 .chart { display: flex; align-items: flex-end; gap: 3px; height: 150px; padding: 8px 2px 0; overflow-x: auto; }
