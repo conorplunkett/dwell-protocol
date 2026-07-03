@@ -818,10 +818,14 @@ function renderActivity() {
     `</div>`;
   const items = pageRows.map((r) => {
     const when = r.createdAt ? new Date(r.createdAt).toLocaleString() : "";
-    const label = ACT_LABEL[r.type] || r.type;
+    // r.type is a server enum today, but escape it (text) and reduce it to safe
+    // class characters (attribute) so a future backend change can't turn this
+    // innerHTML sink into stored XSS in the signed-in portal.
+    const label = escapeHtml(ACT_LABEL[r.type] || r.type || "");
+    const typeClass = String(r.type || "").replace(/[^a-z0-9_-]/gi, "");
     return (
       `<div class="act-row">` +
-      `<span class="act-type ${r.type}">${label}</span>` +
+      `<span class="act-type ${typeClass}">${label}</span>` +
       `<span class="act-adv">${r.advertiser ? escapeHtml(r.advertiser) : "—"}</span>` +
       `<span class="act-when">${when}</span>` +
       `<span class="act-amt">${usdPrecise(r.amountUsd)}</span>` +

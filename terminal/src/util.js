@@ -18,11 +18,18 @@ export function readJson(path, fallback = null) {
   }
 }
 
-export function writeJsonAtomic(path, value) {
+// Atomic write via temp file + rename. `mode` sets permission bits on the temp
+// file BEFORE the rename (rename preserves the temp file's mode), so a caller
+// holding a secret can land it at 0600 with no window at the default 0644.
+export function writeFileAtomic(path, content, { mode } = {}) {
   ensureDir(dirname(path));
   const tmp = `${path}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  writeFileSync(tmp, JSON.stringify(value, null, 2) + "\n", "utf8");
+  writeFileSync(tmp, content, mode != null ? { encoding: "utf8", mode } : "utf8");
   renameSync(tmp, path);
+}
+
+export function writeJsonAtomic(path, value, opts) {
+  writeFileAtomic(path, JSON.stringify(value, null, 2) + "\n", opts);
 }
 
 export function removePath(path) {

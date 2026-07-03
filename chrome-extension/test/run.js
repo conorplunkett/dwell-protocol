@@ -119,6 +119,7 @@ function makeChrome(stateRef, sentRef) {
   sandbox.setInterval = () => 0; // detector/loop driven manually in tests
   sandbox.clearInterval = () => {};
   sandbox.setTimeout = () => 0;
+  sandbox.URL = URL; // content scripts expose URL globally; the https guard uses it
   const opened = [];
   sandbox.window.open = (url) => opened.push(url);
 

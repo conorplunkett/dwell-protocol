@@ -48,9 +48,11 @@ impl Campaign {
     }
 
     /// Cost of one impression in cents (CPM / 1000), rounded up so we never
-    /// serve past budget.
+    /// serve past budget. Saturating so a hostile/garbled server `cpm_cents`
+    /// near i64::MAX can't overflow (panic in debug, wrap negative in release —
+    /// a negative cost would sail past the budget check).
     pub fn impression_cost_cents(&self) -> i64 {
-        (self.cpm_cents + 999) / 1000
+        self.cpm_cents.saturating_add(999) / 1000
     }
 
     pub fn is_eligible(&self, now_ms: u64, country: &str, impressions_today: u32) -> bool {

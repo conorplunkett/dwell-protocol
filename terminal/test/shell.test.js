@@ -17,7 +17,10 @@ test("installShellBlock inserts and replaces a reversible zsh alias block", () =
   const installed = installShellBlock({ shell: "zsh", rcPath: rc });
   assert.equal(installed.changed, true);
   const first = readFileSync(rc, "utf8");
-  assert.match(first, /alias claude="freeai claude run"/);
+  assert.match(first, /claude\(\) \{/);
+  assert.match(first, /freeai claude run "\$@"/);
+  // Falls through to the real claude when freeai is missing (never bricks claude).
+  assert.match(first, /command claude "\$@"/);
   assert.match(first, new RegExp(MARKER_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 
   installShellBlock({ shell: "zsh", rcPath: rc });
@@ -38,7 +41,7 @@ test("installShellBlock aborts on an existing non-FreeAI claude alias unless for
   installShellBlock({ shell: "bash", rcPath: rc, force: true });
   const content = readFileSync(rc, "utf8");
   assert.match(content, /alias claude=\/opt\/claude/);
-  assert.match(content, /alias claude="freeai claude run"/);
+  assert.match(content, /freeai claude run "\$@"/);
 });
 
 test("installShellBlock writes fish function syntax", () => {

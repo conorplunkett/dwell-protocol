@@ -32,6 +32,16 @@ function h(tag, attrs = {}, ...kids) {
   for (const kid of kids.flat()) { if (kid == null) continue; e.append(kid.nodeType ? kid : document.createTextNode(String(kid))); }
   return e;
 }
+// Only ever render an http/https href. Campaign destination URLs are
+// advertiser-supplied; the backend validates https at checkout, but the admin
+// panel must not trust that — a javascript:/data: URL in an <a href> would run
+// in the admin origin (which holds the admin key in localStorage) on click.
+function safeHref(url) {
+  try {
+    const p = new URL(String(url)).protocol;
+    return p === "http:" || p === "https:" ? String(url) : "#";
+  } catch { return "#"; }
+}
 const usd = (n) => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const usd0 = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("en-US"); // whole-dollar (CPM)
 const num = (n) => (Number(n) || 0).toLocaleString("en-US");
@@ -284,7 +294,7 @@ async function renderAds(view) {
       { label: "Advertiser" }, { label: "Created" }, { label: "" },
     ], campaigns, (c) => [
       c.brand || "—",
-      td(h("a", { href: c.url, target: "_blank", rel: "noopener nofollow" }, c.adLine), "wrap"),
+      td(h("a", { href: safeHref(c.url), target: "_blank", rel: "noopener nofollow" }, c.adLine), "wrap"),
       td(badge(c.status)),
       usd(c.bidUsd) + " ×" + c.blocks,
       num(c.impressionsServed) + " / " + num(c.impressionsTotal),
@@ -686,7 +696,7 @@ async function renderLanders(view) {
     landers,
     (l) => [
       h("span", { class: "mono" }, l.slug),
-      td(h("a", { href: l.url, target: "_blank", rel: "noopener" }, l.url)),
+      td(h("a", { href: safeHref(l.url), target: "_blank", rel: "noopener" }, l.url)),
       l.headline,
       h("span", { class: "badge tool" }, l.tool),
     ],

@@ -104,7 +104,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
   const CORS = {
     "Access-Control-Allow-Origin": config.corsOrigin || "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,X-Admin-Key,Authorization",
+    "Access-Control-Allow-Headers": "Content-Type,X-Admin-Key,X-Device-Id,X-Device-Key,Authorization",
     "Access-Control-Max-Age": "86400",
   };
   const json = (res, status, body) => {
@@ -118,14 +118,25 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     res.end(body);
   };
 
-  async function authDeviceFrom(body, query) {
-    const deviceId = body?.deviceId || query?.get("deviceId");
-    const deviceKey = body?.deviceKey || query?.get("deviceKey");
+  async function authDeviceFrom(body, query, headers) {
+    // Header creds preferred, so the deviceKey bearer secret can stay out of the
+    // URL query string (which leaks into access logs). Body/query kept for compat.
+    const deviceId = headers?.["x-device-id"] || body?.deviceId || query?.get("deviceId");
+    const deviceKey = headers?.["x-device-key"] || body?.deviceKey || query?.get("deviceKey");
     return repo.authDevice(deviceId, deviceKey);
+  }
+  // Constant-time compare so the admin key can't be recovered byte-by-byte via
+  // response timing. Length-guarded (timingSafeEqual throws on unequal lengths).
+  function adminKeyEqual(key) {
+    if (!config.adminKey || !key) return false;
+    const a = Buffer.from(String(key), "utf8");
+    const b = Buffer.from(String(config.adminKey), "utf8");
+    if (a.length !== b.length) return false;
+    try { return crypto.timingSafeEqual(a, b); } catch { return false; }
   }
   function adminOk(req, body, query) {
     const key = req.headers["x-admin-key"] || body?.adminKey || query?.get("adminKey");
-    return config.adminKey && key === config.adminKey;
+    return adminKeyEqual(key);
   }
   // Client IP from the proxy header (Fly/CDN) or the socket. Used for rate
   // limiting and — hashed, never stored raw — for the per-IP fraud cap.
@@ -382,7 +393,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
   // approved affiliate and this returns their invite link plus the per-friend 10%
   // breakdown — device credentials only, no web session.
   route("GET", "/v1/me/affiliate", async (req, res, body, rawBody, query) => {
-    const device = await authDeviceFrom(null, query);
+    const device = await authDeviceFrom(null, query, req.headers);
     if (!device) return json(res, 401, { error: "bad device credentials" });
     const rewardPct = config.affiliateRewardBps / 100;
     const user = await repo.userForDevice(device.id);

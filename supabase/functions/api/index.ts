@@ -2134,7 +2134,7 @@ async function syncServing() {
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type,X-Admin-Key,Authorization,apikey",
+  "Access-Control-Allow-Headers": "Content-Type,X-Admin-Key,X-Device-Id,X-Device-Key,Authorization,apikey",
   "Access-Control-Max-Age": "86400",
 };
 // Allowed browser origins. Reflect the caller's Origin when it's on our
@@ -2177,14 +2177,27 @@ function route(method: string, path: string, handler: any) {
 
 // ctx: { headers, body, rawBody, query, params }
 async function authDeviceFrom(ctx: any, fromQuery = false) {
+  // Prefer the deviceKey in a header, so clients can keep the bearer secret out
+  // of the URL query string (which leaks into access/proxy logs). Falls back to
+  // body/query for older clients.
+  const hId = ctx.headers.get("x-device-id");
+  const hKey = ctx.headers.get("x-device-key");
   const src = fromQuery ? null : ctx.body;
-  const deviceId = src?.deviceId || ctx.query.get("deviceId");
-  const deviceKey = src?.deviceKey || ctx.query.get("deviceKey");
+  const deviceId = hId || src?.deviceId || ctx.query.get("deviceId");
+  const deviceKey = hKey || src?.deviceKey || ctx.query.get("deviceKey");
   return repo.authDevice(deviceId, deviceKey);
+}
+// Constant-time compare so the admin key can't be recovered byte-by-byte via
+// response-timing. Length-guarded because timingSafeEqual throws on a mismatch.
+function safeEqual(a: string, b: string) {
+  const ab = Buffer.from(String(a), "utf8");
+  const bb = Buffer.from(String(b), "utf8");
+  if (ab.length !== bb.length) return false;
+  try { return crypto.timingSafeEqual(ab, bb); } catch { return false; }
 }
 function adminOk(ctx: any) {
   const key = ctx.headers.get("x-admin-key") || ctx.body?.adminKey || ctx.query.get("adminKey");
-  return config.adminKey && key === config.adminKey;
+  return !!config.adminKey && !!key && safeEqual(key, config.adminKey);
 }
 function sessionFrom(ctx: any) {
   const h = ctx.headers.get("authorization") || "";

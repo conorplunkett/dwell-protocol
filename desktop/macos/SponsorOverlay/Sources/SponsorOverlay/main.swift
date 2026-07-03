@@ -245,9 +245,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func rotateAd() {
         currentAd = ads.randomElement()
-        if let ad = currentAd, let url = URL(string: ad.url) {
+        if let ad = currentAd {
+            // Route through the https guard so the card never carries a non-https
+            // destination (see Ad.destinationURLOrFallback).
             overlay.setCard(SponsorCard(campaignID: ad.id, sponsorName: ad.brand,
-                                        message: ad.line, destinationURL: url))
+                                        message: ad.line, destinationURL: ad.destinationURLOrFallback))
         }
         engine.rearm()
     }
@@ -964,8 +966,14 @@ extension AppDelegate: NSWindowDelegate {
 }
 
 extension Ad {
+    // The ad's destination, but only when it's a well-formed https URL. Any other
+    // scheme (file://, mailto:, a custom app scheme) or a garbled record falls
+    // back to the site — a click must never launch an arbitrary handler. The
+    // backend validates https at checkout; this is the client-side guard so the
+    // app never trusts that assumption for something as sensitive as open().
     var destinationURLOrFallback: URL {
-        URL(string: url) ?? URL(string: "https://freeai.fyi")!
+        if let u = URL(string: url), u.scheme?.lowercased() == "https" { return u }
+        return URL(string: "https://freeai.fyi")!
     }
 }
 

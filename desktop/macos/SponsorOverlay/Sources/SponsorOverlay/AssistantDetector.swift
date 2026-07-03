@@ -107,6 +107,10 @@ final class AssistantDetector {
         state.target = target
 
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        // Bound every synchronous AX IPC call: reads block until the target app
+        // replies, and this walk runs on the main thread at up to 10 Hz — a busy
+        // or wedged Claude/ChatGPT would otherwise beachball the menu-bar app.
+        AXUIElementSetMessagingTimeout(axApp, 0.25)
         enableElectronAccessibility(axApp, pid: app.processIdentifier)
         guard let window = focusedWindow(of: axApp) else { return state }
         state.minimized = isMinimized(window)
@@ -153,7 +157,10 @@ final class AssistantDetector {
     private func focusedWindow(of axApp: AXUIElement) -> AXUIElement? {
         var value: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &value)
-        guard err == .success else { return nil }
+        guard err == .success, let value else { return nil }
+        // Conditional cast, not `as!`: another app's AX server can return .success
+        // with an unexpected CF type, and a force-cast would crash the overlay.
+        guard CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         return (value as! AXUIElement)
     }
 
@@ -171,6 +178,13 @@ final class AssistantDetector {
         var posRef: CFTypeRef?, sizeRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &posRef) == .success,
               AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeRef) == .success else {
+            return nil
+        }
+        // Verify the CF type before casting — a foreign AX server can hand back a
+        // non-AXValue on .success, and `as!` would trap and crash the overlay.
+        guard let posRef, let sizeRef,
+              CFGetTypeID(posRef) == AXValueGetTypeID(),
+              CFGetTypeID(sizeRef) == AXValueGetTypeID() else {
             return nil
         }
         var pos = CGPoint.zero, size = CGSize.zero
@@ -310,6 +324,10 @@ final class AssistantDetector {
             return
         }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        // Bound every synchronous AX IPC call: reads block until the target app
+        // replies, and this walk runs on the main thread at up to 10 Hz — a busy
+        // or wedged Claude/ChatGPT would otherwise beachball the menu-bar app.
+        AXUIElementSetMessagingTimeout(axApp, 0.25)
         enableElectronAccessibility(axApp, pid: app.processIdentifier)
         guard let window = focusedWindow(of: axApp) else {
             print("probe: no focused \(target.displayName) window (is Accessibility granted? is the app frontmost?)")
