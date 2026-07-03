@@ -4,7 +4,8 @@
 // Talks to the production backend (Supabase Edge Function):
 //   • registers an anonymous device (deviceId + deviceKey)
 //   • pulls the live ad inventory from the auction (/v1/ads)
-//   • reports impressions to the ledger (/v1/events, idempotent batches)
+//   • bills impressions through server-issued single-use tokens
+//     (/v1/impressions/serve then /v1/impressions/redeem after the on-screen dwell)
 //   • records clicks through single-use, forgery-proof tokens (/v1/clicks/intent)
 //   • honours the server killswitch (/v1/config → serving)
 // All network use is feature-guarded so the headless test harness (no fetch /
@@ -19,7 +20,7 @@ const DEFAULTS = {
   testMode: false, // show the mock ad continuously so you can verify the loop
   serving: true, // mirrors the server killswitch (/v1/config); ads off when false
   revenueShare: 0.5, // your cut, redeemable as Claude credits (server may override)
-  grossCpm: 12, // gross USD per 1,000 five-second impressions
+  grossCpm: 12, // gross USD per 1,000 qualifying (2-second) impressions
   blockedCategories: [],
   impressions: 0,
   clicks: 0,
@@ -144,13 +145,13 @@ async function refreshAds() {
 }
 
 // Server-authoritative impressions. Instead of self-reporting a count to
-// /v1/events (which the server has to take on trust), each qualifying 5s view is
-// billed through a single-use token the server issues. Pipelined so the 5s
+// /v1/events (which the server has to take on trust), each qualifying 2s view is
+// billed through a single-use token the server issues. Pipelined so the 2s
 // on-screen dwell sits BETWEEN serve and redeem: on each impression tick we
 // redeem the previously-served token (now ≥ dwell old) and serve the next one. A
 // token that never ripens (generation stopped, tab hidden) is simply dropped —
 // no bill, which is exactly right for a view that didn't complete.
-const IMP_DWELL_MS = 5000;
+const IMP_DWELL_MS = 2000;
 let impBusy = false;
 async function serveImpressionToken(device) {
   try {
@@ -177,7 +178,7 @@ async function redeemImpressionToken(device, token) {
     });
   } catch (_) {}
 }
-// Called once per real impression tick (≈ every 5s of continuous visibility).
+// Called once per real impression tick (≈ every 2s of continuous visibility).
 // The impBusy guard is claimed before the first await so two ticks can't both
 // redeem the same token or serve two at once.
 async function tickImpressionToken() {
@@ -187,7 +188,7 @@ async function tickImpressionToken() {
     const device = await getOrRegisterDevice();
     if (!device) return;
     const { impToken } = await chrome.storage.local.get(["impToken"]);
-    // Redeem the previously-served token once its 5s dwell has elapsed. Gating on
+    // Redeem the previously-served token once its 2s dwell has elapsed. Gating on
     // the client side (not just the server min-dwell) keeps an honest redeem from
     // ever tripping "too_soon" under tick jitter.
     if (impToken && impToken.token && Date.now() - impToken.at >= IMP_DWELL_MS) {

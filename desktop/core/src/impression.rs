@@ -1,13 +1,13 @@
 //! The qualified-impression state machine.
 //!
 //! PRD rule: an impression counts only after the sponsor card has been visible
-//! for 5 *continuous* seconds while the user is signed in, Claude Desktop is
+//! for 2 *continuous* seconds while the user is signed in, Claude Desktop is
 //! focused, the overlay is visible/uncovered, the screen is unlocked, and the
 //! user hasn't paused ads. Any break resets the clock to zero.
 
 use crate::events::WindowState;
 
-pub const QUALIFY_MS: u64 = 5_000;
+pub const QUALIFY_MS: u64 = 2_000;
 
 /// Snapshot of platform signals, supplied by the macOS shell on every tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +54,7 @@ pub enum TrackerOutput {
     Accruing { visible_ms: u64 },
     /// Clock reset because a qualifying condition broke.
     Reset,
-    /// 5 continuous seconds reached — emit exactly one impression event.
+    /// 2 continuous seconds reached — emit exactly one impression event.
     QualifiedImpression { visible_ms: u64 },
     /// Already qualified for this display; nothing more until re-armed.
     AlreadyCounted,

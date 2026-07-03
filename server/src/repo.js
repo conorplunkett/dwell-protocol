@@ -901,7 +901,7 @@ function createRepo(pool) {
     // impression against the (locked) campaign, credits the device its share and
     // the affiliate, records the platform fee — identical math to ingestBatch for
     // a single billed impression. A redeem before minDwellMs does NOT consume the
-    // token, so an honest client can retry once the 5s dwell completes.
+    // token, so an honest client can retry once the 2s dwell completes.
     async redeemImpression({ token, deviceId, revenueShare, minDwellMs, source }) {
       return tx(async (c) => {
         const t = await c.query(

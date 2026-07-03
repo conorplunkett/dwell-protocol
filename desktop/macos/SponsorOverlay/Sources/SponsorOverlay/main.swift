@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let engine = ImpressionEngine()
     private let client = BackendClient(baseURL: BackendClient.configuredBaseURL)
     // Server-authoritative impressions: a token is served once when a display
-    // window starts showing, then redeemed once the qualifying 5s view accrues —
+    // window starts showing, then redeemed once the qualifying 2s view accrues —
     // the dwell sits between serve and redeem, exactly as the server wants. Both
     // are cleared/re-armed per display in rotateAd. Replaces the self-reported
     // /v1/events batch (EventStore).
@@ -312,7 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 lastComposerBounds = state.composerBounds
                 lastStarBounds = state.starBounds
             }
-            serveImpressionIfNeeded() // arm a token for this display; redeemed once the 5s view accrues
+            serveImpressionIfNeeded() // arm a token for this display; redeemed once the 2s view accrues
         } else {
             if overlay.isShown { rotateAd() } // hidden -> next show re-arms with a fresh ad
             // Fade out only when the assistant is still the focused, visible
@@ -332,7 +332,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Serve one impression token per display window, when it first shows. The
-    /// token is redeemed later, once the engine reports the qualifying 5s view —
+    /// token is redeemed later, once the engine reports the qualifying 2s view —
     /// so the on-screen dwell sits between serve and redeem. Guarded so a window
     /// serves at most one token (servedImpressionToken is cleared in rotateAd).
     private func serveImpressionIfNeeded() {

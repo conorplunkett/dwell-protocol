@@ -295,7 +295,7 @@
     render();
     lastImpressionAt = 0;
     // 250ms is plenty: the bar re-anchors at most ~1x/sec and impressions tick
-    // every 5s. The old 100ms loop was a large part of the CPU/layout churn.
+    // every 2s. The old 100ms loop was a large part of the CPU/layout churn.
     spinTimer = setInterval(tick, 250);
   }
   function stopActive() {
@@ -311,10 +311,10 @@
     if (mount()) bar.classList.add("bb-show");
     else bar.classList.remove("bb-show");
     render();
-    // one impression every 5s of serving — only while actually visible
+    // one impression every 2s of serving — only while actually visible
     if (!bar.classList.contains("bb-show")) return;
     const now = Date.now();
-    if (now - lastImpressionAt >= 5000) {
+    if (now - lastImpressionAt >= 2000) {
       lastImpressionAt = now;
       send({ type: "BB_IMPRESSION", mock: testMode });
     }

@@ -64,7 +64,7 @@ function loadConfig() {
     webSessionTtlMs: parseInt(env("WEB_SESSION_TTL_MS", "2592000000"), 10),
     clickTokenTtlMs: parseInt(env("CLICK_TOKEN_TTL_MS", "120000"), 10),
     impressionTokenTtlMs: parseInt(env("IMPRESSION_TOKEN_TTL_MS", "120000"), 10), // 2 min: enough to dwell + redeem a served impression
-    impressionMinDwellMs: parseInt(env("IMPRESSION_MIN_DWELL_MS", "2000"), 10), // server backstop: min ms between serve and a billable redeem. The client's on-screen qualifying view (~5s) is the real gate; this just rejects a too-fast redeem. 0 disables
+    impressionMinDwellMs: parseInt(env("IMPRESSION_MIN_DWELL_MS", "2000"), 10), // server backstop: min ms between serve and a billable redeem. The client's on-screen qualifying view (~2s) is the real gate; this just rejects a too-fast redeem. 0 disables
     maxBodyBytes: parseInt(env("MAX_BODY_BYTES", "65536"), 10),
     googleClientId: env("GOOGLE_CLIENT_ID"),
     googleClientSecret: env("GOOGLE_CLIENT_SECRET"),
@@ -1132,7 +1132,7 @@ function createRepo(pool: any) {
     // impression against the (locked) campaign, credits the device its share and
     // the affiliate, records the platform fee — identical math to ingestBatch for
     // a single billed impression. A redeem before minDwellMs does NOT consume the
-    // token, so an honest client can retry once the 5s dwell completes.
+    // token, so an honest client can retry once the 2s dwell completes.
     async redeemImpression({ token, deviceId, revenueShare, minDwellMs, source }: any) {
       return tx(async (c: any) => {
         const t = await c.query(
