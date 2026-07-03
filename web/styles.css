@@ -1048,12 +1048,15 @@ a { color: inherit; text-decoration: none; }
      All three items stay (Products · User Login · Advertise) with the coral
      Advertise CTA always visible. (The .nav-scoped brand rules below need .nav
      specificity to override the desktop sizing.) */
-  .nav { padding: 10px 12px; gap: 10px; }
-  .nav-btns { gap: 4px; padding: 4px; }
-  .navbtn { padding: 8px 12px; font-size: 13px; }
-  .navbtn-cta { padding: 8px 14px; }
+  .nav { padding: 10px 10px; gap: 8px; }
+  .nav-btns { gap: 3px; padding: 4px; }
+  .navbtn { padding: 8px 10px; font-size: 13px; }
+  .navbtn-cta { padding: 8px 13px; }
   .nav .logo { width: 32px; height: 32px; font-size: 14px; }
   .nav .brand-name { font-size: 15px; letter-spacing: -.03em; }
+  /* "User Login" shrinks to just "Login" once the segmented control no
+     longer has room for all three full labels next to the wordmark. */
+  .nav-txt-opt { display: none; }
 
   /* hero — let the headline wrap at a real headline size */
   .hero { padding: 36px 20px 20px; }
@@ -1070,6 +1073,14 @@ a { color: inherit; text-decoration: none; }
   .demo-line { font-size: 13px; flex-wrap: nowrap; white-space: nowrap; }
   .demo-line .brand-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .claude-guy { right: 16px; }
+
+  /* command one-liners — the npm command never fits a phone, and the
+     scrollbar is hidden, so fade the clipped edge to signal "swipe for more"
+     instead of looking chopped off behind the Copy button. */
+  .dl-cmd, .cli-cmd {
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
+  }
 
   /* install card — stays one row; icon + price keep the layout legible */
   .install-card { padding: 14px 16px; gap: 12px; }
@@ -1105,7 +1116,7 @@ a { color: inherit; text-decoration: none; }
   .recipient input { font-size: 16px; }
   .redeem-foot .btn-green { justify-self: stretch; }
 }
-@media (max-width: 380px) {
+@media (max-width: 430px) {
   .nav .brand-name { display: none; }
 }
 
