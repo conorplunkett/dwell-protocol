@@ -8,12 +8,12 @@ export function startSessionMonitor({
   device,
   ad,
   intervalMs = 1000,
-  viewThresholdMs = 5000,
+  viewThresholdMs = 2000,
   heartbeatFreshMs = 4000,
   transcriptFreshMs = 4000,
 } = {}) {
   // Server-authoritative billing: serve a single-use token at the START of an
-  // active segment, then redeem it once the qualifying view (viewThresholdMs)
+  // active segment, then redeem it once the qualifying view (viewThresholdMs, 2s)
   // has elapsed BETWEEN serve and redeem — which is exactly the on-screen dwell
   // the server's min-dwell wants. One bill per active segment. A segment shorter
   // than the threshold serves a token that's simply left to expire (no bill).

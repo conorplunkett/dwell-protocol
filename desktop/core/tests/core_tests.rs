@@ -33,7 +33,7 @@ fn tick_through(
 // ---- impression state machine ----
 
 #[test]
-fn five_continuous_seconds_yields_exactly_one_impression() {
+fn two_continuous_seconds_yields_exactly_one_impression() {
     let mut t = ImpressionTracker::new();
     let outs = tick_through(&mut t, 0, 7_000, 500, good_signals());
     let qualified: Vec<_> = outs
@@ -51,12 +51,12 @@ fn five_continuous_seconds_yields_exactly_one_impression() {
 #[test]
 fn losing_focus_resets_the_clock() {
     let mut t = ImpressionTracker::new();
-    tick_through(&mut t, 0, 4_000, 500, good_signals()); // 4s accrued
+    tick_through(&mut t, 0, 1_000, 500, good_signals()); // 1s accrued (below the 2s threshold)
     let mut unfocused = good_signals();
     unfocused.claude_focused = false;
-    assert_eq!(t.tick(4_500, unfocused), TrackerOutput::Reset);
-    // Needs a full fresh 5s after refocus.
-    let outs = tick_through(&mut t, 5_000, 10_000, 500, good_signals());
+    assert_eq!(t.tick(1_500, unfocused), TrackerOutput::Reset);
+    // Needs a full fresh 2s after refocus.
+    let outs = tick_through(&mut t, 2_000, 4_000, 500, good_signals());
     assert!(matches!(
         outs[..outs.len() - 1]
             .iter()
@@ -95,9 +95,9 @@ fn screen_lock_cover_pause_and_sleep_all_block_qualification() {
 #[test]
 fn clock_gap_from_system_sleep_does_not_count_as_continuous() {
     let mut t = ImpressionTracker::new();
-    tick_through(&mut t, 0, 3_000, 500, good_signals());
-    // 4-second gap (laptop lid closed without a lock signal).
-    match t.tick(7_000, good_signals()) {
+    tick_through(&mut t, 0, 1_000, 500, good_signals()); // ~1s accrued, below the 2s threshold
+                                                         // 4-second gap (laptop lid closed without a lock signal).
+    match t.tick(5_000, good_signals()) {
         TrackerOutput::Accruing { visible_ms } => assert_eq!(visible_ms, 0),
         o => panic!("expected reset accrual, got {o:?}"),
     }
