@@ -76,7 +76,10 @@ popup_refs="$(grep -oiE '(src|href)="[^"]*"' popup/popup.html \
   | grep -viE '^(https?:)?//' || true)"
 while IFS= read -r ref; do
   [ -n "$ref" ] || continue
-  resolved="$(realpath -m --relative-to="$EXT" "popup/$ref")"  # popup.html lives in popup/
+  # BSD/macOS realpath has no -m/--relative-to; normalize "popup/$ref" (which may
+  # contain ../) to a path relative to $EXT portably. cd is already inside $EXT.
+  resolved="$(cd "popup/$(dirname "$ref")" && printf '%s/%s' "$(pwd)" "$(basename "$ref")")"
+  resolved="${resolved#"$EXT/"}"
   case " ${FILES[*]} " in
     *" $resolved "*) : ;;
     *) echo "error: popup/popup.html references '$ref' ($resolved) but it is not in the package allowlist (FILES)" >&2; missing=1 ;;
