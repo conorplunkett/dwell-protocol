@@ -46,8 +46,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let detector = AssistantDetector()
     private let overlay = OverlayPanelController()
     private let engine = ImpressionEngine()
-    private let store = EventStore()
     private let client = BackendClient(baseURL: BackendClient.configuredBaseURL)
+    // Server-authoritative impressions: a token is served once when a display
+    // window starts showing, then redeemed once the qualifying 5s view accrues —
+    // the dwell sits between serve and redeem, exactly as the server wants. Both
+    // are cleared/re-armed per display in rotateAd. Replaces the self-reported
+    // /v1/events batch (EventStore).
+    private var servedImpressionToken: String?
+    private var servingImpression = false
 
     private var statusItem: NSStatusItem!
     private var balanceItem: NSMenuItem!
@@ -252,6 +258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                         message: ad.line, destinationURL: ad.destinationURLOrFallback))
         }
         engine.rearm()
+        servedImpressionToken = nil // fresh display → serve a new token when it next shows
     }
 
     // MARK: per-tick pipeline
@@ -305,6 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 lastComposerBounds = state.composerBounds
                 lastStarBounds = state.starBounds
             }
+            serveImpressionIfNeeded() // arm a token for this display; redeemed once the 5s view accrues
         } else {
             if overlay.isShown { rotateAd() } // hidden -> next show re-arms with a fresh ad
             // Fade out only when the assistant is still the focused, visible
@@ -321,8 +329,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.tick(signals: signals) { [weak self] visibilityMs in
             self?.handleQualifiedImpression(visibilityMs: visibilityMs)
         }
+    }
 
-        if let credentials { store.flush(client: client, credentials: credentials) }
+    /// Serve one impression token per display window, when it first shows. The
+    /// token is redeemed later, once the engine reports the qualifying 5s view —
+    /// so the on-screen dwell sits between serve and redeem. Guarded so a window
+    /// serves at most one token (servedImpressionToken is cleared in rotateAd).
+    private func serveImpressionIfNeeded() {
+        guard !demoMode, let credentials, servedImpressionToken == nil, !servingImpression else { return }
+        servingImpression = true
+        client.serveImpression(credentials: credentials) { [weak self] token in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.servingImpression = false
+                if let token { self.servedImpressionToken = token }
+            }
+        }
     }
 
     /// Between full polls: re-anchor onto the star using only the cached AX
@@ -360,7 +382,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSLog("[freeai] qualified impression: campaign=%@ visible=%dms", ad.id, Int(visibilityMs))
             return
         }
-        store.recordImpression(campaignId: ad.id)
+        // Bill the impression by redeeming the token served for this display. The
+        // engine fires this at most once per armed window, and we leave the token
+        // set (not nil) so serveImpressionIfNeeded doesn't re-serve mid-window;
+        // rotateAd clears it for the next display.
+        guard let credentials, let token = servedImpressionToken else { return }
+        client.redeemImpression(credentials: credentials, token: token) { _ in }
     }
 
     private func handleClick(campaignId: String) {
@@ -382,7 +409,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSWorkspace.shared.open(url ?? ad.destinationURLOrFallback)
             }
         }
-        store.recordClick(campaignId: campaignId)
+        // The click is recorded server-side by the intent call above; the old
+        // EventStore click (a /v1/events clicks:1 batch the server ignores) is
+        // gone with the batch path.
     }
 
     /// A menu-bar accessory app ships no main menu, so the standard editing key
