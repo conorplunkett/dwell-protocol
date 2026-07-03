@@ -764,74 +764,105 @@ function setServePill(on) {
   p.textContent = on ? "● Serving ads" : "● Ads paused";
   p.className = "serve-pill " + (on ? "on" : "off");
 }
+// A real on/off switch that shows BOTH states (label on each side), flips in
+// place on success, and reverts on failure — no tab re-render, no reload feel.
+function switchRow({ title, on, onLabel = "On", offLabel = "Off", desc, confirmOn, confirmOff, extra, action }) {
+  let state = !!on;
+  const knob = h("button", { class: "switch" + (state ? " on" : ""), type: "button", role: "switch", "aria-checked": String(state) }, h("span", { class: "knob" }));
+  const offEl = h("span", { class: "sw-lbl" + (state ? "" : " active") }, offLabel);
+  const onEl = h("span", { class: "sw-lbl" + (state ? " active" : "") }, onLabel);
+  const descEl = h("p", { class: "hint", style: "margin:4px 0 0" }, desc(state));
+  const paint = () => {
+    knob.classList.toggle("on", state);
+    knob.setAttribute("aria-checked", String(state));
+    offEl.classList.toggle("active", !state);
+    onEl.classList.toggle("active", state);
+    descEl.textContent = desc(state);
+  };
+  knob.addEventListener("click", async () => {
+    const next = !state;
+    const msg = next ? confirmOn : confirmOff;
+    if (msg && !confirm(msg)) return;
+    knob.disabled = true;
+    try { await action(next); state = next; paint(); }
+    catch (e) { toast(e.message, true); }
+    knob.disabled = false;
+  });
+  return h("div", { class: "toggle-row" },
+    h("div", { class: "tr-text" }, h("div", { class: "tr-title" }, title), descEl),
+    h("div", { class: "tr-ctl" }, offEl, knob, onEl, extra || null));
+}
+
 async function renderSettings(view) {
-  const d = await api("/v1/admin/overview");
-  const ra = await tryApi("/v1/admin/campaigns/receipts-auto");
+  // Everything the page needs in ONE parallel round-trip, then paint once.
+  // (This was 7 sequential fetches — the whole tab felt laggy.)
+  const [d, ra, lb, ltc, cfg, errs, p] = await Promise.all([
+    api("/v1/admin/overview"),
+    tryApi("/v1/admin/campaigns/receipts-auto"),
+    tryApi("/v1/admin/leaderboard-visibility"),
+    tryApi("/v1/admin/live-top-cpm"),
+    tryApi("/v1/admin/config"),
+    tryApi("/v1/admin/errors"),
+    tryApi("/v1/admin/pricing"),
+  ]);
   setServePill(d.serving);
   view.innerHTML = "";
-  view.append(h("div", { class: "card" },
-    h("div", { class: "card-head" }, h("h2", {}, "Ad serving killswitch"),
-      h("button", { class: "btn " + (d.serving ? "btn-danger" : "btn-accent"), onclick: async () => {
-        const next = !d.serving;
-        if (!confirm(next ? "Resume serving ads to all users?" : "Pause ALL ad serving immediately?")) return;
-        try { await api("/v1/admin/killswitch", { method: "POST", body: { serving: next } }); toast(next ? "Serving resumed" : "Ads paused"); route(true); }
-        catch (e) { toast(e.message, true); }
-      } }, d.serving ? "Pause ad serving" : "Resume ad serving")),
-    h("p", { class: "hint" }, d.serving ? "Ads are live. Pausing stops /v1/ads from returning anything (propagates within ~15s)." : "Ad serving is paused. No ads are being delivered.")));
 
-  // Public "Live bid market" leaderboard on the landing page (off by default).
-  const lb = await tryApi("/v1/admin/leaderboard-visibility");
-  const lbOn = !!(lb && lb.public);
+  // ── 1) Controls — every on/off switch in one place ──
   view.append(h("div", { class: "card" },
-    h("div", { class: "card-head" }, h("h2", {}, "Live bid market"),
-      h("button", { class: "btn " + (lbOn ? "btn-danger" : "btn-accent"), onclick: async () => {
-        const next = !lbOn;
-        if (!confirm(next ? "Show the public “Live bid market” leaderboard on the landing page?" : "Hide the “Live bid market” leaderboard from the landing page?")) return;
-        try { await api("/v1/admin/leaderboard-visibility", { method: "POST", body: { public: next } }); toast(next ? "Leaderboard shown" : "Leaderboard hidden"); route(true); }
+    h("div", { class: "card-head" }, h("h2", {}, "Controls")),
+    switchRow({
+      title: "Ad serving", on: d.serving, offLabel: "Paused", onLabel: "Serving",
+      confirmOn: "Resume serving ads to all users?", confirmOff: "Pause ALL ad serving immediately?",
+      desc: (on) => on
+        ? "Ads are live. Pausing stops /v1/ads from returning anything (propagates within ~15s)."
+        : "Paused — no ads are being delivered.",
+      action: async (next) => {
+        await api("/v1/admin/killswitch", { method: "POST", body: { serving: next } });
+        setServePill(next); toast(next ? "Serving resumed" : "Ads paused");
+      },
+    }),
+    switchRow({
+      title: "Live bid market", on: !!(lb && lb.public), offLabel: "Hidden", onLabel: "Public",
+      desc: (on) => on
+        ? "The “Live bid market” leaderboard is visible on the public landing page."
+        : "The leaderboard is hidden from the public landing page (the lander reads this from /v1/config).",
+      action: async (next) => {
+        await api("/v1/admin/leaderboard-visibility", { method: "POST", body: { public: next } });
+        toast(next ? "Leaderboard shown" : "Leaderboard hidden");
+      },
+    }),
+    switchRow({
+      title: "Live top CPM", on: !!(ltc && ltc.enabled), offLabel: "Pinned $50", onLabel: "Live",
+      desc: (on) => on
+        ? "The CPM slider's “top bid” ghost marker tracks the live marketplace top (from /v1/pricing)."
+        : "The “top bid” ghost marker is hardcoded to $50.",
+      action: async (next) => {
+        await api("/v1/admin/live-top-cpm", { method: "POST", body: { enabled: next } });
+        toast(next ? "Live top CPM on" : "Live top CPM off");
+      },
+    }),
+    switchRow({
+      title: "Completion-receipt auto-send", on: !!(ra && ra.enabled), offLabel: "Manual", onLabel: "Auto",
+      desc: (on) => on
+        ? "A scheduled sweep emails each advertiser a final CPC / eCPM receipt as their budget runs out."
+        : "Receipts go out only when you send them per-campaign (Ads tab → Preview receipt).",
+      extra: h("button", { class: "btn btn-sm", style: "margin-left:8px", onclick: async (ev) => {
+        const b = ev.target; b.disabled = true;
+        try { const r = await api("/v1/admin/campaigns/receipts-sweep", { method: "POST", body: { force: true } }); toast("Swept — " + (r.sent || 0) + " receipt" + (r.sent === 1 ? "" : "s") + " sent"); }
         catch (e) { toast(e.message, true); }
-      } }, lbOn ? "Hide leaderboard" : "Show leaderboard")),
-    h("p", { class: "hint" }, lbOn
-      ? "On — the “Live bid market” leaderboard is visible on the public landing page."
-      : "Off — the leaderboard is hidden from the public landing page (the lander reads this from /v1/config).")));
+        b.disabled = false;
+      } }, "Send now"),
+      action: async (next) => {
+        await api("/v1/admin/campaigns/receipts-auto", { method: "POST", body: { enabled: next } });
+        toast(next ? "Auto-send on" : "Auto-send off");
+      },
+    })));
 
-  // CPM slider "live top CPM" ghost (off by default). On: the advertiser slider's
-  // ghost marker tracks the real marketplace top; off: it's hardcoded to $50.
-  const ltc = await tryApi("/v1/admin/live-top-cpm");
-  const ltcOn = !!(ltc && ltc.enabled);
-  view.append(h("div", { class: "card" },
-    h("div", { class: "card-head" }, h("h2", {}, "Live top CPM"),
-      h("button", { class: "btn " + (ltcOn ? "btn-danger" : "btn-accent"), onclick: async () => {
-        const next = !ltcOn;
-        if (!confirm(next ? "Make the advertiser CPM slider's “top bid” marker track the live marketplace top?" : "Pin the CPM slider's “top bid” marker back to the hardcoded $50?")) return;
-        try { await api("/v1/admin/live-top-cpm", { method: "POST", body: { enabled: next } }); toast(next ? "Live top CPM on" : "Live top CPM off"); route(true); }
-        catch (e) { toast(e.message, true); }
-      } }, ltcOn ? "Pin to $50" : "Use live top")),
-    h("p", { class: "hint" }, ltcOn
-      ? "On — the CPM slider's “top bid” ghost marker copies the live marketplace top CPM (from /v1/pricing)."
-      : "Off — the “top bid” ghost marker is hardcoded to $50 (the lander reads this from /v1/config).")));
+  // ── 2) Advertiser pricing ──
+  pricingCard(view, p);
 
-  // Completion-receipt auto-send (off by default). On: a scheduled sweep emails each
-  // advertiser a final CPC/eCPM receipt as their campaign exhausts. "Send now" runs
-  // the sweep immediately regardless of the toggle.
-  const raOn = !!(ra && ra.enabled);
-  view.append(h("div", { class: "card" },
-    h("div", { class: "card-head" }, h("h2", {}, "Completion-receipt auto-send"),
-      h("div", { class: "row-gap" },
-        h("button", { class: "btn " + (raOn ? "btn-danger" : "btn-accent"), onclick: async () => {
-          const next = !raOn;
-          if (!confirm(next ? "Auto-send a finished-campaign receipt to advertisers as campaigns exhaust?" : "Stop auto-sending receipts? (manual per-campaign send still works)")) return;
-          try { await api("/v1/admin/campaigns/receipts-auto", { method: "POST", body: { enabled: next } }); toast(next ? "Auto-send on" : "Auto-send off"); route(true); }
-          catch (e) { toast(e.message, true); }
-        } }, raOn ? "Disable auto-send" : "Enable auto-send"),
-        h("button", { class: "btn", onclick: async () => {
-          try { const r = await api("/v1/admin/campaigns/receipts-sweep", { method: "POST", body: { force: true } }); toast("Swept — " + (r.sent || 0) + " receipt" + (r.sent === 1 ? "" : "s") + " sent"); route(true); }
-          catch (e) { toast(e.message, true); }
-        } }, "Send now"))),
-    h("p", { class: "hint" }, raOn
-      ? "On — a scheduled sweep emails each advertiser a final CPC / eCPM receipt as their budget runs out (delivered when the sweep runs)."
-      : "Off — receipts go out only when you send them per-campaign (Ads tab → Preview receipt). “Send now” sweeps all finished, un-sent campaigns immediately.")));
-  await pricingCard(view);
-  const cfg = await tryApi("/v1/admin/config");
+  // ── 3) Economics (read-only) ──
   if (cfg) view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Economics"),
       h("p", { class: "hint" }, "Read-only — set via the function’s environment.")),
@@ -849,12 +880,15 @@ async function renderSettings(view) {
       { k: "Gift fulfillment inbox", v: cfg.giftFulfillmentEmail },
     ], (r) => [r.k, r.v]),
     h("p", { class: "hint", style: "margin-top:14px" }, "Claude gift catalog"),
-    table([{ label: "Plan" }, { label: "Monthly", num: true }], cfg.giftPlans, (p) => [p.name, usd(p.monthlyUsd)])));
+    table([{ label: "Plan" }, { label: "Monthly", num: true }], cfg.giftPlans, (gp) => [gp.name, usd(gp.monthlyUsd)])));
+
+  // ── 4) Manual balance adjustment ──
   view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Manual balance adjustment")),
     h("p", { class: "hint" }, "Credit or debit a user’s balance directly. Find the user under the Users tab and use “Adjust”, or use a device/user ID below."),
     adjustForm()));
-  const errs = await tryApi("/v1/admin/errors");
+
+  // ── 5) Diagnostics ──
   if (errs) view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Recent runtime errors"),
       h("p", { class: "hint" }, errs.errors.length ? "Server errors captured by the API dispatch handler." : "No errors logged 🎉")),
@@ -862,6 +896,7 @@ async function renderSettings(view) {
       ? table([{ label: "When" }, { label: "Method" }, { label: "Path" }, { label: "Message" }], errs.errors,
           (e) => [dt(e.createdAt), e.method, td(h("span", { class: "mono" }, e.path)), td(h("span", {}, e.message), "wrap")])
       : null));
+  // ── 6) Session ──
   view.append(h("div", { class: "card danger-zone" },
     h("div", { class: "card-head" }, h("h2", {}, "Session")),
     h("p", { class: "hint" }, "API: " + API_BASE),
@@ -894,8 +929,9 @@ function adjustForm() {
 
 // Advertiser pricing knobs — minimum (enforced floor), suggested (pre-fills the
 // form), and a top-bid anchor. The lander reads these from /v1/config.
-async function pricingCard(view) {
-  const p = await tryApi("/v1/admin/pricing");
+// Takes the prefetched /v1/admin/pricing payload (renderSettings fetches it in
+// parallel with everything else).
+function pricingCard(view, p) {
   if (!p) return; // endpoint not deployed yet — degrade gracefully
   const dollar = (c) => (Number(c || 0) / 100).toFixed(2);
   // CPM == price per 1,000 impressions. Fall back to old *Bid* keys for one deploy.
@@ -917,16 +953,18 @@ async function pricingCard(view) {
       h("label", { class: "fld" }, "Min budget $", minBudI),
       h("label", { class: "fld" }, "Suggested budget $", sugBudI),
       h("label", { class: "fld" }, "Max budget $", maxBudI),
-      h("button", { class: "btn btn-accent", onclick: async () => {
+      h("button", { class: "btn btn-accent", onclick: async (ev) => {
         const cents = (el) => Math.round((parseFloat(el.value) || 0) * 100);
+        const b = ev.target; b.disabled = true;
         try {
           await api("/v1/admin/pricing", { method: "POST", body: {
             minCpmCents: cents(minCpmI), suggestedCpmCents: cents(sugCpmI), maxCpmCents: cents(maxCpmI),
             topCpmAnchorCents: cents(topI), minBudgetCents: cents(minBudI),
             suggestedBudgetCents: cents(sugBudI), maxBudgetCents: cents(maxBudI),
           } });
-          toast("Pricing saved"); route(true);
+          toast("Pricing saved"); // stay in place — the inputs already show what you saved
         } catch (e) { toast(e.message, true); }
+        b.disabled = false;
       } }, "Save pricing"))));
 }
 
