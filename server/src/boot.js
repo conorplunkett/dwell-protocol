@@ -32,8 +32,11 @@ function loadConfig(env = process.env) {
     giftFulfillmentEmail: env.GIFT_FULFILLMENT_EMAIL || "hello@contact.freeai.fyi", // manual gift card fulfillment inbox
     emailTokenTtlMs: parseInt(env.EMAIL_TOKEN_TTL_MS || "1800000", 10), // 30 min
     emailCooldownMs: parseInt(env.EMAIL_COOLDOWN_MS || "60000", 10), // min gap between magic-link sends per email; 0 disables
+    emailIpDailyCap: parseInt(env.EMAIL_IP_DAILY_CAP || "50", 10), // magic-link/login email sends per source IP per UTC day; 0 disables (shared-NAT/CGNAT)
     webSessionTtlMs: parseInt(env.WEB_SESSION_TTL_MS || "2592000000", 10), // 30 days
     clickTokenTtlMs: parseInt(env.CLICK_TOKEN_TTL_MS || "120000", 10), // 2 min
+    impressionTokenTtlMs: parseInt(env.IMPRESSION_TOKEN_TTL_MS || "120000", 10), // 2 min: enough to dwell + redeem a served impression
+    impressionMinDwellMs: parseInt(env.IMPRESSION_MIN_DWELL_MS || "5000", 10), // min ms between serve and a billable redeem (the 5s qualifying view); 0 disables
     maxBodyBytes: parseInt(env.MAX_BODY_BYTES || "65536", 10), // 64 KB
     // OAuth
     googleClientId: env.GOOGLE_CLIENT_ID || "",

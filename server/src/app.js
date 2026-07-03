@@ -192,6 +192,12 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
   route("POST", "/v1/events", async (req, res, body) => {
     const device = await authDeviceFrom(body);
     if (!device) return json(res, 401, { error: "bad device credentials" });
+    // A client on the server-authoritative impression-token path must NOT also
+    // post self-reported batches (that would double-credit the same views). It
+    // advertises the capability, so we refuse its legacy batches outright.
+    if (Array.isArray(body.capabilities) && body.capabilities.includes("impression_tokens")) {
+      return json(res, 409, { error: "migrated client must use /v1/impressions/serve+redeem" });
+    }
     if (!body.batchKey || !Array.isArray(body.events)) {
       return json(res, 400, { error: "batchKey and events[] required" });
     }
@@ -226,6 +232,45 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
   route("GET", "/v1/go/:token", async (req, res, body, rawBody, query, p) => {
     const result = await repo.redeemClickToken(p.token, config.dailyClickCap);
     redirect(res, result?.url || config.siteUrl);
+  });
+
+  // ---------- server-authoritative impressions ----------
+  // serve: the server picks the auction winner and mints a single-use token for
+  // THIS device; redeem: after the qualifying dwell, bill that impression once.
+  // Forged/inflated counts are impossible — every billed impression maps to a
+  // server serve. Runs alongside /v1/events until every client has migrated.
+  route("POST", "/v1/impressions/serve", async (req, res, body) => {
+    const device = await authDeviceFrom(body);
+    if (!device) return json(res, 401, { error: "bad device credentials" });
+    if (!serving) return json(res, 200, { ad: null, serving: false });
+    const result = await repo.serveImpression({
+      deviceId: device.id, ipHash: hashIp(req), ttlMs: config.impressionTokenTtlMs,
+      dailyCap: config.dailyImpressionCap, ipDailyCap: config.ipDailyImpressionCap,
+    });
+    if (result.capped) return json(res, 200, { ad: null, capped: true });
+    if (!result.ad) return json(res, 200, { ad: null });
+    const a = result.ad;
+    json(res, 200, {
+      token: result.token,
+      ad: { id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined },
+      revenueShare: config.revenueShare,
+    });
+  });
+
+  route("POST", "/v1/impressions/redeem", async (req, res, body) => {
+    const device = await authDeviceFrom(body);
+    if (!device) return json(res, 401, { error: "bad device credentials" });
+    if (!body.token) return json(res, 400, { error: "token required" });
+    const result = await repo.redeemImpression({
+      token: body.token, deviceId: device.id, revenueShare: config.revenueShare,
+      minDwellMs: config.impressionMinDwellMs,
+      source: ["chrome", "claude_code", "desktop"].includes(body.source) ? body.source : null,
+    });
+    if (!result.ok) {
+      const status = result.reason === "not_found" ? 404 : 409; // used / expired / too_soon
+      return json(res, status, { ok: false, reason: result.reason });
+    }
+    json(res, 200, { ok: true, creditedMillicents: result.creditedMillicents });
   });
 
   // ---------- pre-account email capture (launch waitlist) ----------
@@ -336,7 +381,13 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     const device = await authDeviceFrom(body);
     if (!device) return json(res, 401, { error: "bad device credentials" });
     if (!body.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) return json(res, 400, { error: "valid email required" });
-    const token = await repo.createEmailToken(body.email, device.id, config.emailTokenTtlMs, null, config.emailCooldownMs);
+    let token;
+    try {
+      token = await repo.createEmailToken(body.email, device.id, config.emailTokenTtlMs, null, config.emailCooldownMs, hashIp(req), config.emailIpDailyCap);
+    } catch (err) {
+      if (err.code === "CAP_EXCEEDED") return json(res, 429, { error: "too many email requests from here today — try again later" });
+      throw err;
+    }
     if (token) await mailer.sendVerifyEmail(body.email, `${config.apiBaseUrl}/v1/auth/verify?token=${token}`);
     json(res, 200, { ok: true, sent: true });
   });
@@ -649,7 +700,13 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     if (!body?.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) {
       return json(res, 400, { error: "valid email required" });
     }
-    const token = await repo.createEmailToken(body.email, null, config.emailTokenTtlMs, body.referralCode, config.emailCooldownMs);
+    let token;
+    try {
+      token = await repo.createEmailToken(body.email, null, config.emailTokenTtlMs, body.referralCode, config.emailCooldownMs, hashIp(req), config.emailIpDailyCap);
+    } catch (err) {
+      if (err.code === "CAP_EXCEEDED") return json(res, 429, { error: "too many sign-in requests from here today — try again later" });
+      throw err;
+    }
     if (token) await mailer.sendWebLoginEmail(body.email, `${config.apiBaseUrl}/v1/web/session?token=${token}`);
     json(res, 200, { ok: true, sent: true });
   });
