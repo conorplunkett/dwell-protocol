@@ -176,7 +176,9 @@
     .faq-a a { color: var(--green-d); font-weight: 600; }
 
     @media (max-width: 640px) {
-      .steps { grid-template-columns: 1fr; }
+      /* .steps-2 needs its own rule here — its two-column desktop rule is more
+         specific than plain .steps, so it wouldn't collapse otherwise. */
+      .steps, .steps.steps-2 { grid-template-columns: 1fr; }
       .product { padding: 24px 18px 26px; border-radius: 16px; }
       .prod-badge { position: absolute; top: 18px; right: 18px; }
     }
@@ -191,7 +193,7 @@
     </a>
     <nav class="nav-btns" aria-label="Primary">
       <a href="/products" class="navbtn">Products</a>
-      <a href="/redeem" class="navbtn">User Login</a>
+      <a href="/redeem" class="navbtn"><span class="nav-txt-opt">User </span>Login</a>
       <a href="/#advertisers" class="navbtn navbtn-cta">Advertise</a>
     </nav>
   </header>
