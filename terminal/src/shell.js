@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { homedir } from "node:os";
+import { writeFileAtomic } from "./util.js";
 
 export const MARKER_START = "# >>> FreeAI Claude terminal integration >>>";
 export const MARKER_END = "# <<< FreeAI Claude terminal integration <<<";
@@ -19,16 +20,32 @@ export function defaultRcPath(shell, home = homedir()) {
 }
 
 export function shellBlock(shell) {
+  // Defined as a function (not a bare alias) so that if `freeai` is ever missing
+  // — uninstalled, moved, not yet on PATH — the wrapper transparently falls
+  // through to the real `claude` (the npm shim) instead of leaving the user with
+  // `command not found: freeai`. `command claude` bypasses this function, so
+  // there is no recursion. Upholds the "FreeAI must never break the session" rule
+  // even at the shell layer.
   if (shell === "fish") {
     return `${MARKER_START}
 function claude
-    freeai claude run $argv
+    if command -v freeai >/dev/null 2>&1
+        freeai claude run $argv
+    else
+        command claude $argv
+    end
 end
 ${MARKER_END}
 `;
   }
   return `${MARKER_START}
-alias claude="freeai claude run"
+claude() {
+  if command -v freeai >/dev/null 2>&1; then
+    freeai claude run "$@"
+  else
+    command claude "$@"
+  fi
+}
 ${MARKER_END}
 `;
 }
@@ -58,8 +75,9 @@ export function installShellBlock({
   const nextBlock = shellBlock(shell);
   const without = stripFreeAiBlock(current).replace(/\s*$/, "");
   const next = without ? `${without}\n${nextBlock}` : nextBlock;
-  mkdirSync(dirname(rcPath), { recursive: true });
-  writeFileSync(rcPath, next, "utf8");
+  // Atomic write: a truncated/partial rc (interrupt, ENOSPC, power loss) would
+  // break every future interactive shell, not just `claude`.
+  writeFileAtomic(rcPath, next);
   return { rcPath, shell, changed: next !== current };
 }
 
@@ -70,7 +88,7 @@ export function restoreShellBlock({
   if (!existsSync(rcPath)) return { rcPath, shell, changed: false };
   const current = readFileSync(rcPath, "utf8");
   const next = stripFreeAiBlock(current);
-  if (next !== current) writeFileSync(rcPath, next, "utf8");
+  if (next !== current) writeFileAtomic(rcPath, next);
   return { rcPath, shell, changed: next !== current };
 }
 

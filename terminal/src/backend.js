@@ -123,7 +123,9 @@ export function readDevice(home) {
 }
 
 export function writeDevice(home, device) {
-  writeJsonAtomic(devicePath(home), device);
+  // deviceKey is a bearer secret — keep it owner-only so a co-resident user on a
+  // shared host can't read it and impersonate this device.
+  writeJsonAtomic(devicePath(home), device, { mode: 0o600 });
 }
 
 export async function ensureDevice(home, backend) {

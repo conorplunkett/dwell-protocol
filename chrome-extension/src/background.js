@@ -248,8 +248,12 @@ async function getCrew() {
   const device = await getDevice();
   if (!device || typeof fetch !== "function") return { linked: false, friends: [] };
   try {
-    const qs = `deviceId=${encodeURIComponent(device.deviceId)}&deviceKey=${encodeURIComponent(device.deviceKey)}`;
-    const res = await fetch(`${API_BASE}/v1/me/affiliate?${qs}`);
+    // Device creds go in headers, never the query string: a deviceKey in a URL
+    // leaks into edge/proxy access logs and error pipelines. The backend accepts
+    // x-device-id / x-device-key for this route.
+    const res = await fetch(`${API_BASE}/v1/me/affiliate`, {
+      headers: { "x-device-id": device.deviceId, "x-device-key": device.deviceKey },
+    });
     if (!res.ok) return { linked: false, friends: [] };
     const data = await res.json();
     // Cache the last good crew so the popup paints instantly on open instead of
@@ -332,8 +336,21 @@ if (chrome.alarms) {
 }
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(() => refreshAll());
 
+// Storage keys BB_SET is permitted to write — the popup's user-facing toggles
+// only. Everything else (deviceId/deviceKey, earnings, pendingImpressions,
+// serving, grossCpm, caches) is off-limits, so a message can't rewrite the
+// credit-minting counters or corrupt the device identity.
+const BB_SET_ALLOWED_KEYS = new Set(["enabled", "testMode", "blockedCategories"]);
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
+    // Defense-in-depth: only accept messages from our own extension surfaces.
+    // (No externally_connectable is declared, so nothing else can reach here
+    // today; this keeps it that way if that ever changes.)
+    if (sender && sender.id && sender.id !== chrome.runtime.id) {
+      sendResponse({ ok: false });
+      return;
+    }
     switch (msg.type) {
       case "BB_GET_STATE":
         sendResponse(await getState());
@@ -370,10 +387,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!msg.mock) reportClick(msg.campaignId);
         break;
       }
-      case "BB_SET":
-        await chrome.storage.local.set(msg.payload || {});
+      case "BB_SET": {
+        const payload = msg.payload || {};
+        const filtered = {};
+        for (const k of Object.keys(payload)) {
+          if (BB_SET_ALLOWED_KEYS.has(k)) filtered[k] = payload[k];
+        }
+        await chrome.storage.local.set(filtered);
         sendResponse(await getState());
         break;
+      }
       case "BB_RESET":
         await chrome.storage.local.set({ impressions: 0, clicks: 0, earnings: 0, testImpressions: 0, testClicks: 0, pendingImpressions: 0 });
         sendResponse(await getState());

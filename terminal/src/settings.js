@@ -51,21 +51,24 @@ export function readSettingsFile(path) {
   }
 }
 
-export function candidateSettingsPaths({ cwd = process.cwd(), home = homedir() } = {}) {
-  return [
-    join(home, ".claude", "settings.json"),
-    join(cwd, ".claude", "settings.json"),
-    join(cwd, ".claude", "settings.local.json"),
-  ];
+// The only settings file whose statusLine FreeAI is allowed to CHAIN (re-execute).
+// Project-scoped files — cwd/.claude/settings.json and settings.local.json — are
+// deliberately excluded: Claude Code gates project-provided statusLine (and hook)
+// execution behind its folder-trust prompt, but FreeAI runs the chained command
+// itself via `shell:true`, ~once per second. Honoring a project file here would
+// execute a command straight out of a cloned repo's .claude/settings.json even
+// when the user declined to trust that folder — a trust-gate bypass / RCE. Only
+// the user's own ~/.claude/settings.json (and an explicit --settings passed on
+// this invocation) are trusted sources.
+export function chainableSettingsPath({ home = homedir() } = {}) {
+  return join(home, ".claude", "settings.json");
 }
 
-export function effectiveStatusLine({ cwd = process.cwd(), home = homedir(), userSettings = null } = {}) {
+export function effectiveStatusLine({ home = homedir(), userSettings = null } = {}) {
   let statusLine;
-  for (const path of candidateSettingsPaths({ cwd, home })) {
-    const settings = readSettingsFile(path);
-    if (settings && Object.prototype.hasOwnProperty.call(settings, "statusLine")) {
-      statusLine = settings.statusLine;
-    }
+  const settings = readSettingsFile(chainableSettingsPath({ home }));
+  if (settings && Object.prototype.hasOwnProperty.call(settings, "statusLine")) {
+    statusLine = settings.statusLine;
   }
   if (userSettings && Object.prototype.hasOwnProperty.call(userSettings, "statusLine")) {
     statusLine = userSettings.statusLine;

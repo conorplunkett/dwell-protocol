@@ -15,6 +15,13 @@
   if (window.__freeaiLoaded) return;
   window.__freeaiLoaded = true;
 
+  // True only for a well-formed https URL — the sole scheme an ad destination is
+  // ever allowed to open. Guards window.open against a hostile/garbled ad record.
+  function isHttpsUrl(value) {
+    try { return new URL(String(value)).protocol === "https:"; }
+    catch (_) { return false; }
+  }
+
   // Site-specific "the model is generating" controls. Each is the Stop button
   // that only exists while a response streams. Kept broad + case-insensitive so
   // small UI revisions don't silently break detection.
@@ -126,7 +133,11 @@
     // the service-worker round-trip first drops the user-activation and popup
     // blockers silently eat the navigation. The click report rides along async.
     send({ type: "BB_CLICK", mock: !!ad.mock, campaignId: ad.id });
-    window.open(ad.url, "_blank", "noopener");
+    // Only ever open an https destination. The backend validates the URL at
+    // advertiser checkout, but the content script must not trust that: an
+    // unexpected scheme (javascript:, data:, a custom app scheme) from a bad ad
+    // record is refused here rather than navigated to.
+    if (isHttpsUrl(ad.url)) window.open(ad.url, "_blank", "noopener");
   });
 
   // Attach the bar inline at the streaming reply. If no anchor exists yet the

@@ -128,7 +128,7 @@ async function prepareFreeAiSession({
   let userSettings = {};
   if (settingsValue) userSettings = readSettingsValue(settingsValue, cwd);
 
-  const previousStatusLine = effectiveStatusLine({ cwd, home, userSettings });
+  const previousStatusLine = effectiveStatusLine({ home, userSettings });
   const sessionId = randomId("cc");
   const dir = sessionDir(home, sessionId);
   const statePath = join(dir, "state.json");
@@ -177,23 +177,29 @@ export function spawnAndWait(command, args, { cwd, env } = {}) {
       env,
       stdio: "inherit",
     });
+    // Forward signals persistently (process.on, not once): Claude Code uses a
+    // double-Ctrl-C to exit and ignores the first SIGINT, so the second delivery
+    // must still reach the child. Listeners are removed on exit.
     const forward = (signal) => {
       try { child.kill(signal); } catch { /* ignore */ }
     };
-    const onSigint = () => forward("SIGINT");
-    const onSigterm = () => forward("SIGTERM");
-    const onSighup = () => forward("SIGHUP");
-    process.once("SIGINT", onSigint);
-    process.once("SIGTERM", onSigterm);
-    process.once("SIGHUP", onSighup);
+    const handlers = {
+      SIGINT: () => forward("SIGINT"),
+      SIGTERM: () => forward("SIGTERM"),
+      SIGHUP: () => forward("SIGHUP"),
+      SIGQUIT: () => forward("SIGQUIT"),
+    };
+    for (const [sig, fn] of Object.entries(handlers)) process.on(sig, fn);
+    const clearHandlers = () => {
+      for (const [sig, fn] of Object.entries(handlers)) process.removeListener(sig, fn);
+    };
     child.on("error", (err) => {
+      clearHandlers();
       console.error(`freeai: failed to run claude: ${err.message}`);
       resolve(127);
     });
     child.on("exit", (code, signal) => {
-      process.removeListener("SIGINT", onSigint);
-      process.removeListener("SIGTERM", onSigterm);
-      process.removeListener("SIGHUP", onSighup);
+      clearHandlers();
       if (signal) resolve(128 + signalNumber(signal));
       else resolve(code ?? 0);
     });
@@ -201,7 +207,7 @@ export function spawnAndWait(command, args, { cwd, env } = {}) {
 }
 
 function signalNumber(signal) {
-  return { SIGHUP: 1, SIGINT: 2, SIGTERM: 15 }[signal] || 1;
+  return { SIGHUP: 1, SIGINT: 2, SIGQUIT: 3, SIGTERM: 15 }[signal] || 1;
 }
 
 // Custom spinner verbs (the line that replaces Claude's "Thinking…") exist since

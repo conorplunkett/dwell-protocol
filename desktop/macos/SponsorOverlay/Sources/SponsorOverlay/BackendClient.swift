@@ -37,11 +37,15 @@ final class BackendClient {
         self.session = URLSession(configuration: cfg)
     }
 
+    static let defaultBaseURL = "https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/api"
     static var configuredBaseURL: URL {
-        let env = ProcessInfo.processInfo.environment["FREEAI_API_URL"]
+        let override = ProcessInfo.processInfo.environment["FREEAI_API_URL"]
             ?? UserDefaults.standard.string(forKey: "apiBaseURL")
-            ?? "https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/api"
-        return URL(string: env)!
+        // A malformed override (empty, stray control char, or a value some
+        // co-resident process wrote into UserDefaults) must not crash the app at
+        // launch — fall back to the built-in default rather than force-unwrapping.
+        if let override, let url = URL(string: override) { return url }
+        return URL(string: defaultBaseURL)!
     }
 
     private func post(_ path: String, body: [String: Any],
