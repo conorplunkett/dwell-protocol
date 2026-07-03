@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { locateClaudeCliTranscript, readTranscriptActivity } from "./transcript.js";
 import { readState, updateState } from "./state.js";
 
@@ -13,9 +12,14 @@ export function startSessionMonitor({
   heartbeatFreshMs = 4000,
   transcriptFreshMs = 4000,
 } = {}) {
-  let activeStartedAt = null;
-  let sentThisSegment = false;
-  let batchKey = "";
+  // Server-authoritative billing: serve a single-use token at the START of an
+  // active segment, then redeem it once the qualifying view (viewThresholdMs)
+  // has elapsed BETWEEN serve and redeem — which is exactly the on-screen dwell
+  // the server's min-dwell wants. One bill per active segment. A segment shorter
+  // than the threshold serves a token that's simply left to expire (no bill).
+  let served = null;    // { token, at } minted for the current active segment
+  let redeemed = false; // one redeem per active segment
+  let busy = false;     // guard against overlapping serve/redeem calls
   let stopped = false;
 
   const tick = async () => {
@@ -42,27 +46,40 @@ export function startSessionMonitor({
       return next;
     });
 
+    // Inactivity ends the segment: drop any unredeemed token and re-arm.
     if (!active) {
-      activeStartedAt = null;
-      sentThisSegment = false;
-      batchKey = "";
+      served = null;
+      redeemed = false;
       return;
     }
-    if (!activeStartedAt) activeStartedAt = now;
-    if (sentThisSegment || (now - activeStartedAt) < viewThresholdMs) return;
-    if (!batchKey) batchKey = randomUUID();
+    if (busy || redeemed) return;
+    busy = true;
     try {
-      await backend.sendImpression(device, ad.id, batchKey);
-      sentThisSegment = true;
-      updateState(statePath, (next) => {
-        next.impression = { sent: true, batchKey, sentAt: Date.now() };
-        return next;
-      });
+      if (!served) {
+        // Serve at the segment start; the dwell accrues until we redeem below.
+        const token = await backend.serveImpression(device);
+        if (token) served = { token, at: Date.now() };
+      } else if (now - served.at >= viewThresholdMs) {
+        // The qualifying view elapsed between serve and now → bill it once.
+        const token = served.token;
+        try {
+          await backend.redeemImpression(device, token);
+          redeemed = true;
+          updateState(statePath, (next) => {
+            next.impression = { sent: true, token, sentAt: Date.now() };
+            return next;
+          });
+        } catch {
+          updateState(statePath, (next) => {
+            next.impression = { sent: false, token: "", sentAt: 0 };
+            return next;
+          });
+        }
+      }
     } catch {
-      updateState(statePath, (next) => {
-        next.impression = { sent: false, batchKey, sentAt: 0 };
-        return next;
-      });
+      // serve failed (network / cap) — leave served null and retry next tick.
+    } finally {
+      busy = false;
     }
   };
 

@@ -11,7 +11,7 @@ function tempDir() {
   return mkdtempSync(join(tmpdir(), "freeai-terminal-"));
 }
 
-test("monitor sends one impression after continuous active time with statusline heartbeat", async () => {
+test("monitor serves a token then redeems it once after the qualifying dwell (server-authoritative)", async () => {
   const home = tempDir();
   const dir = tempDir();
   const statePath = join(dir, "state.json");
@@ -28,28 +28,30 @@ test("monitor sends one impression after continuous active time with statusline 
   state.transcriptPath = transcript;
   writeState(statePath, state);
 
-  const sent = [];
+  let serves = 0;
+  const redeems = [];
   const monitor = startSessionMonitor({
     statePath,
     home,
     ad: { id: "ad1" },
     device: { deviceId: "dev", deviceKey: "key" },
     backend: {
-      async sendImpression(_device, campaignId, batchKey) {
-        sent.push({ campaignId, batchKey });
-        return { ok: true };
-      },
+      async serveImpression() { serves += 1; return `tok-${serves}`; },
+      async redeemImpression(_device, token) { redeems.push(token); return { ok: true }; },
     },
     intervalMs: 10,
     viewThresholdMs: 30,
     heartbeatFreshMs: 1000,
     transcriptFreshMs: 1000,
   });
-  await delay(90);
+  await delay(140);
   monitor.stop();
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].campaignId, "ad1");
+  // exactly one bill per active segment, and it's the token that was served
+  assert.equal(redeems.length, 1);
+  assert.equal(redeems[0], "tok-1", "redeemed the served token");
+  assert.equal(serves, 1, "one token served for the segment");
   assert.equal(readState(statePath).impression.sent, true);
+  assert.equal(readState(statePath).impression.token, "tok-1");
 });
 
 test("monitor does not bill without a statusline heartbeat", async () => {
@@ -68,13 +70,16 @@ test("monitor does not bill without a statusline heartbeat", async () => {
   state.transcriptPath = transcript;
   writeState(statePath, state);
 
-  let count = 0;
+  let calls = 0;
   const monitor = startSessionMonitor({
     statePath,
     home,
     ad: { id: "ad1" },
     device: { deviceId: "dev", deviceKey: "key" },
-    backend: { async sendImpression() { count++; return { ok: true }; } },
+    backend: {
+      async serveImpression() { calls++; return "tok"; },
+      async redeemImpression() { calls++; return { ok: true }; },
+    },
     intervalMs: 10,
     viewThresholdMs: 20,
     heartbeatFreshMs: 1000,
@@ -82,5 +87,5 @@ test("monitor does not bill without a statusline heartbeat", async () => {
   });
   await delay(60);
   monitor.stop();
-  assert.equal(count, 0);
+  assert.equal(calls, 0, "no heartbeat ⇒ never serves or redeems");
 });
