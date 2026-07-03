@@ -30,7 +30,8 @@ process.exit(7);
     async ads() { return [{ id: "ad1", line: "Try Acme", url: "https://ad.example" }]; },
     async registerDevice() { return { deviceId: "dev", deviceKey: "key" }; },
     async createClickIntent() { return "https://api.example/v1/go/tok"; },
-    async sendImpression() { return { ok: true }; },
+    async serveImpression() { return "tok"; },
+    async redeemImpression() { return { ok: true }; },
   };
 
   const code = await runClaude(["--model", "sonnet", "fix bug"], {
@@ -96,7 +97,8 @@ process.exit(0);
     async ads() { return [{ id: "ad1", brand: "Acme", line: "Try Acme", url: "https://ad.example" }]; },
     async registerDevice() { return { deviceId: "dev", deviceKey: "key" }; },
     async createClickIntent() { return "https://api.example/v1/go/tok"; },
-    async sendImpression() { return { ok: true }; },
+    async serveImpression() { return "tok"; },
+    async redeemImpression() { return { ok: true }; },
   };
 
   await runClaude(["fix"], {

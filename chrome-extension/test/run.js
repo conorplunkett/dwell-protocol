@@ -280,6 +280,9 @@ function makeChrome(stateRef, sentRef) {
     if (u.endsWith("/v1/config")) return ok({ serving: true, revenueShare: 0.5 });
     if (u.endsWith("/v1/ads")) return ok({ revenueShare: 0.5, ads: [] });
     if (u.endsWith("/v1/events")) return ok({ ok: true, creditedMillicents: 0 });
+    // Server-authoritative impressions: serve mints a single-use token, redeem bills it.
+    if (u.endsWith("/v1/impressions/serve")) return ok({ token: "served-tok", revenueShare: 0.5, ad: { id: "c1", brand: "Acme", line: "Acme — live ad", url: "https://acme.example", cat: "devtools" } });
+    if (u.endsWith("/v1/impressions/redeem")) return ok({ ok: true, creditedMillicents: 6 });
     // Return an UNDECLARED third-party tracking host; the SW must refuse to fetch it.
     if (u.endsWith("/v1/clicks/intent")) return ok({ trackingUrl: "https://tracker.example.com/go/tok123" });
     if (u.includes("/v1/go/") || u.includes("tracker.example.com")) return ok({});
@@ -340,17 +343,44 @@ function makeChrome(stateRef, sentRef) {
     assert.strictEqual(ads[0].line, "Acme — live ad");
   });
 
-  await check("a real impression reports to the prod ledger with a batch key", async () => {
-    store.pendingImpressions = 0;
+  await check("a real impression serves an impression token (server-authoritative, no self-reported batch)", async () => {
+    store.impToken = null;
     fetches.length = 0;
     await msg({ type: "BB_IMPRESSION", mock: false });
     await settle();
-    const ev = fetches.find((f) => f.url.endsWith("/v1/events"));
-    assert.ok(ev, "no /v1/events POST");
-    const body = JSON.parse(ev.options.body);
-    assert.ok(body.batchKey, "missing idempotency batchKey");
-    assert.ok(body.events[0].impressions >= 1, "impressions not reported");
-    assert.strictEqual(body.deviceId, "dev-1", "events not authed with the device");
+    const serve = fetches.find((f) => f.url.endsWith("/v1/impressions/serve"));
+    assert.ok(serve, "no /v1/impressions/serve POST");
+    assert.strictEqual(JSON.parse(serve.options.body).deviceId, "dev-1", "serve not authed with the device");
+    // the credit-minting path must NOT self-report a count to /v1/events anymore
+    assert.ok(!fetches.some((f) => f.url.endsWith("/v1/events")), "must not post a self-reported /v1/events batch");
+    // the served token is persisted so it can be redeemed after the dwell
+    assert.ok(store.impToken && store.impToken.token === "served-tok", "served token not persisted for redemption");
+  });
+
+  await check("the served token is redeemed once its 5s dwell elapses (one bill per completed view)", async () => {
+    // simulate the previously-served token having dwelled ≥ 5s on screen
+    store.impToken = { token: "ripe-tok", at: Date.now() - 6000 };
+    fetches.length = 0;
+    await msg({ type: "BB_IMPRESSION", mock: false });
+    await settle();
+    const redeem = fetches.find((f) => f.url.endsWith("/v1/impressions/redeem"));
+    assert.ok(redeem, "no /v1/impressions/redeem POST");
+    const body = JSON.parse(redeem.options.body);
+    assert.strictEqual(body.token, "ripe-tok", "redeemed the wrong token");
+    assert.strictEqual(body.deviceId, "dev-1", "redeem not authed with the device");
+    assert.strictEqual(body.source, "chrome", "credit not tagged with the chrome surface");
+    // and a fresh token is served for the next window
+    assert.ok(fetches.some((f) => f.url.endsWith("/v1/impressions/serve")), "did not serve the next token");
+  });
+
+  await check("a not-yet-ripe token is neither redeemed nor double-served (no too_soon, no double bill)", async () => {
+    store.impToken = { token: "fresh-tok", at: Date.now() }; // served just now
+    fetches.length = 0;
+    await msg({ type: "BB_IMPRESSION", mock: false });
+    await settle();
+    assert.ok(!fetches.some((f) => f.url.endsWith("/v1/impressions/redeem")), "redeemed before the dwell elapsed");
+    assert.ok(!fetches.some((f) => f.url.endsWith("/v1/impressions/serve")), "served a second token while one is in flight");
+    assert.strictEqual(store.impToken.token, "fresh-tok", "in-flight token was disturbed");
   });
 
   await check("mock impressions and clicks never reach the network", async () => {
@@ -358,6 +388,7 @@ function makeChrome(stateRef, sentRef) {
     await msg({ type: "BB_IMPRESSION", mock: true });
     await msg({ type: "BB_CLICK", mock: true });
     await settle();
+    assert.ok(!fetches.some((f) => f.url.includes("/v1/impressions/")), "mock impression hit the token endpoints");
     assert.ok(!fetches.some((f) => f.url.endsWith("/v1/events")), "mock impression hit the ledger");
     assert.ok(!fetches.some((f) => f.url.endsWith("/v1/clicks/intent")), "mock click requested a token");
   });

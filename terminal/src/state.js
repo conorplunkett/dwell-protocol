@@ -21,7 +21,7 @@ export function initialState({ sessionId, ad, trackingUrl }) {
     trackingUrl: trackingUrl || "",
     impression: {
       sent: false,
-      batchKey: "",
+      token: "",
       sentAt: 0,
     },
     updatedAt: Date.now(),

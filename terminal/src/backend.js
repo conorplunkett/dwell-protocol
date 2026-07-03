@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { devicePath, resolveApiBase } from "./paths.js";
 import { delay, readJson, safeHttpUrl, writeJsonAtomic } from "./util.js";
 
@@ -96,22 +95,37 @@ export class FreeAiBackend {
     return trackingUrl;
   }
 
-  async sendImpression(device, campaignId, batchKey = randomUUID()) {
-    const res = await this.request("/v1/events", {
+  // Server-authoritative impressions (replaces the self-reported /v1/events
+  // batch). serve mints a single-use token for the auction winner; redeem bills
+  // it exactly once, after the qualifying on-screen dwell has elapsed between the
+  // two calls. Forged/inflated counts are impossible — the server only bills a
+  // token it actually issued.
+  async serveImpression(device) {
+    const res = await this.request("/v1/impressions/serve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deviceId: device.deviceId, deviceKey: device.deviceKey }),
+    });
+    if (!res.ok) throw new Error(`impressions/serve ${res.status}`);
+    const body = await res.json();
+    return typeof body?.token === "string" ? body.token : null; // null = capped / killswitch / no ad
+  }
+
+  async redeemImpression(device, token) {
+    const res = await this.request("/v1/impressions/redeem", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         deviceId: device.deviceId,
         deviceKey: device.deviceKey,
-        batchKey,
-        // Tags credits with the surface so the portal's Install tab can light up
+        token,
+        // Tags the credit with the surface so the portal's Install tab lights up
         // the per-service "active" logo (grey → colored on the first credit).
         source: "claude_code",
-        events: [{ campaignId, impressions: 1, clicks: 0 }],
       }),
     });
-    if (!res.ok && res.status !== 429) throw new Error(`events ${res.status}`);
-    return { ok: res.ok, capped: res.status === 429 };
+    if (!res.ok) throw new Error(`impressions/redeem ${res.status}`);
+    return { ok: true };
   }
 }
 

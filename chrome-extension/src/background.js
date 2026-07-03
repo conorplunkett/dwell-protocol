@@ -44,16 +44,16 @@ async function recordImpression(mock) {
   const s = await getState();
   if (!s.enabled) return s;
   // Mock impressions (Test Mode) tick a separate counter and earn nothing real.
-  // Real impressions also queue for the prod ledger (flushed in batches below).
+  // Real impressions bump the OPTIMISTIC local counters for snappy popup
+  // feedback; the AUTHORITATIVE credit is the server-side redeem (serve → dwell
+  // → redeem, below) — not a self-reported count.
   let next;
   if (mock) {
     next = { testImpressions: s.testImpressions + 1 };
   } else {
-    const { pendingImpressions = 0 } = await chrome.storage.local.get(["pendingImpressions"]);
     next = {
       impressions: s.impressions + 1,
       earnings: +(s.earnings + perImpressionNet(s)).toFixed(6),
-      pendingImpressions: pendingImpressions + 1,
     };
   }
   await chrome.storage.local.set(next);
@@ -143,51 +143,65 @@ async function refreshAds() {
   } catch (_) {}
 }
 
-// Impressions report in idempotent batches; the server dedups on batchKey, so a
-// failed POST simply folds the count back and retries on the next flush.
-let flushing = false;
-async function foldBackPending(impressions) {
-  const { pendingImpressions = 0 } = await chrome.storage.local.get(["pendingImpressions"]);
-  await chrome.storage.local.set({ pendingImpressions: pendingImpressions + impressions });
-}
-async function flushEvents() {
-  if (typeof fetch !== "function" || flushing) return;
-  // Claim the guard BEFORE the first await: the 1-minute alarm and a
-  // per-impression flush can interleave, and if both get past this check they
-  // both read the same pending count and double-report it (their batchKeys
-  // differ, so the server dedup can't save us).
-  flushing = true;
+// Server-authoritative impressions. Instead of self-reporting a count to
+// /v1/events (which the server has to take on trust), each qualifying 5s view is
+// billed through a single-use token the server issues. Pipelined so the 5s
+// on-screen dwell sits BETWEEN serve and redeem: on each impression tick we
+// redeem the previously-served token (now ≥ dwell old) and serve the next one. A
+// token that never ripens (generation stopped, tab hidden) is simply dropped —
+// no bill, which is exactly right for a view that didn't complete.
+const IMP_DWELL_MS = 5000;
+let impBusy = false;
+async function serveImpressionToken(device) {
   try {
-    const { pendingImpressions = 0 } = await chrome.storage.local.get(["pendingImpressions"]);
-    if (pendingImpressions <= 0) return;
+    const res = await fetch(`${API_BASE}/v1/impressions/serve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: device.deviceId, deviceKey: device.deviceKey }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.token || null; // null when capped / killswitch off / no ad
+  } catch (_) {
+    return null;
+  }
+}
+async function redeemImpressionToken(device, token) {
+  try {
+    // source tags the credit so the portal's Install tab lights up the chrome
+    // surface. A dropped/failed redeem just means one view goes unbilled.
+    await fetch(`${API_BASE}/v1/impressions/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: device.deviceId, deviceKey: device.deviceKey, token, source: "chrome" }),
+    });
+  } catch (_) {}
+}
+// Called once per real impression tick (≈ every 5s of continuous visibility).
+// The impBusy guard is claimed before the first await so two ticks can't both
+// redeem the same token or serve two at once.
+async function tickImpressionToken() {
+  if (typeof fetch !== "function" || impBusy) return;
+  impBusy = true;
+  try {
     const device = await getOrRegisterDevice();
     if (!device) return;
-    await chrome.storage.local.set({ pendingImpressions: 0 }); // claim
-    const batchKey =
-      typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `b_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    try {
-      const res = await fetch(`${API_BASE}/v1/events`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          deviceId: device.deviceId,
-          deviceKey: device.deviceKey,
-          batchKey,
-          // Tags credits with the surface so the portal's Install tab can light up
-          // the per-service "active" logo (grey → colored on the first credit).
-          source: "chrome",
-          events: [{ impressions: pendingImpressions, clicks: 0 }],
-        }),
-      });
-      // 429 = daily cap; drop those (they reset next UTC day). Other failures retry.
-      if (!res.ok && res.status !== 429) await foldBackPending(pendingImpressions);
-    } catch (_) {
-      await foldBackPending(pendingImpressions);
+    const { impToken } = await chrome.storage.local.get(["impToken"]);
+    // Redeem the previously-served token once its 5s dwell has elapsed. Gating on
+    // the client side (not just the server min-dwell) keeps an honest redeem from
+    // ever tripping "too_soon" under tick jitter.
+    if (impToken && impToken.token && Date.now() - impToken.at >= IMP_DWELL_MS) {
+      await redeemImpressionToken(device, impToken.token);
+      await chrome.storage.local.set({ impToken: null });
+    }
+    // Ensure exactly one token is in flight for the next window.
+    const { impToken: cur } = await chrome.storage.local.get(["impToken"]);
+    if (!cur || !cur.token) {
+      const token = await serveImpressionToken(device);
+      if (token) await chrome.storage.local.set({ impToken: { token, at: Date.now() } });
     }
   } finally {
-    flushing = false;
+    impBusy = false;
   }
 }
 
@@ -234,7 +248,6 @@ async function refreshAll() {
   await getOrRegisterDevice();
   await refreshConfig();
   await refreshAds();
-  await flushEvents();
 }
 
 // ---------- crew (affiliate) ----------
@@ -328,18 +341,16 @@ chrome.runtime.onInstalled.addListener(async () => {
 // Service workers get evicted, so periodic work runs off alarms (when available).
 if (chrome.alarms) {
   chrome.alarms.create("freeai-refresh", { periodInMinutes: 10 });
-  chrome.alarms.create("freeai-flush", { periodInMinutes: 1 });
   chrome.alarms.onAlarm.addListener((a) => {
     if (a.name === "freeai-refresh") refreshAll();
-    else if (a.name === "freeai-flush") flushEvents();
   });
 }
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(() => refreshAll());
 
 // Storage keys BB_SET is permitted to write — the popup's user-facing toggles
-// only. Everything else (deviceId/deviceKey, earnings, pendingImpressions,
-// serving, grossCpm, caches) is off-limits, so a message can't rewrite the
-// credit-minting counters or corrupt the device identity.
+// only. Everything else (deviceId/deviceKey, earnings, impToken, serving,
+// grossCpm, caches) is off-limits, so a message can't rewrite the credit-minting
+// counters or corrupt the device identity.
 const BB_SET_ALLOWED_KEYS = new Set(["enabled", "testMode", "blockedCategories"]);
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -378,7 +389,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case "BB_IMPRESSION": {
         const s = await recordImpression(!!msg.mock);
         sendResponse(s);
-        if (!msg.mock) flushEvents();
+        if (!msg.mock) tickImpressionToken();
         break;
       }
       case "BB_CLICK": {
@@ -398,7 +409,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
       case "BB_RESET":
-        await chrome.storage.local.set({ impressions: 0, clicks: 0, earnings: 0, testImpressions: 0, testClicks: 0, pendingImpressions: 0 });
+        await chrome.storage.local.set({ impressions: 0, clicks: 0, earnings: 0, testImpressions: 0, testClicks: 0, impToken: null });
         sendResponse(await getState());
         break;
       default:
