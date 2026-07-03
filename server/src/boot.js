@@ -36,7 +36,7 @@ function loadConfig(env = process.env) {
     webSessionTtlMs: parseInt(env.WEB_SESSION_TTL_MS || "2592000000", 10), // 30 days
     clickTokenTtlMs: parseInt(env.CLICK_TOKEN_TTL_MS || "120000", 10), // 2 min
     impressionTokenTtlMs: parseInt(env.IMPRESSION_TOKEN_TTL_MS || "120000", 10), // 2 min: enough to dwell + redeem a served impression
-    impressionMinDwellMs: parseInt(env.IMPRESSION_MIN_DWELL_MS || "5000", 10), // min ms between serve and a billable redeem (the 5s qualifying view); 0 disables
+    impressionMinDwellMs: parseInt(env.IMPRESSION_MIN_DWELL_MS || "2000", 10), // server backstop: min ms between serve and a billable redeem. The client's on-screen qualifying view (~5s) is the real gate; this just rejects a too-fast redeem. 0 disables
     maxBodyBytes: parseInt(env.MAX_BODY_BYTES || "65536", 10), // 64 KB
     // OAuth
     googleClientId: env.GOOGLE_CLIENT_ID || "",
