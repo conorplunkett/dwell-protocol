@@ -119,6 +119,33 @@ final class BackendClient {
         }
     }
 
+    /// Server-authoritative impression — serve mints a single-use token for the
+    /// auction winner. Completion carries the token, or nil when capped / no ad /
+    /// killswitch off. The bill happens on redeem, after the qualifying dwell.
+    func serveImpression(credentials: DeviceCredentials, completion: @escaping (String?) -> Void) {
+        post("v1/impressions/serve", body: [
+            "deviceId": credentials.deviceId,
+            "deviceKey": credentials.deviceKey,
+        ]) { result in
+            guard case .success(let obj) = result else { return completion(nil) }
+            completion(obj["token"] as? String)
+        }
+    }
+
+    /// Redeem a served token exactly once, after the qualifying dwell, to bill
+    /// the impression. Tagged with the desktop surface. Completion: succeeded.
+    func redeemImpression(credentials: DeviceCredentials, token: String,
+                          completion: @escaping (Bool) -> Void) {
+        post("v1/impressions/redeem", body: [
+            "deviceId": credentials.deviceId,
+            "deviceKey": credentials.deviceKey,
+            "token": token,
+            "source": "desktop",
+        ]) { result in
+            if case .success = result { completion(true) } else { completion(false) }
+        }
+    }
+
     /// Ask for a single-use tracking URL so clicks can't be forged client-side.
     func clickIntent(credentials: DeviceCredentials, campaignId: String,
                      completion: @escaping (URL?) -> Void) {
