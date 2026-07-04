@@ -24,7 +24,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/conorplunkett/freeai.fyi.git",
+    "url": "git+https://github.com/conorplunkett/freeai.fyi.git",
     "directory": "terminal"
   },
   "homepage": "https://freeai.fyi/products",
