@@ -280,7 +280,10 @@ async function renderAds(view) {
       h("option", { value: s }, s ? s.replace(/_/g, " ") : "all statuses")));
   const head = h("div", { class: "card-head" }, h("h2", {}, "Campaigns"), h("div", { class: "row-gap" }, filter));
   const body = h("div", {});
-  view.append(h("div", { class: "card" }, head, body));
+  view.append(h("div", { class: "card" }, head,
+    h("p", { class: "hint", style: "margin:-6px 0 12px" },
+      "Campaigns stuck in pending payment auto-cancel after 24h — the Stripe checkout link expired and no money was ever charged."),
+    body));
   const load = async () => {
     body.innerHTML = '<div class="loading">Loading…</div>';
     const status = filter.value;
@@ -288,14 +291,15 @@ async function renderAds(view) {
     navDot("ads", campaigns.filter((c) => c.status === "pending_review").length || null);
     body.innerHTML = "";
     body.append(table([
-      { label: "Brand" }, { label: "Ad line" }, { label: "Status" }, { label: "Bid", num: true },
-      { label: "Served / total", num: true }, { label: "Recognized", num: true },
+      { label: "Brand" }, { label: "Ad line" }, { label: "Status" }, { label: "" },
+      { label: "Bid", num: true }, { label: "Served / total", num: true }, { label: "Recognized", num: true },
       { label: "Clicks", num: true }, { label: "CTR", num: true }, { label: "CPC", num: true }, { label: "eCPM", num: true },
-      { label: "Advertiser" }, { label: "Created" }, { label: "" },
+      { label: "Advertiser" }, { label: "Created" },
     ], campaigns, (c) => [
       c.brand || "—",
       td(h("a", { href: safeHref(c.url), target: "_blank", rel: "noopener nofollow" }, c.adLine), "wrap"),
       td(badge(c.status)),
+      td(adActions(c, load)),
       usd(c.bidUsd) + " ×" + c.blocks,
       num(c.impressionsServed) + " / " + num(c.impressionsTotal),
       usd(c.recognizedUsd),
@@ -305,7 +309,6 @@ async function renderAds(view) {
       usdOrDash(c.ecpmUsd),
       td(h("span", { class: "mono" }, c.advertiserEmail || "—")),
       dShort(c.createdAt),
-      td(adActions(c, load)),
     ]));
   };
   filter.addEventListener("change", load);
