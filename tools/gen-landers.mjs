@@ -83,10 +83,10 @@ const LANDERS = [
     slug: "developers",
     title: "FreeAI.fyi — Get Claude for free while you ship code",
     description:
-      "Earn Claude credits while you build with Claude Code, ChatGPT and Gemini. A sponsored line shows while the model thinks — 50% of the revenue comes back to you as credits for Claude.",
+      "Build with Claude Code, ChatGPT, and Gemini like you already do. 50% of the ad revenue comes back to you as Claude credits.",
     ogTitle: "FreeAI.fyi — Get Claude for free while you ship code",
     ogDescription:
-      "50% of the revenue comes back as Claude credits. Bid live for the most-watched spinner on Earth.",
+      "Build with the tools you already use. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Make money while you build.",
     sub:
       "We turned “Discombobulating…” into an ad marketplace. " +
@@ -102,10 +102,10 @@ const LANDERS = [
     slug: "chatgpt",
     title: "FreeAI.fyi — Earn Claude credits while you use ChatGPT",
     description:
-      "Already chatting with ChatGPT? A sponsored line shows while it thinks, and 50% of the revenue comes back to you as free Claude credits. Free Chrome extension.",
+      "Use ChatGPT like you already do. 50% of the ad revenue comes back to you as Claude credits. Free Chrome extension.",
     ogTitle: "FreeAI.fyi — Earn Claude credits while you use ChatGPT",
     ogDescription:
-      "Get paid to use the AI you already use. 50% of the revenue comes back as Claude credits.",
+      "Use ChatGPT like you already do. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Get paid to use ChatGPT.",
     sub:
       "We turned “Thinking…” into an ad marketplace. While <strong>ChatGPT</strong> " +
@@ -121,10 +121,10 @@ const LANDERS = [
     slug: "gemini",
     title: "FreeAI.fyi — Earn Claude credits while you use Gemini",
     description:
-      "Use Gemini for work or school? A sponsored line shows while it thinks, and 50% of the revenue comes back to you as free Claude credits. Free Chrome extension.",
+      "Use Gemini like you already do. 50% of the ad revenue comes back to you as Claude credits. Free Chrome extension.",
     ogTitle: "FreeAI.fyi — Earn Claude credits while you use Gemini",
     ogDescription:
-      "Get paid to use Gemini. 50% of the revenue comes back as Claude credits.",
+      "Use Gemini like you already do. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Get paid to use Gemini.",
     sub:
       "We turned “Thinking…” into an ad marketplace. While <strong>Gemini</strong> " +
@@ -140,10 +140,10 @@ const LANDERS = [
     slug: "students",
     title: "FreeAI.fyi — Free AI for students",
     description:
-      "Cut your AI spend to $0. Earn Claude credits while you use ChatGPT, Claude and Gemini for class — a sponsored line shows while the AI thinks and 50% comes back to you.",
+      "Stop paying for AI. Use ChatGPT, Claude, and Gemini for class — 50% of the ad revenue comes back to you as Claude credits.",
     ogTitle: "FreeAI.fyi — Free AI for students",
     ogDescription:
-      "Stop paying for AI. 50% of the revenue comes back to you as Claude credits — share it with your class.",
+      "Stop paying for AI. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Free AI for students.",
     sub:
       "Stop paying for AI. A sponsored line shows while <strong>ChatGPT, Claude &amp; " +
@@ -159,10 +159,10 @@ const LANDERS = [
     slug: "writers",
     title: "FreeAI.fyi — Earn Claude credits while you write with AI",
     description:
-      "Draft, edit and brainstorm with ChatGPT, Claude and Gemini — and earn free Claude credits while you do. A sponsored line shows while the AI thinks; 50% comes back to you.",
+      "Draft and edit with ChatGPT, Claude, and Gemini like you already do. 50% of the ad revenue comes back to you as Claude credits.",
     ogTitle: "FreeAI.fyi — Earn Claude credits while you write with AI",
     ogDescription:
-      "Get paid for the AI you already write with. 50% of the revenue comes back as Claude credits.",
+      "Write with the AI you already use. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Get paid while you write.",
     sub:
       "Every draft, rewrite and outline you run through <strong>ChatGPT, Claude &amp; Gemini</strong> " +
@@ -178,10 +178,10 @@ const LANDERS = [
     slug: "researchers",
     title: "FreeAI.fyi — Earn Claude credits while you research with AI",
     description:
-      "Run questions through Gemini, ChatGPT and Claude all day? A sponsored line shows while they think, and 50% of the revenue comes back to you as Claude credits.",
+      "Research with Gemini, ChatGPT, and Claude like you already do. 50% of the ad revenue comes back to you as Claude credits.",
     ogTitle: "FreeAI.fyi — Earn Claude credits while you research with AI",
     ogDescription:
-      "Turn your AI research habit into Claude credits. 50% of the revenue comes back to you.",
+      "Research with the AI you already use. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Get paid while you research.",
     sub:
       "Every question you run through <strong>Gemini, ChatGPT &amp; Claude</strong> shows one " +
@@ -197,10 +197,10 @@ const LANDERS = [
     slug: "founders",
     title: "FreeAI.fyi — Cut your startup's AI bill to $0",
     description:
-      "Your team runs on Claude, ChatGPT and Gemini. A sponsored line shows while they think, and 50% of the revenue comes back as Claude credits — turning AI spend into runway.",
+      "Your team already runs on Claude, ChatGPT, and Gemini. 50% of the ad revenue comes back as Claude credits.",
     ogTitle: "FreeAI.fyi — Cut your startup's AI bill to $0",
     ogDescription:
-      "Turn your team's AI spend into runway. 50% of the revenue comes back as Claude credits.",
+      "Turn your team's AI spend into runway. 50% of the ad revenue comes back as Claude credits.",
     h1: "Turn AI spend into runway.",
     sub:
       "Your team already runs on <strong>Claude, ChatGPT &amp; Gemini</strong>. A sponsored " +
@@ -216,10 +216,10 @@ const LANDERS = [
     slug: "marketers",
     title: "FreeAI.fyi — Earn Claude credits while you make content with AI",
     description:
-      "Generate campaigns, captions and briefs with ChatGPT, Claude and Gemini — and earn free Claude credits while you do. A sponsored line shows while the AI thinks; 50% comes back.",
+      "Make content with ChatGPT, Claude, and Gemini like you already do. 50% of the ad revenue comes back to you as Claude credits.",
     ogTitle: "FreeAI.fyi — Earn Claude credits while you make content with AI",
     ogDescription:
-      "Get paid for every AI prompt. 50% of the revenue comes back as Claude credits.",
+      "Make content with the AI you already use. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Get paid for every prompt.",
     sub:
       "Every campaign, caption and brief you generate with <strong>ChatGPT, Claude &amp; Gemini</strong> " +
@@ -394,7 +394,7 @@ function buildAdvertisersPage() {
 
   const title = "FreeAI.fyi — Advertise where AI-native customers already are";
   const description =
-    "Get your product in front of customers who are already AI-native. Higher conversion than every saturated channel, lower CPM. Bid on the sponsored line shown while Claude, ChatGPT and Gemini think.";
+    "Reach customers inside Claude, ChatGPT, and Gemini while they wait for an answer. Billed by impression, at a lower CPM than saturated channels.";
   out = sub(out, "title", /<title>[\s\S]*?<\/title>/, `<title>${title}</title>`);
   out = sub(
     out,
