@@ -148,6 +148,65 @@ if (adcolor && adcolorSwatch) {
   });
 }
 
+// --- Brand icon dropzone: click-to-browse + drag-and-drop. Click-to-browse
+// relies on the browser's native label→input forwarding (the file input is a
+// hidden descendant of the same <label>), so there's no explicit click handler
+// here — that would double-open the file dialog. Enter/Space on the dropzone
+// (role="button", tabindex) covers keyboard users, since a hidden input isn't
+// tabbable. Preview-only for now: there's no backend endpoint to upload the
+// icon yet, so the file just previews client-side. ---
+const iconDropzone = document.getElementById("icon-dropzone");
+const iconInput = document.getElementById("icon-input");
+const iconMsg = document.getElementById("dropzone-msg");
+const iconPreview = document.getElementById("dropzone-preview");
+const iconThumb = document.getElementById("dropzone-thumb");
+const iconName = document.getElementById("dropzone-name");
+const iconRemove = document.getElementById("dropzone-remove");
+if (iconDropzone && iconInput) {
+  const MAX_ICON_BYTES = 64 * 1024;
+  const ICON_TYPES = ["image/png", "image/jpeg", "image/webp"];
+  const showIconError = (msg) => {
+    iconMsg.textContent = msg;
+    iconMsg.classList.add("dropzone-msg--err");
+    iconInput.value = "";
+  };
+  const acceptIconFile = (file) => {
+    if (!file) return;
+    if (!ICON_TYPES.includes(file.type)) return showIconError("PNG, JPG, or WebP only — try again.");
+    if (file.size > MAX_ICON_BYTES) return showIconError(`That's ${Math.ceil(file.size / 1024)} KB — 64 KB max. Try a smaller image.`);
+    const reader = new FileReader();
+    reader.onload = () => {
+      iconThumb.src = reader.result;
+      iconName.textContent = file.name;
+      iconMsg.hidden = true;
+      iconMsg.classList.remove("dropzone-msg--err");
+      iconPreview.hidden = false;
+      iconDropzone.classList.add("dropzone--filled");
+    };
+    reader.readAsDataURL(file);
+  };
+  const clearIcon = () => {
+    iconInput.value = "";
+    iconPreview.hidden = true;
+    iconMsg.hidden = false;
+    iconMsg.textContent = "Drop an image here or click to browse";
+    iconMsg.classList.remove("dropzone-msg--err");
+    iconDropzone.classList.remove("dropzone--filled");
+  };
+  iconInput.addEventListener("change", () => acceptIconFile(iconInput.files?.[0]));
+  iconDropzone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); iconInput.click(); }
+  });
+  iconDropzone.addEventListener("dragover", (e) => { e.preventDefault(); iconDropzone.classList.add("dropzone--drag"); });
+  iconDropzone.addEventListener("dragleave", () => iconDropzone.classList.remove("dropzone--drag"));
+  iconDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    iconDropzone.classList.remove("dropzone--drag");
+    acceptIconFile(e.dataTransfer?.files?.[0]);
+  });
+  iconRemove?.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); clearIcon(); });
+}
+
 // --- Live ad preview: mirror the spinner overlay as the advertiser types ---
 const adPrevBar = document.getElementById("adpreview-bar");
 function readableInk(hex) {
@@ -547,5 +606,23 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
     if (!scope) return;
     scope.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.shot === key));
     scope.querySelectorAll(".shot").forEach((s) => s.classList.toggle("active", s.dataset.shot === key));
+  });
+});
+
+// --- Rewards preview: the Claude gift-card plan grid ("Get paid for doing
+// what you already do"). A single cell is selected at a time across the whole
+// menu — mirroring the real /redeem gift menu, where picking any plan+term
+// clears whatever was selected before, even in a different row. No submit
+// button here; this is a marketing preview, not the real checkout. ---
+document.querySelectorAll(".rw-menu").forEach((menu) => {
+  const cells = menu.querySelectorAll(".rw-cell");
+  const select = (cell) => {
+    cells.forEach((c) => c.classList.toggle("sel", c === cell));
+  };
+  cells.forEach((cell) => {
+    cell.addEventListener("click", () => select(cell));
+    cell.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(cell); }
+    });
   });
 });

@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/theme.css?v=20260625a" />
-  <link rel="stylesheet" href="/styles.css?v=20260627b" />
+  <link rel="stylesheet" href="/styles.css?v=20260627d" />
   <link rel="stylesheet" href="/landers/landers.css?v=20260620a" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='26' fill='%23d97757'/%3E%3Ctext x='50' y='72' font-size='58' font-family='monospace' font-weight='bold' fill='white' text-anchor='middle'%3EF$%3C/text%3E%3C/svg%3E" />
 </head>
@@ -194,9 +194,9 @@
                   </div>
                 </div>
                 <div class="shotwrap">
-                  <img class="shot active" data-shot="claude" src="/assets/surfaces/claude.png" alt="FreeAI sponsor line inside Claude" />
-                  <img class="shot" data-shot="chatgpt" src="/assets/surfaces/chatgpt.png" alt="FreeAI sponsor line inside ChatGPT" />
-                  <img class="shot" data-shot="gemini" src="/assets/surfaces/gemini.png" alt="FreeAI sponsor line inside Gemini" />
+                  <img class="shot active" data-shot="claude" src="assets/surfaces/claude.png" alt="FreeAI sponsor line inside Claude" />
+                  <img class="shot" data-shot="chatgpt" src="assets/surfaces/chatgpt.png" alt="FreeAI sponsor line inside ChatGPT" />
+                  <img class="shot" data-shot="gemini" src="assets/surfaces/gemini.png" alt="FreeAI sponsor line inside Gemini" />
                 </div>
               </div>
             </div>
@@ -277,8 +277,8 @@
                   </div>
                 </div>
                 <div class="shotwrap desk">
-                  <img class="shot active" data-shot="desktop-claude" src="/assets/surfaces/desktop-claude.png" alt="FreeAI sponsor line in the Claude desktop app" />
-                  <img class="shot" data-shot="desktop-chatgpt" src="/assets/surfaces/desktop-chatgpt.png" alt="FreeAI sponsor line in the ChatGPT desktop app" />
+                  <img class="shot active" data-shot="desktop-claude" src="assets/surfaces/desktop-claude.png" alt="FreeAI sponsor line in the Claude desktop app" />
+                  <img class="shot" data-shot="desktop-chatgpt" src="assets/surfaces/desktop-chatgpt.png" alt="FreeAI sponsor line in the ChatGPT desktop app" />
                 </div>
               </div>
             </div>
@@ -297,6 +297,111 @@
             </div>
           </div>
         </div>
+    </section>
+
+    <!-- ── REWARDS — "Get rewards for doing what you already do" ──
+         Static, inert previews of the two redemption paths in the /redeem
+         portal: Claude gift cards (live today) and Stripe cash payouts
+         (coming soon). Same measure and heading treatment as .surfaces;
+         all styles are scoped under .rewards in styles.css. -->
+    <section class="rewards">
+      <div class="wrap">
+        <div class="secthead">
+          <h2>Get paid for doing what you already do</h2>
+        </div>
+
+        <div class="rewards-grid">
+          <!-- Left — Claude subscription gift cards -->
+          <div class="reward-col">
+            <h3>Redeem for Claude subscriptions</h3>
+            <p>Turn your credits into Claude Pro or Max gift cards. Pick a plan and term — we email it within 48 hours.</p>
+            <div class="rw-win">
+              <div class="rw-body">
+                <div class="rw-menu">
+                  <div class="rw-row">
+                    <div class="rw-plan">
+                      <span class="rw-name">Claude Pro</span>
+                      <span class="rw-tag">For the curious · $20/mo</span>
+                    </div>
+                    <div class="rw-cells">
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">1 mo</span><span class="rw-price">$20</span></span>
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">3 mo</span><span class="rw-price">$60</span></span>
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">6 mo</span><span class="rw-price">$120</span></span>
+                      <span class="rw-cell sel" role="button" tabindex="0"><span class="rw-term">12 mo</span><span class="rw-price">$240</span></span>
+                    </div>
+                  </div>
+                  <div class="rw-row">
+                    <div class="rw-plan">
+                      <span class="rw-name">Claude Max 5x</span>
+                      <span class="rw-tag">For the enthusiast · $100/mo</span>
+                    </div>
+                    <div class="rw-cells">
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">1 mo</span><span class="rw-price">$100</span></span>
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">3 mo</span><span class="rw-price">$300</span></span>
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">6 mo</span><span class="rw-price">$600</span></span>
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">12 mo</span><span class="rw-price">$1,200</span></span>
+                    </div>
+                  </div>
+                  <div class="rw-row">
+                    <div class="rw-plan">
+                      <span class="rw-name">Claude Max 20x</span>
+                      <span class="rw-tag">For the power user · $200/mo</span>
+                    </div>
+                    <div class="rw-cells">
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">1 mo</span><span class="rw-price">$200</span></span>
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">3 mo</span><span class="rw-price">$600</span></span>
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">6 mo</span><span class="rw-price">$1,200</span></span>
+                      <span class="rw-cell" role="button" tabindex="0"><span class="rw-term">12 mo</span><span class="rw-price">$2,400</span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right — cash via Stripe payouts (coming soon) -->
+          <div class="reward-col">
+            <h3>Or take cash<span class="reward-star">*</span></h3>
+            <p>Redeem for cash via Stripe payouts.</p>
+            <div class="rw-win">
+              <div class="rw-body rw-cash-body">
+                <div class="rw-portal" aria-hidden="true">
+                  <span class="rw-balance-label">Your balance</span>
+                  <span class="rw-balance">$250.00</span>
+                  <span class="rw-balance-sub">Available to redeem</span>
+                  <div class="rw-payout">
+                    <div class="rw-payout-btn">
+                      <span>Get cash with</span>
+                      <svg class="stripe-logo" viewBox="54 36 360.02 149.84" role="img" aria-label="Stripe" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+                        <path d="M414,113.4c0-25.6-12.4-45.8-36.1-45.8c-23.8,0-38.2,20.2-38.2,45.6c0,30.1,17,45.3,41.4,45.3c11.9,0,20.9-2.7,27.7-6.5v-20c-6.8,3.4-14.6,5.5-24.5,5.5c-9.7,0-18.3-3.4-19.4-15.2h48.9C413.8,121,414,115.8,414,113.4z M364.6,103.9c0-11.3,6.9-16,13.2-16c6.1,0,12.6,4.7,12.6,16H364.6z" />
+                        <path d="M301.1,67.6c-9.8,0-16.1,4.6-19.6,7.8l-1.3-6.2h-22v116.6l25-5.3l0.1-28.3c3.6,2.6,8.9,6.3,17.7,6.3c17.9,0,34.2-14.4,34.2-46.1C335.1,83.4,318.6,67.6,301.1,67.6z M295.1,136.5c-5.9,0-9.4-2.1-11.8-4.7l-0.1-37.1c2.6-2.9,6.2-4.9,11.9-4.9c9.1,0,15.4,10.2,15.4,23.3C310.5,126.5,304.3,136.5,295.1,136.5z" />
+                        <polygon points="223.8,61.7 248.9,56.3 248.9,36 223.8,41.3" />
+                        <rect x="223.8" y="69.3" width="25.1" height="87.5" />
+                        <path d="M196.9,76.7l-1.6-7.4h-21.6v87.5h25V97.5c5.9-7.7,15.9-6.3,19-5.2v-23C214.5,68.1,202.8,65.9,196.9,76.7z" />
+                        <path d="M146.9,47.6l-24.4,5.2l-0.1,80.1c0,14.8,11.1,25.7,25.9,25.7c8.2,0,14.2-1.5,17.5-3.3V135c-3.2,1.3-19,5.9-19-8.9V90.6h19V69.3h-19L146.9,47.6z" />
+                        <path d="M79.3,94.7c0-3.9,3.2-5.4,8.5-5.4c7.6,0,17.2,2.3,24.8,6.4V72.2c-8.3-3.3-16.5-4.6-24.8-4.6C67.5,67.6,54,78.2,54,95.9c0,27.6,38,23.2,38,35.1c0,4.6-4,6.1-9.6,6.1c-8.3,0-18.9-3.4-27.3-8v23.8c9.3,4,18.7,5.7,27.3,5.7c20.8,0,35.1-10.3,35.1-28.2C117.4,100.6,79.3,105.9,79.3,94.7z" />
+                      </svg>
+                    </div>
+                    <svg class="rw-cursor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5.5 3.2 19 12.1l-6.2 1.2 3.4 6.4-2.7 1.4-3.4-6.4-4.6 4.4z" fill="#fff" stroke="#1f1e1d" stroke-width="1.6" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                </div>
+                <div class="rw-scrim" aria-hidden="true"></div>
+                <div class="rw-modal">
+                  <h4>You have $250 of credits to redeem</h4>
+                  <p>Cash payouts are sent via Stripe and take 2 weeks to arrive.</p>
+                  <div class="rw-modal-actions">
+                    <span class="rw-modal-primary">Start payout</span>
+                    <span class="rw-modal-cancel">Cancel</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p class="reward-note">* Coming soon</p>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ADVERTISERS -->
@@ -346,7 +451,7 @@
           </div>
 
           <label class="field">
-            <span class="flabel">Email <em>(required)</em></span>
+            <span class="flabel">Advertiser email <em>(required)</em></span>
             <input type="email" name="email" autocomplete="email" placeholder="you@example.com" required />
           </label>
 
@@ -356,7 +461,7 @@
           </label>
 
           <label class="field">
-            <span class="flabel">Destination URL <em>(https:// optional)</em></span>
+            <span class="flabel">Destination URL <em>(https:// optional) — the link customers go to when they click the ad</em></span>
             <input type="url" name="url" autocomplete="url" placeholder="https://linear.app/" />
           </label>
 
@@ -366,7 +471,7 @@
           </label>
 
           <label class="field">
-            <span class="flabel">Ad color <em>(optional, #hex — your accent in the terminal &amp; spinner)</em></span>
+            <span class="flabel">Ad color <em>(optional, #hex — your colour in the terminal &amp; spinner)</em></span>
             <div class="colorfield">
               <input type="color" id="adcolor-swatch" value="#d97757" aria-label="Pick ad color" />
               <input type="text" id="adcolor" maxlength="7" placeholder="#d97757" pattern="#?[0-9a-fA-F]{6}" />
@@ -375,7 +480,18 @@
 
           <label class="field">
             <span class="flabel">Brand icon <em>(optional, PNG/JPG/WebP ≤ 64 KB)</em></span>
-            <div class="dropzone">Drop an image here or click to browse</div>
+            <!-- Real click-to-browse (native label→input forwarding) + drag-and-drop,
+                 wired in script.js. tabindex/keydown cover keyboard users, since the
+                 file input itself is visually hidden and not tabbable. -->
+            <div class="dropzone" id="icon-dropzone" role="button" tabindex="0">
+              <input type="file" id="icon-input" accept="image/png,image/jpeg,image/webp" hidden />
+              <span class="dropzone-msg" id="dropzone-msg">Drop an image here or click to browse</span>
+              <div class="dropzone-preview" id="dropzone-preview" hidden>
+                <img id="dropzone-thumb" alt="" />
+                <span class="dropzone-name" id="dropzone-name"></span>
+                <button type="button" class="dropzone-remove" id="dropzone-remove" aria-label="Remove image">✕</button>
+              </div>
+            </div>
           </label>
 
           <label class="checkrow">
@@ -453,6 +569,6 @@
        user-facing copy production-only — no test/demo wording. The one developer
        affordance is an opt-in mock-data mode at ?dev=1 (sticky; ?dev=0 to exit),
        handled in script.js, which never shows unless explicitly requested. -->
-  <script src="/script.js?v=20260627a"></script>
+  <script src="/script.js?v=20260627b"></script>
 </body>
 </html>

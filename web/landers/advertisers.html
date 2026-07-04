@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/theme.css?v=20260625a" />
-  <link rel="stylesheet" href="/styles.css?v=20260627b" />
+  <link rel="stylesheet" href="/styles.css?v=20260627d" />
   <link rel="stylesheet" href="/landers/landers.css?v=20260620a" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='26' fill='%23d97757'/%3E%3Ctext x='50' y='72' font-size='58' font-family='monospace' font-weight='bold' fill='white' text-anchor='middle'%3EF$%3C/text%3E%3C/svg%3E" />
 </head>
@@ -150,7 +150,7 @@
           </div>
 
           <label class="field">
-            <span class="flabel">Email <em>(required)</em></span>
+            <span class="flabel">Advertiser email <em>(required)</em></span>
             <input type="email" name="email" autocomplete="email" placeholder="you@example.com" required />
           </label>
 
@@ -160,7 +160,7 @@
           </label>
 
           <label class="field">
-            <span class="flabel">Destination URL <em>(https:// optional)</em></span>
+            <span class="flabel">Destination URL <em>(https:// optional) — the link customers go to when they click the ad</em></span>
             <input type="url" name="url" autocomplete="url" placeholder="https://linear.app/" />
           </label>
 
@@ -170,7 +170,7 @@
           </label>
 
           <label class="field">
-            <span class="flabel">Ad color <em>(optional, #hex — your accent in the terminal &amp; spinner)</em></span>
+            <span class="flabel">Ad color <em>(optional, #hex — your colour in the terminal &amp; spinner)</em></span>
             <div class="colorfield">
               <input type="color" id="adcolor-swatch" value="#d97757" aria-label="Pick ad color" />
               <input type="text" id="adcolor" maxlength="7" placeholder="#d97757" pattern="#?[0-9a-fA-F]{6}" />
@@ -179,7 +179,18 @@
 
           <label class="field">
             <span class="flabel">Brand icon <em>(optional, PNG/JPG/WebP ≤ 64 KB)</em></span>
-            <div class="dropzone">Drop an image here or click to browse</div>
+            <!-- Real click-to-browse (native label→input forwarding) + drag-and-drop,
+                 wired in script.js. tabindex/keydown cover keyboard users, since the
+                 file input itself is visually hidden and not tabbable. -->
+            <div class="dropzone" id="icon-dropzone" role="button" tabindex="0">
+              <input type="file" id="icon-input" accept="image/png,image/jpeg,image/webp" hidden />
+              <span class="dropzone-msg" id="dropzone-msg">Drop an image here or click to browse</span>
+              <div class="dropzone-preview" id="dropzone-preview" hidden>
+                <img id="dropzone-thumb" alt="" />
+                <span class="dropzone-name" id="dropzone-name"></span>
+                <button type="button" class="dropzone-remove" id="dropzone-remove" aria-label="Remove image">✕</button>
+              </div>
+            </div>
           </label>
 
           <label class="checkrow">
@@ -293,6 +304,6 @@
        user-facing copy production-only — no test/demo wording. The one developer
        affordance is an opt-in mock-data mode at ?dev=1 (sticky; ?dev=0 to exit),
        handled in script.js, which never shows unless explicitly requested. -->
-  <script src="/script.js?v=20260627a"></script>
+  <script src="/script.js?v=20260627b"></script>
 </body>
 </html>
