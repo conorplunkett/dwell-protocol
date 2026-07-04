@@ -1985,6 +1985,21 @@ function createRepo(pool: any) {
       );
       return !!rows[0];
     },
+    // Stripe Checkout Sessions we create expire after 24h (we don't set a custom
+    // expires_at), so a campaign still sitting in pending_payment past that point
+    // had its checkout abandoned — no webhook ever fired, so no money was ever
+    // captured (no campaign_credit ledger row exists for it). Safe to auto-cancel.
+    // Run lazily whenever the admin campaign list loads, so no cron is needed.
+    async expireStalePendingPayments(hours = 24) {
+      const { rows } = await pool.query(
+        `update campaigns set status='cancelled',
+                review_note = coalesce(review_note, 'Auto-cancelled: checkout not completed within ' || $1 || 'h')
+          where status='pending_payment' and created_at < now() - ($1 || ' hours')::interval
+          returning id`,
+        [hours]
+      );
+      return rows.length;
+    },
 
     async adminRedemptions({ status, limit }: any) {
       const n = Math.max(1, Math.min(500, parseInt(limit, 10) || 200));
@@ -3308,6 +3323,8 @@ route("GET", "/v1/admin/metrics/daily", async (ctx: any) => {
 
 route("GET", "/v1/admin/campaigns/all", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  try { await repo.expireStalePendingPayments(); } // best-effort lazy sweep; never block the list on it
+  catch (err: any) { console.error("[freeai] expireStalePendingPayments failed:", err?.message); }
   const rows = await repo.adminCampaigns({
     status: ctx.query.get("status") || null,
     limit: ctx.query.get("limit"), offset: ctx.query.get("offset"),
