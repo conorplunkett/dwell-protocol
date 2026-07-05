@@ -262,9 +262,11 @@ function makeChrome(stateRef, sentRef) {
   const store = {};
   bg.crypto = require("node:crypto"); // randomUUID for event batch keys
   bg.URL = URL; // service workers expose URL globally; the host guard uses it
+  const alarmListeners = [];
+  const fireAlarm = async (name) => { for (const fn of alarmListeners) await fn({ name }); };
   bg.chrome = {
     runtime: { onInstalled: { addListener: () => {} }, onMessage: { addListener: (fn) => { bg._onMessage = fn; } } },
-    alarms: { create: () => {}, onAlarm: { addListener: () => {} } },
+    alarms: { create: () => {}, onAlarm: { addListener: (fn) => alarmListeners.push(fn) } },
     storage: { local: {
       get: async (keys) => { const o = {}; (Array.isArray(keys) ? keys : [keys]).forEach((k) => { if (k in store) o[k] = store[k]; }); return o; },
       set: async (obj) => { Object.assign(store, obj); },
@@ -279,6 +281,7 @@ function makeChrome(stateRef, sentRef) {
     if (u.endsWith("/v1/devices/register")) return ok({ deviceId: "dev-1", deviceKey: "key-1" });
     if (u.endsWith("/v1/config")) return ok({ serving: true, revenueShare: 0.5 });
     if (u.endsWith("/v1/ads")) return ok({ revenueShare: 0.5, ads: [] });
+    if (u.endsWith("/v1/me/earnings")) return ok({ revenueShare: 0.5, earnedUsd: 0.05, paidOutUsd: 0, redeemedUsd: 0, balanceUsd: 0.05 });
     if (u.endsWith("/v1/events")) return ok({ ok: true, creditedMillicents: 0 });
     // Server-authoritative impressions: serve mints a single-use token, redeem bills it.
     if (u.endsWith("/v1/impressions/serve")) return ok({ token: "served-tok", revenueShare: 0.5, ad: { id: "c1", brand: "Acme", line: "Acme — live ad", url: "https://acme.example", cat: "devtools" } });
@@ -360,6 +363,29 @@ function makeChrome(stateRef, sentRef) {
     const ads = await msg({ type: "BB_GET_ADS" });
     assert.ok(Array.isArray(ads) && ads.length === 1, "did not return the live list");
     assert.strictEqual(ads[0].line, "Acme — live ad");
+  });
+
+  await check("an empty auction serves NOTHING — the bundled demo list never becomes a real ad", async () => {
+    // Bundled ads have no campaign behind them; serving one would tick the
+    // earnings counter for money no advertiser ever paid.
+    const noAds = async (why) => {
+      const ads = await msg({ type: "BB_GET_ADS" });
+      assert.ok(Array.isArray(ads) && ads.length === 0, why);
+    };
+    store.liveAds = [];
+    await noAds("served ads from an empty auction");
+    delete store.liveAds; // before the first fetch: same story
+    await noAds("served bundled ads before any auction fetch");
+  });
+
+  await check("refresh reconciles the earnings counter to the server ledger (phantom local credits are corrected)", async () => {
+    store.earnings = 0.14; // a stale optimistic tally the server never credited
+    await fireAlarm("freeai-refresh");
+    await settle();
+    const earnings = fetches.find((f) => f.url.endsWith("/v1/me/earnings"));
+    assert.ok(earnings, "refresh never asked the server for the real balance");
+    assert.strictEqual(earnings.options.headers["x-device-key"], "key-1", "device key not sent via header");
+    assert.strictEqual(store.earnings, 0.05, "local earnings not reconciled to the server's number");
   });
 
   await check("a real impression serves an impression token (server-authoritative, no self-reported batch)", async () => {

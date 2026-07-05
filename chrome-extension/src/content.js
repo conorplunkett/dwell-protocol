@@ -360,7 +360,10 @@
     // Honour both the user toggle and the server killswitch (state.serving).
     enabled = state ? state.enabled !== false && state.serving !== false : true;
     testMode = state ? !!state.testMode : false;
-    ads = (await send({ type: "BB_GET_ADS" })) || self.BB_ADS || [];
+    // Only ever show what the service worker vouches for (live, funded
+    // inventory). No local fallback to the bundled demo list: an ad that no
+    // campaign paid for must never render or count as earned.
+    ads = (await send({ type: "BB_GET_ADS" })) || [];
     if (state && state.mockAd) mockAd = state.mockAd;
     evaluate();
   }
