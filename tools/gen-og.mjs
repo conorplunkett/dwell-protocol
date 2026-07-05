@@ -77,7 +77,7 @@ const fontData = (file) =>
 // (1.91:1). Deliberately spare: flat brand background, the wordmark, one
 // headline, and at most one quiet line of context. The og:description under
 // the image carries the pitch — the picture doesn't have to. ──
-const cardHtml = ({ h1, note }) => `<!doctype html><html><head><meta charset="utf-8">
+const cardHtml = ({ h1, note, sub }) => `<!doctype html><html><head><meta charset="utf-8">
 <style>
   /* Fonts are vendored in tools/fonts/ (SIL OFL) and inlined as data: URIs so
      the render is deterministic and works offline — a Google Fonts fetch here
@@ -114,6 +114,7 @@ const cardHtml = ({ h1, note }) => `<!doctype html><html><head><meta charset="ut
   .note { font-size: 30px; font-weight: 500; color: ${C.ink2}; margin-bottom: 20px; }
   h1 { font-weight: 700; letter-spacing: -0.035em; line-height: 1.06; font-size: 92px; max-width: 980px; }
   h1 .pop { color: ${C.accentD}; }
+  .sub { font-size: 32px; font-weight: 500; color: ${C.ink2}; margin-top: 22px; }
 </style></head>
 <body>
   <div class="pad">
@@ -124,23 +125,29 @@ const cardHtml = ({ h1, note }) => `<!doctype html><html><head><meta charset="ut
     <div class="mid">
       ${note ? `<p class="note">${note}</p>` : ""}
       <h1>${h1}</h1>
+      ${sub ? `<p class="sub">${sub}</p>` : ""}
     </div>
   </div>
 </body></html>`;
 
 // Every link-preview image we ship. The default (og.png) is the homepage card;
 // og-referral.png is the invite card a member's referral link
-// (redeem.html?ref=…) previews as — so a shared invite reads as "your free
-// month of Claude" rather than the generic sign-in page.
+// (redeem.html?ref=…) previews as. Neither card promises a specific amount —
+// there's no "your first month is free" mechanic (the old $20 referral bonus
+// is retired; a referrer now earns a 10% affiliate cut of what their friend
+// earns, not a gift for the friend), so the copy stays to what's actually
+// true: ads run while the AI thinks, and the revenue becomes Claude credits.
 const CARDS = [
   {
     file: "og.png",
     h1: `Get Claude <span class="pop">for free.</span>`,
+    sub: "Ads while your AI thinks.",
   },
   {
     file: "og-referral.png",
     note: "A friend invited you.",
-    h1: `Get a <span class="pop">free month</span> of Claude.`,
+    h1: `Get Claude <span class="pop">for free.</span>`,
+    sub: "Ads while your AI thinks.",
   },
 ];
 
