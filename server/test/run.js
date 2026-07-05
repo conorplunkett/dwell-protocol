@@ -359,6 +359,35 @@ const fakeMailer = {
     assert.strictEqual(r.status, 409, "migrated client must not also post self-reported batches");
   });
 
+  await check("an unpaid 'active' campaign never serves and never mints credits", async () => {
+    // A campaign forced straight to 'active' without payment (paid_at null) —
+    // e.g. a bad seed row — must be invisible to the auction and worthless to
+    // bill against: every user credit is a real payout liability, so credits
+    // may only ever be minted against money an advertiser actually paid.
+    const adv = (await poolNs.query("insert into advertisers (email) values ('unpaid@x.io') returning id")).rows[0].id;
+    const unpaid = (await poolNs.query(
+      `insert into campaigns (advertiser_id, brand, ad_line, url, category, price_per_block_cents,
+                              blocks, impressions_total, impressions_remaining, status, paid_at, activated_at)
+       values ($1, 'Unpaid', 'unpaid placeholder ad', 'https://unpaid.example/', 'other', 99999,
+               1, 1000, 1000, 'active', null, now()) returning id`,
+      [adv])).rows[0].id;
+    // not listed publicly
+    const ads = await api("GET", "/v1/ads");
+    assert.ok(!ads.body.ads.some((a) => a.id === unpaid), "unpaid campaign listed in /v1/ads");
+    // never wins the serve auction, even as the highest bid on the book
+    const serveDev = (await api("POST", "/v1/devices/register")).body;
+    const serve = await api("POST", "/v1/impressions/serve", { ...serveDev });
+    assert.ok(!serve.body.ad || serve.body.ad.id !== unpaid, "auction served an unpaid campaign");
+    // a batch claiming impressions against it credits nothing and draws no budget
+    const batchDev = (await api("POST", "/v1/devices/register")).body;
+    const r = await api("POST", "/v1/events", { ...batchDev, batchKey: "unpaid1", events: [{ campaignId: unpaid, impressions: 100, clicks: 0 }] });
+    assert.strictEqual(r.body.creditedMillicents, 0, "unpaid campaign minted credits");
+    assert.strictEqual(
+      (await poolNs.query("select impressions_remaining from campaigns where id = $1", [unpaid])).rows[0].impressions_remaining,
+      1000, "unpaid campaign budget was drawn");
+    await poolNs.query("update campaigns set status = 'cancelled' where id = $1", [unpaid]);
+  });
+
   await check("concurrent gift redemptions can't double-spend the same balance", async () => {
     const camp = await api("POST", "/v1/checkout", {
       email: "adv@race.co", adLine: "double spend regression campaign", url: "https://race.example/",

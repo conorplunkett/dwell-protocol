@@ -292,10 +292,13 @@ function createRepo(pool) {
 
     // ---------- auction ----------
     async activeAds(limit = 20) {
+      // paid_at guards every serve/credit path: a campaign that never went
+      // through payment (e.g. a row seeded straight to 'active') must never
+      // show or mint credits — user credits have to be backed by real budget.
       const { rows } = await pool.query(
         `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard
            from campaigns
-          where status = 'active' and impressions_remaining > 0
+          where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc
           limit $1`,
         [limit]
@@ -639,7 +642,7 @@ function createRepo(pool) {
           // lock the campaign row; never bill past its remaining budget
           const camp = await c.query(
             `select price_per_block_cents, impressions_remaining from campaigns
-              where id = $1 and status = 'active' for update`,
+              where id = $1 and status = 'active' and paid_at is not null for update`,
             [ev.campaignId]
           );
           if (!camp.rows[0]) continue;
@@ -882,7 +885,7 @@ function createRepo(pool) {
       const pick = await pool.query(
         `select id, brand, ad_line, url, category, color, price_per_block_cents
            from campaigns
-          where status = 'active' and impressions_remaining > 0
+          where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc
           limit 1`
       );
@@ -925,7 +928,7 @@ function createRepo(pool) {
         // Bill one impression, never past the campaign's remaining budget.
         const camp = await c.query(
           `select price_per_block_cents, impressions_remaining from campaigns
-            where id = $1 and status = 'active' for update`,
+            where id = $1 and status = 'active' and paid_at is not null for update`,
           [row.campaign_id]
         );
         if (!camp.rows[0] || camp.rows[0].impressions_remaining < 1) {
