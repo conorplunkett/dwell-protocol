@@ -148,7 +148,6 @@ const CARDS = [
     file: "og-referral.png",
     note: "A friend invited you.",
     h1: `Earn a <span class="pop">free month</span> of Claude.`,
-    sub: "Ads while your AI thinks.",
   },
 ];
 
