@@ -489,6 +489,31 @@ const fakeMailer = {
     assert.strictEqual((await api("POST", "/v1/admin/payouts", { adminKey: "nope" })).status, 401);
   });
 
+  await check("admin balance adjustments move the spendable balance, not lifetime earned", async () => {
+    // admin_debit is how unbacked credits get wiped (and admin_credit how a
+    // cancelled redemption is refunded) — both must flow into balanceUsd or the
+    // wipe/refund is cosmetic and redemptions/payouts still see the old number.
+    const camp = await api("POST", "/v1/checkout", {
+      email: "adv@adjust.co", adLine: "admin adjust regression campaign", url: "https://adjust.example/",
+      brand: "Adjust", pricePerBlock: 10, blocks: 1,
+    });
+    await payWebhook(camp.body.campaignId);
+    await approve(camp.body.campaignId);
+    const dev = (await api("POST", "/v1/devices/register")).body;
+    await api("POST", "/v1/events", { ...dev, batchKey: "adj1", events: [{ campaignId: camp.body.campaignId, impressions: 100, clicks: 0 }] });
+    const before = (await api("GET", `/v1/me/earnings?deviceId=${dev.deviceId}&deviceKey=${dev.deviceKey}`)).body;
+    assert.ok(before.balanceUsd > 0, "device earned nothing to adjust");
+    // wipe the balance the way the admin console does — an offsetting admin_debit
+    await poolNs.query(
+      `insert into ledger (entry_type, amount_millicents, device_id, meta)
+       values ('admin_debit', $1, $2, '{"reason":"test wipe"}')`,
+      [String(-Math.round(before.balanceUsd * 100000)), dev.deviceId]
+    );
+    const after = (await api("GET", `/v1/me/earnings?deviceId=${dev.deviceId}&deviceKey=${dev.deviceKey}`)).body;
+    assert.strictEqual(after.balanceUsd, 0, "admin_debit did not reduce the spendable balance");
+    assert.strictEqual(after.earnedUsd, before.earnedUsd, "admin_debit must not rewrite lifetime earned");
+  });
+
   // ---------- gift card catalog + retired device redemption ----------
   await check("giftcards catalog lists plans; device-credential redemption is retired", async () => {
     const catalog = await api("GET", "/v1/giftcards");

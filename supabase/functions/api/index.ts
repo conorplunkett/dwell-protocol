@@ -951,11 +951,15 @@ function createRepo(pool: any) {
       });
     },
     async earningsForDevice(deviceId: string) {
+      // admin_credit/admin_debit are manual balance adjustments (e.g. a
+      // cancelled-redemption refund, or wiping credits an unfunded campaign
+      // minted) — they move the spendable balance but not lifetime "earned".
       const { rows } = await pool.query(
         `select
            coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit')), 0)::bigint as earned,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
-           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
          from ledger
          where device_id = $1
             or user_id = (select user_id from devices where id = $1 and user_id is not null)`,
@@ -964,7 +968,8 @@ function createRepo(pool: any) {
       const earned = Number(rows[0].earned);
       const paidOut = Number(rows[0].paid_out);
       const redeemed = Number(rows[0].redeemed);
-      return { earnedMillicents: earned, paidOutMillicents: -paidOut, redeemedMillicents: -redeemed, balanceMillicents: earned + paidOut + redeemed };
+      const adjusted = Number(rows[0].adjusted);
+      return { earnedMillicents: earned, paidOutMillicents: -paidOut, redeemedMillicents: -redeemed, balanceMillicents: earned + paidOut + redeemed + adjusted };
     },
     async userForDevice(deviceId: string) {
       const { rows } = await pool.query(`select u.* from users u join devices d on d.user_id = u.id where d.id = $1`, [deviceId]);
@@ -1210,6 +1215,9 @@ function createRepo(pool: any) {
               + coalesce((select sum(amount_millicents) from ledger
                            where entry_type = 'gift_redemption_debit'
                              and device_id in (select id from devices where user_id = u.id)), 0)
+              + coalesce((select sum(amount_millicents) from ledger
+                           where entry_type in ('admin_credit','admin_debit')
+                             and (user_id = u.id or device_id in (select id from devices where user_id = u.id))), 0)
              >= $1`,
         [thresholdMillicents]
       );
@@ -1296,18 +1304,22 @@ function createRepo(pool: any) {
       await pool.query("delete from web_sessions where token = $1", [sessionToken]);
     },
     async balanceForUser(userId: string) {
+      // admin_credit/admin_debit adjust the spendable balance (see
+      // earningsForDevice) without rewriting lifetime "earned".
       const { rows } = await pool.query(
         `select
            coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit')), 0)::bigint as earned,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
-           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
          from ledger where user_id = $1 or device_id in (select id from devices where user_id = $1)`,
         [userId]
       );
       const earned = Number(rows[0].earned);
       const paidOut = Number(rows[0].paid_out);
       const redeemed = Number(rows[0].redeemed);
-      return { earnedMillicents: earned, paidOutMillicents: -paidOut, redeemedMillicents: -redeemed, balanceMillicents: earned + paidOut + redeemed };
+      const adjusted = Number(rows[0].adjusted);
+      return { earnedMillicents: earned, paidOutMillicents: -paidOut, redeemedMillicents: -redeemed, balanceMillicents: earned + paidOut + redeemed + adjusted };
     },
     async earningsForUser(userId: string) {
       const { rows } = await pool.query(
@@ -1316,7 +1328,8 @@ function createRepo(pool: any) {
            coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit') and created_at >= date_trunc('day', now())), 0)::bigint as today,
            coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit') and created_at >= date_trunc('month', now())), 0)::bigint as month,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
-           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
          from ledger where user_id = $1 or device_id in (select id from devices where user_id = $1)`,
         [userId]
       );
@@ -1328,7 +1341,7 @@ function createRepo(pool: any) {
       return {
         lifetimeMillicents: earned, todayMillicents: today, monthMillicents: month,
         redeemedMillicents: -redeemed, paidOutMillicents: -paidOut,
-        balanceMillicents: earned + paidOut + redeemed,
+        balanceMillicents: earned + paidOut + redeemed + Number(rows[0].adjusted),
       };
     },
     async earningsSeriesForUser(userId: string, { bucket, since }: any) {
@@ -1383,7 +1396,7 @@ function createRepo(pool: any) {
         const bal = await c.query(
           `select coalesce(sum(amount_millicents), 0)::bigint as balance from ledger
             where (user_id = $1 or device_id in (select id from devices where user_id = $1))
-              and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','payout_debit','gift_redemption_debit')`,
+              and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','payout_debit','gift_redemption_debit','admin_credit','admin_debit')`,
           [userId]
         );
         const costMillicents = BigInt(amountCents) * 1000n;

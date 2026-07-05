@@ -279,8 +279,11 @@ async function refreshEarnings() {
     });
     if (!res.ok) return;
     const data = await res.json();
-    if (typeof data.earnedUsd === "number") {
-      await chrome.storage.local.set({ earnings: data.earnedUsd });
+    // balanceUsd is the SPENDABLE number: credits minus redemptions/payouts,
+    // including admin adjustments — the honest figure for the popup's
+    // progress-toward-a-free-month ring.
+    if (typeof data.balanceUsd === "number") {
+      await chrome.storage.local.set({ earnings: data.balanceUsd });
     }
   } catch (_) {}
 }

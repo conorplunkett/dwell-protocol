@@ -281,7 +281,8 @@ function makeChrome(stateRef, sentRef) {
     if (u.endsWith("/v1/devices/register")) return ok({ deviceId: "dev-1", deviceKey: "key-1" });
     if (u.endsWith("/v1/config")) return ok({ serving: true, revenueShare: 0.5 });
     if (u.endsWith("/v1/ads")) return ok({ revenueShare: 0.5, ads: [] });
-    if (u.endsWith("/v1/me/earnings")) return ok({ revenueShare: 0.5, earnedUsd: 0.05, paidOutUsd: 0, redeemedUsd: 0, balanceUsd: 0.05 });
+    // earned > balance so the reconciliation test proves the SPENDABLE number wins
+    if (u.endsWith("/v1/me/earnings")) return ok({ revenueShare: 0.5, earnedUsd: 0.25, paidOutUsd: 0, redeemedUsd: 0.2, balanceUsd: 0.05 });
     if (u.endsWith("/v1/events")) return ok({ ok: true, creditedMillicents: 0 });
     // Server-authoritative impressions: serve mints a single-use token, redeem bills it.
     if (u.endsWith("/v1/impressions/serve")) return ok({ token: "served-tok", revenueShare: 0.5, ad: { id: "c1", brand: "Acme", line: "Acme — live ad", url: "https://acme.example", cat: "devtools" } });
