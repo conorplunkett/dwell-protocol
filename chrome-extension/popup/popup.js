@@ -54,7 +54,10 @@ async function refresh() {
   }
 
   // Stats
-  setText("impressions", (s.impressions || 0).toLocaleString());
+  // "ads watched" = distinct ads seen (adViews), NOT the 2s billing ticks in
+  // `impressions`. One ad shown across a long reply is many impressions but one
+  // ad watched — surfacing impressions here read as "24 ads" for a single ad.
+  setText("adviews", (s.adViews || 0).toLocaleString());
   $("enabled").checked = s.enabled !== false;
   const days = Math.max(1, Math.round((Date.now() - (s.installedAt || Date.now())) / 86400000));
   setText("perday", money(earnings / days));

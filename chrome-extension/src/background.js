@@ -25,10 +25,15 @@ const DEFAULTS = {
   impressions: 0,
   clicks: 0,
   earnings: 0,
+  // "Ads watched" — the count of DISTINCT ads the user actually saw (one per
+  // generation the bar was shown for), NOT the 2s billing ticks in `impressions`.
+  // A single ad shown across a long reply is many impressions but one ad watched.
+  adViews: 0,
   // Test Mode events are kept in their own counters so they never pollute real,
   // billable earnings — the popup surfaces them only while Test Mode is on.
   testImpressions: 0,
   testClicks: 0,
+  testAdViews: 0,
   installedAt: Date.now(),
 };
 
@@ -57,6 +62,19 @@ async function recordImpression(mock) {
       earnings: +(s.earnings + perImpressionNet(s)).toFixed(6),
     };
   }
+  await chrome.storage.local.set(next);
+  return { ...s, ...next };
+}
+
+// One ad view = one distinct ad the user saw (the content script fires BB_VIEW
+// once per generation the bar was shown for). Purely a display stat — no billing,
+// no network. The credit-minting path stays recordImpression → serve/redeem.
+async function recordView(mock) {
+  const s = await getState();
+  if (!s.enabled) return s;
+  const next = mock
+    ? { testAdViews: s.testAdViews + 1 }
+    : { adViews: s.adViews + 1 };
   await chrome.storage.local.set(next);
   return { ...s, ...next };
 }
@@ -393,6 +411,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!msg.mock) tickImpressionToken();
         break;
       }
+      case "BB_VIEW": {
+        sendResponse(await recordView(!!msg.mock));
+        break;
+      }
       case "BB_CLICK": {
         const s = await recordClick(!!msg.mock);
         sendResponse(s);
@@ -410,7 +432,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
       case "BB_RESET":
-        await chrome.storage.local.set({ impressions: 0, clicks: 0, earnings: 0, testImpressions: 0, testClicks: 0, impToken: null });
+        await chrome.storage.local.set({ impressions: 0, clicks: 0, earnings: 0, adViews: 0, testImpressions: 0, testClicks: 0, testAdViews: 0, impToken: null });
         sendResponse(await getState());
         break;
       default:
