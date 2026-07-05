@@ -132,11 +132,12 @@ const cardHtml = ({ h1, note, sub }) => `<!doctype html><html><head><meta charse
 
 // Every link-preview image we ship. The default (og.png) is the homepage card;
 // og-referral.png is the invite card a member's referral link
-// (redeem.html?ref=…) previews as. Neither card promises a specific amount —
-// there's no "your first month is free" mechanic (the old $20 referral bonus
-// is retired; a referrer now earns a 10% affiliate cut of what their friend
-// earns, not a gift for the friend), so the copy stays to what's actually
-// true: ads run while the AI thinks, and the revenue becomes Claude credits.
+// (redeem.html?ref=…) previews as. Note the referral card says "earn" rather
+// than "get" — there's no "your first month is free" mechanic (the old $20
+// referral bonus is retired; a referrer now earns a 10% affiliate cut of what
+// their friend earns, not a gift for the friend). "Earn a free month" stays
+// true: use the AI you already use, credits accrue from ad revenue, and a
+// month of Claude Pro is a real redeemable amount (see the redeem.html plans).
 const CARDS = [
   {
     file: "og.png",
@@ -146,7 +147,7 @@ const CARDS = [
   {
     file: "og-referral.png",
     note: "A friend invited you.",
-    h1: `Get Claude <span class="pop">for free.</span>`,
+    h1: `Earn a <span class="pop">free month</span> of Claude.`,
     sub: "Ads while your AI thinks.",
   },
 ];
