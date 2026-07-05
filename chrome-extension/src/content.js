@@ -315,8 +315,16 @@
     if (!bar.classList.contains("bb-show")) return;
     const now = Date.now();
     if (now - lastImpressionAt >= 2000) {
+      // The FIRST qualifying view of a session is one ad the user actually saw.
+      // Every later tick re-bills the SAME on-screen ad (we never rotate within
+      // a page), so it's another impression but NOT another ad watched — a long
+      // generation would otherwise inflate "ads watched" to a 2s-tick count
+      // (4 queries → 24) even though only one ad was ever shown. lastImpressionAt
+      // is reset to 0 in startActive(), so it's exactly 0 on the first tick.
+      const firstViewOfSession = lastImpressionAt === 0;
       lastImpressionAt = now;
       send({ type: "BB_IMPRESSION", mock: testMode });
+      if (firstViewOfSession) send({ type: "BB_VIEW", mock: testMode });
     }
   }
 

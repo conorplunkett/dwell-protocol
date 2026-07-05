@@ -318,12 +318,31 @@ function makeChrome(stateRef, sentRef) {
     assert.strictEqual(after.testClicks, 1, "test click not counted");
   });
 
+  await check("BB_VIEW counts one ad watched, independent of billing impressions", async () => {
+    const before = await msg({ type: "BB_GET_STATE" });
+    // Two 2s billing ticks for the SAME on-screen ad, but only one ad watched.
+    await msg({ type: "BB_IMPRESSION", mock: false });
+    await msg({ type: "BB_IMPRESSION", mock: false });
+    const s = await msg({ type: "BB_VIEW", mock: false });
+    assert.strictEqual(s.adViews, before.adViews + 1, "ad view not counted");
+    assert.strictEqual(s.impressions, before.impressions + 2, "views must not touch impressions");
+  });
+
+  await check("a mock ad view ticks the test counter, never real ads watched", async () => {
+    const before = await msg({ type: "BB_GET_STATE" });
+    const s = await msg({ type: "BB_VIEW", mock: true });
+    assert.strictEqual(s.adViews, before.adViews, "mock view changed real ads watched");
+    assert.strictEqual(s.testAdViews, before.testAdViews + 1, "mock view not counted");
+  });
+
   await check("reset zeroes both real and test counters", async () => {
     const s = await msg({ type: "BB_RESET" });
     assert.strictEqual(s.impressions, 0);
     assert.strictEqual(s.earnings, 0);
+    assert.strictEqual(s.adViews, 0);
     assert.strictEqual(s.testImpressions, 0);
     assert.strictEqual(s.testClicks, 0);
+    assert.strictEqual(s.testAdViews, 0);
   });
 
   // ---------- prod backend wiring ----------
