@@ -31,9 +31,9 @@ impression tokens, and the dual Node-reference / Supabase-edge backend (see
                                             public GET /v1/reserve attestation feed
 
  user views ad ──impression token serve/redeem──▶ ledger:
-     points_credit            (viewer, 50% of the tranche's dollar value)
+     points_credit            (viewer, 85% of the tranche's dollar value)
      referral_points_credit   (referrer, 15% — skipped if unreferred)
-     protocol_points_credit   (protocol, 35% or 50%)
+     protocol_points_credit   (protocol, 0% — 15% only when unreferred)
  balances = SUM(ledger)  ·  1,000 points = $1.00  ·  non-transferable, no withdrawal
 ```
 
@@ -47,9 +47,9 @@ impression tokens, and the dual Node-reference / Supabase-edge backend (see
                                                         ▼
                               CampaignFunder.swapAndFund(campaignId, usdcIn, minOut, 0x calldata)
                                     │  swap via 0x route (slippage-guarded)
-                                    ├──▶ 65% of AIAD → MerkleRewardsDistributor (user-claimable)
-                                    ├──▶ 35% of AIAD → protocol treasury Safe
-                                    │        └── burnBps slice → burn (default 0)
+                                    ├──▶ 100% of AIAD → MerkleRewardsDistributor (user-claimable;
+                                    │       treasuryBps deployed at 0 — unreferred 15% legs settle to
+                                    │       the treasury via its Merkle shortfall leaf)
                                     └──▶ emits CampaignFunded(campaignId, usdcIn, aiadOut)
                                               │
                                               ▼

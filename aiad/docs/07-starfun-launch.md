@@ -37,15 +37,15 @@ holds tokens and where liquidity sits:
 1. star.fun mints 1B: 60% to curve buyers, 20% team, 20% Meteora pool.
 2. Advertiser pays $100 → the $90 tranche buys AIAD **from that market**
    (Jupiter-routed into the Meteora pool).
-3. The bought tokens split 50/15/35 (viewer / referrer / protocol) at the
+3. The bought tokens split 85/15 (viewer / referrer; unreferred 15% → treasury) at the
    campaign's locked rate.
 4. Sellers return tokens to the pool; the next campaign's buy picks them up.
 
 A large public float *helps*: deeper market → less price impact per campaign
 buy → fairer locked rates. What the preset removes is the discretionary
-reserve (our old 35% community + 30% ops buckets) — mitigated because the
-protocol treasury self-builds at 35–50% of every campaign buy, in proportion
-to real revenue.
+reserve (our old 35% community + 30% ops buckets) — partially mitigated by the
+treasury's accrual of unreferred 15% legs, and on this venue by the 20% team
+allocation plus the founder's 0.5% of all trading volume.
 
 ## Blockers, ranked
 
