@@ -48,6 +48,66 @@ protocol treasury self-builds at 30–40% of every campaign buy (held, never
 sold), and on this venue by the 20% team allocation plus the founder's 0.5%
 of all trading volume.
 
+## Linking points to $AIAD — the bridge
+
+Points are receipts for dollars already escrowed; the launch converts those
+exact dollars into AIAD at market price via a pre-published buy schedule;
+afterwards the same engine keeps running, denominated in AIAD. No one ever
+sets a points→token exchange rate — the market sets it, at execution.
+
+### Phase 1 — points (now → the raise)
+1,000 points = $1.00 of earned ad value; each campaign's $90 tranche escrowed
+in the USDC reserve; 60/10/30 split applied **in points** at accrual. Because
+a point is a millicent of an escrowed pool, backing is exact: every point
+outstanding is matched by $0.001 already held. Non-transferable, no
+withdrawal — the legally quiet phase.
+
+### Phase 2 — the raise
+star.fun mints 1B (60% curve / 20% team / 20% Meteora seed). Two rules keep
+the bridge honest:
+- **The reserve must NOT participate in the raise.** Buying the curve with
+  the points reserve routes the users' backing dollars back to the company as
+  raise proceeds — self-dealing in a public offering, and it un-backs the
+  points. Reserve buys are post-graduation, open-market only.
+- Points keep accruing normally through the raise window (ad revenue keeps
+  escrowing).
+
+### Phase 3 — conversion (graduation + a few days)
+- **Publish the runbook before it runs**: venue (Meteora via Jupiter), TWAP
+  schedule (e.g. 10 equal daily tranches, each sized against pool depth), and
+  the formula below.
+- The reserve executes the buys. Then:
+  **conversion rate = total AIAD bought ÷ total points outstanding.**
+  Every holder receives `points × rate` — viewers, referrers, and the
+  protocol's own 30% alike (the protocol's lands in the Squads treasury and
+  is held).
+- The first Merkle root contains the converted balances; claims open; every
+  point closes with a `token_claim_debit` (`usdc_reserve_entries` records the
+  `tge_buy` fills). Points then cease to exist — fully redeemed.
+- Property to state in copy, exactly and only: points convert at **fair
+  market value on conversion day** — $1 of points becomes $1 of AIAD at the
+  schedule's average execution price. Not a peg, not a promise; the actual
+  buys are the price discovery.
+
+### Phase 4 — live
+New campaigns skip points: payment clears → Jupiter buy → campaign-locked
+AIAD rate per view → 60/10/30 in tokens → weekly cumulative roots → claims.
+The public reserve page becomes the campaign-pools page.
+
+### Sizing constraints
+- **Bound the points phase.** If the reserve exceeds ~25–50% of the chosen
+  tier's graduation-pool depth, stretch the TWAP schedule or pick a higher
+  tier (Micro graduates at ~$190K MC — a $50K reserve needs weeks there).
+  Practically: raise within a month or two of points going live, or cap
+  pre-launch campaign intake.
+- **Volatility sits in the conversion window**, both directions: a pump means
+  points buy fewer tokens (same dollar value), a dump means more. The
+  published schedule is the defense against timing-games accusations.
+- **Optional early-earner bonus ✎**: a small slice of the 20% team allocation
+  airdropped pro-rata to pre-launch point earners (inherits the team vest).
+  A growth lever that costs the team bag, never the users' backing. Only if
+  star.fun's preset allows the carve.
+
 ## Blockers, ranked
 
 1. **Securities posture flips — hard gate.** The entire legal design rested on
