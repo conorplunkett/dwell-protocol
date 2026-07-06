@@ -427,7 +427,7 @@ async function loadAffiliate() {
 }
 
 // Per-friend table: who joined with your code, their lifetime points, and
-// your 15% share — carved from each campaign's pool, never from their 50%.
+// your 15% share — carved from each campaign's pool, never from their 85%.
 function renderFriends(friends) {
   const host = $("ref-friends");
   if (!host) return;

@@ -6,7 +6,8 @@
 // ── ECONOMICS — the one source of truth for every number on the page ──────
 // Per $100 of ad spend (fixed dollar CPM, paid by card):
 //   ~$2.50 card fees · ~$2.50 provider fees · $5 to the business · $90 escrowed.
-// The escrowed pool then splits 50% viewer / 15% referrer / 35% treasury.
+// The escrowed pool then splits 85% viewer / 15% referrer; when a viewer has
+// no referrer, the 15% referrer leg falls to the protocol treasury.
 // Points: 1,000 points = $1.00 of earned ad value, 1:1 backed by the reserve.
 const ECONOMICS = {
   gross: 100,          // the reference $100 of ad spend
@@ -14,15 +15,14 @@ const ECONOMICS = {
   providerFees: 2.5,   // ≈ infrastructure / provider fees
   business: 5,         // to the business
   pool: 90,            // escrowed in the USDC reserve for the earn side
-  split: { viewer: 0.50, referrer: 0.15, treasury: 0.35 },
+  split: { viewer: 0.85, referrer: 0.15 },
   pointsPerDollar: 1000, // 1,000 points = $1.00 of earned ad value
 };
 
-// Derived per-$100 dollars (Viewer $45 / Referrer $13.50 / Treasury $31.50).
+// Derived per-$100 dollars (Viewer $76.50 / Referrer $13.50).
 const POOL_USD = {
   viewer: ECONOMICS.pool * ECONOMICS.split.viewer,
   referrer: ECONOMICS.pool * ECONOMICS.split.referrer,
-  treasury: ECONOMICS.pool * ECONOMICS.split.treasury,
 };
 
 // ── formatting helpers ─────────────────────────────────────────────────────
@@ -62,8 +62,8 @@ const API_BASE = DEV_MODE
 
 // ── HERO DEMO — the assistant thinks, one sponsored line shows, the viewer's
 // session points tick up. The earn math is real: at DEMO_CPM dollars per 1,000
-// views, one view is worth (DEMO_CPM/1000) × 90% × 50% to the viewer, ×1000
-// for points — $15 CPM → 6.75 points per view.
+// views, one view is worth (DEMO_CPM/1000) × 90% × 85% to the viewer, ×1000
+// for points — $15 CPM → 11.48 points per view.
 const DEMO_CPM = 15;
 const PTS_PER_VIEW =
   (DEMO_CPM / 1000) * (ECONOMICS.pool / ECONOMICS.gross) * ECONOMICS.split.viewer * ECONOMICS.pointsPerDollar;
@@ -153,7 +153,6 @@ const ADS = [
     // Bar 2 — the escrowed pool.
     setSeg("seg-viewer", E.split.viewer, usd(POOL_USD.viewer));
     setSeg("seg-referrer", E.split.referrer, usd(POOL_USD.referrer));
-    setSeg("seg-treasury", E.split.treasury, usd(POOL_USD.treasury));
     waterfall.classList.add("wf-in");
   };
 
@@ -166,10 +165,8 @@ const ADS = [
   setTxt("wf-flow-amt", usd(E.pool));
   setTxt("lbl-viewer", usd(POOL_USD.viewer));
   setTxt("lbl-referrer", usd(POOL_USD.referrer));
-  setTxt("lbl-treasury", usd(POOL_USD.treasury));
   setTxt("pct-viewer", pct(E.split.viewer));
   setTxt("pct-referrer", pct(E.split.referrer));
-  setTxt("pct-treasury", pct(E.split.treasury));
 
   if (prefersReducedMotion || !("IntersectionObserver" in window)) { grow(); return; }
   const io = new IntersectionObserver((entries) => {
@@ -180,7 +177,7 @@ const ADS = [
 
 // ── RESERVE TICKER — escrowed USDC, points outstanding, campaigns funded.
 // RESERVE_SEED is the deterministic baseline every load shows. Points
-// outstanding derive from the escrow: points are minted to viewers (50%) and
+// outstanding derive from the escrow: points are minted to viewers (85%) and
 // referrers (15%) — 65¢ of every escrowed pool dollar — so each escrowed
 // dollar carries 650 points. In dev mode a seeded PRNG (mulberry32) advances
 // the figures on a timer, identically on every load. A live /v1/reserve
@@ -246,7 +243,7 @@ setTxt("ref-friend", usd(POOL_USD.viewer));
 setTxt("ref-you", usd(POOL_USD.referrer));
 
 // ── ADVERTISER ESTIMATE — budget + fixed-CPM slider. The estimate rows restate
-// the ECONOMICS split live: views, the escrowed 90%, and the viewers' 50% of
+// the ECONOMICS split live: views, the escrowed 90%, and the viewers' 85% of
 // the pool. The pay CTA is inert in this preview build. ─────────────────────
 (function advertiserForm() {
   const budgetEl = $id("budget");

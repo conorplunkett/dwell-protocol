@@ -53,15 +53,15 @@ Per $100 of ad spend:
 Knob: `RESERVE_TRANCHE_BPS = 9000`. An advertiser paying in USDC directly
 (optional later) skips the card leg, pushing ~$97.50 to the token side.
 
-## The pool split — 50 / 15 / 35
+## The pool split — 85 / 15
 
 The $90 tranche (points: its dollar value; live: the tokens it bought) splits:
 
 | Recipient | Share of pool | Knob |
 |---|---|---|
-| Viewer (the person who watched the ad) | **50%** | `VIEWER_SHARE_BPS = 5000` |
+| Viewer (the person who watched the ad) | **85%** | `VIEWER_SHARE_BPS = 8500` |
 | Viewer's referrer | **15%** | `REFERRER_SHARE_BPS = 1500` |
-| Protocol treasury | **35%** (or **50%** when the viewer has no referrer) | remainder — keeps integer math exact |
+| Protocol treasury | **0%** (or **15%** when the viewer has no referrer — the unclaimed referrer leg) | remainder — keeps integer math exact |
 
 The referrer share is carved **out of the pool**, not paid on top (this differs
 from the existing platform's affiliate program, which pays a platform-funded 10% bonus).
@@ -84,9 +84,9 @@ qualified view, split per view:
 
 | | AIAD per view | of the 45,000 pool |
 |---|---|---|
-| Viewer | 2.25 | 22,500 |
+| Viewer | 3.825 | 38,250 |
 | Referrer | 0.675 | 6,750 |
-| Protocol | 1.575 | 15,750 |
+| Protocol | 0 (referred) | 0 |
 
 Properties: the buy's execution price *is* the price discovery (no oracle);
 users can never be owed more value than revenue bought; old campaigns keep
@@ -101,7 +101,7 @@ append-only millicent ledger:
 
 - **1,000 points = $1.00 of earned ad value** (1 point = 1 millicent — points
   *are* the ledger unit the existing backend already uses).
-- Same 50/15/35 split of the 90% tranche, applied to dollar value.
+- Same 85/15 split of the 90% tranche, applied to dollar value.
 - The $90 tranche per campaign is **escrowed in the USDC reserve** — points are
   visibly 1:1 dollar-backed. A public reserve page shows escrowed total vs.
   outstanding points.
@@ -128,21 +128,24 @@ Buy-and-distribute means the maximum sell pressure users can ever generate is
 bounded by the share they were given. Per $100 of ad spend at a given price:
 
 - Market buy: **+$90.00**
-- Maximum user-side sell: 65% of the pool ≈ **−$58.50** (viewer 50% + referrer
-  15%), and only if *every* recipient sells immediately
-- Protocol's 35% is held by the treasury (sales, if ever, are pre-announced)
+- Maximum user-side sell: 100% of the pool ≈ **−$90.00** (viewer 85% +
+  referrer 15%), and only if *every* recipient sells immediately
+- On unreferred traffic the 15% referrer leg falls to the treasury and is held
+  (sales, if ever, are pre-announced)
 
 | Immediate-sell rate | Net market flow per $100 |
 |---|---|
 | 0% (everyone holds) | +$90.00 |
-| 25% | +$75.40 |
-| 50% | +$60.75 |
-| 75% | +$46.10 |
-| 100% (everyone dumps) | **+$31.50** |
+| 25% | +$67.50 |
+| 50% | +$45.00 |
+| 75% | +$22.50 |
+| 100% (everyone dumps) | **$0.00** (+$13.50 on unreferred traffic) |
 
-Net demand is structurally positive at every dump rate — the floor case is
-+31.5% of gross ad spend — because the protocol's share and the fee legs never
-recycle onto the market. What this does **not** guarantee: price stability
+Net demand is positive whenever any fraction of recipients hold; the floor
+case (everyone dumps instantly) is neutral, not negative — sells can never
+exceed what revenue bought. Unlike the earlier 50/15/35 design there is no
+protocol-held tranche providing a structural buy floor: the flywheel rides
+entirely on hold rate. What this does **not** guarantee: price stability
 against thin liquidity, external sellers, or sentiment. Which is why liquidity
 depth ($25–100K+ seed) matters more than any of the above at small scale.
 
@@ -152,14 +155,15 @@ Three revenue scenarios (annual ad spend), showing both revenue streams.
 Protocol-token accrual is valued at acquisition (execution) price — no
 appreciation assumed:
 
-| Annual ad spend | Fiat margin (5%) | Protocol tokens (35–50% of the 90% pool) | Total at acquisition value |
+| Annual ad spend | Fiat margin (~5% net of the 10% gross) | Protocol tokens (unreferred 15% legs; 0–15% of pool) | Total at acquisition value |
 |---|---|---|---|
-| $100K | $5K | $31.5K–45K | $36.5K–50K |
-| $1M | $50K | $315K–450K | $365K–500K |
-| $5M | $250K | $1.575M–2.25M | $1.825M–2.5M |
+| $100K | $5K | $0–13.5K | $5K–18.5K |
+| $1M | $50K | $0–135K | $50K–185K |
+| $5M | $250K | $0–675K | $250K–925K |
 
-(The range depends on the referred/unreferred mix — unreferred viewers push the
-protocol share from 35% to 50%.) On the star.fun path a third stream exists:
+(The range depends on the referred/unreferred mix — the treasury only accrues
+the 15% referrer leg when a viewer has no referrer; at a 50/50 mix that is
+~6.75% of gross.) On the star.fun path a third stream exists:
 the **founder's 0.5% of all secondary trading volume**, paid by the platform
 ([07-starfun-launch.md](07-starfun-launch.md)). The team allocation (20%, vested) is the
 equity-like upside on top; it is deliberately excluded from these tables and

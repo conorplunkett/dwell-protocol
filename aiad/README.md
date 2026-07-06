@@ -8,8 +8,9 @@ The mechanics, stated as facts (see the copy rules in
 [docs/05-legal-structure.md](docs/05-legal-structure.md)): advertisers pay
 fixed dollar CPMs by card; **90% of every ad dollar** goes to the token side —
 escrowed in a USDC reserve during the points phase, market-bought into AIAD
-after launch — and each campaign's pool splits **50% to the viewer, 15% to
-their referrer, 35% to the protocol treasury**. Users are only ever paid what
+after launch — and each campaign's pool splits **85% to the viewer and 15% to
+their referrer** (the referrer leg falls to the protocol treasury when a
+viewer has no referrer). Users are only ever paid what
 revenue already bought: no minting, no emissions schedule, no oracle.
 
 This folder is fully self-contained (no code dependencies on anything outside
@@ -25,7 +26,7 @@ it) and is structured to be lifted into its own repository unchanged.
 
 ## Docs index
 
-1. [Tokenomics](docs/01-tokenomics.md) — the 50/15/35 split, campaign-locked
+1. [Tokenomics](docs/01-tokenomics.md) — the 85/15 split, campaign-locked
    rates, points→token conversion, supply math, business P&L
 2. [Architecture](docs/02-architecture.md) — points mode vs. live mode, key
    custody, failure modes

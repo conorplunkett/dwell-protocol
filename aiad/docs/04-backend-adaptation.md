@@ -34,9 +34,9 @@ pattern the existing migrations use):
 
 | New entry type | Sign | Meaning |
 |---|---|---|
-| `points_credit` | + device | Viewer's 50% of the campaign's 90% tranche, in millicents (points). Successor to `impression_credit`. |
+| `points_credit` | + device | Viewer's 85% of the campaign's 90% tranche, in millicents (points). Successor to `impression_credit`. |
 | `referral_points_credit` | + user | Referrer's 15%. Successor to `affiliate_credit`, but carved out of the pool, not platform-funded. |
-| `protocol_points_credit` | + platform | Protocol's 35% (or 50% when the viewer is unreferred). Successor to `platform_fee`. |
+| `protocol_points_credit` | + platform | Protocol's cut: 0% when referred, 15% (the unclaimed referrer leg) when unreferred. Successor to `platform_fee`. |
 | `reserve_allocation` | + platform | The campaign's 90% tranche earmarked into the USDC reserve at payment (points mode). Accounting mirror of `campaign_credit`. |
 | `token_claim_debit` | − user | Live mode: points/AIAD entitlement moved into an onchain Merkle root. `meta: {epoch, aiad_wei, root}`. |
 
@@ -97,9 +97,10 @@ create table token_claims (
 );
 ```
 
-The **treasury shortfall leaf**: onchain, every campaign pool sends a fixed 65%
-to the Distributor, but unreferred viewers mean the protocol is owed more than
-its onchain 35%. The root publisher includes the treasury address as a leaf
+The **treasury shortfall leaf**: onchain, every campaign pool sends 100% to
+the Distributor (`CampaignFunder.treasuryBps` deployed at 0), and unreferred
+viewers leave the protocol owed the unclaimed 15% referrer legs. The root
+publisher includes the treasury address as a leaf
 whose cumulative amount is exactly that accumulated surplus, so Distributor
 balance = sum of all leaves and the books close.
 
@@ -119,9 +120,9 @@ AIAD replaces it with a three-way BPS split **of the 90% tranche**:
 ```js
 const gross = BigInt(price_per_block_cents);                    // millicents
 const pool  = (gross * BigInt(config.reserveTrancheBps)) / 10000n;  // the 90%
-const viewer   = (pool * BigInt(config.viewerShareBps)) / 10000n;   // 50% of pool
+const viewer   = (pool * BigInt(config.viewerShareBps)) / 10000n;   // 85% of pool
 const referrer = hasReferrer ? (pool * BigInt(config.referrerShareBps)) / 10000n : 0n;
-const protocol = pool - viewer - referrer;                      // 35% or 50%; remainder keeps millicent exactness
+const protocol = pool - viewer - referrer;                      // 0% referred / 15% unreferred; remainder keeps millicent exactness
 ```
 
 Ledger writes: `points_credit` (viewer, +device), `referral_points_credit`
@@ -140,7 +141,7 @@ reward computation moves.
 | Env var | Default | Meaning |
 |---|---|---|
 | `TOKEN_MODE` | `points` | `points` or `live` — the phase switch. In `points`, wallets/claims are disabled; everything else runs. |
-| `VIEWER_SHARE_BPS` | `5000` | Viewer's share of the pool |
+| `VIEWER_SHARE_BPS` | `8500` | Viewer's share of the pool |
 | `REFERRER_SHARE_BPS` | `1500` | Referrer's share (skipped when unreferred) |
 | `RESERVE_TRANCHE_BPS` | `9000` | Tranche of gross routed to the token side |
 | `BURN_BPS` | `0` | Slice of the treasury leg burned by CampaignFunder |
