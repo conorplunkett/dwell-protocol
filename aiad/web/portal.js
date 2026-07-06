@@ -102,7 +102,7 @@ function buildMock() {
     });
   }
 
-  // Per-friend referral table — your share is 15% of each friend's lifetime.
+  // Per-friend referral table — your share is 10% of each friend's lifetime.
   const friends = [
     { name: "Maya R.",  joined: "May 14",  theirPoints: 21400, yourPoints: 3210 },
     { name: "Dev K.",   joined: "May 29",  theirPoints: 12800, yourPoints: 1920 },
@@ -391,7 +391,7 @@ async function loadServiceActivation() {
   applyServiceActivation(body && body.sources ? body.sources : body);
 }
 
-// ---- referrals (self-serve: everyone earns the protocol's 15% referrer
+// ---- referrals (self-serve: everyone earns the protocol's 10% referrer
 // share; the form is the partner upgrade for uncapped referrals) ----
 async function loadAffiliate() {
   // Reveal the block up front so the tab isn't blank while the request is in
@@ -427,7 +427,7 @@ async function loadAffiliate() {
 }
 
 // Per-friend table: who joined with your code, their lifetime points, and
-// your 15% share — carved from each campaign's pool, never from their 50%.
+// your 10% share — carved from each campaign's pool, never from their 60%.
 function renderFriends(friends) {
   const host = $("ref-friends");
   if (!host) return;
@@ -437,7 +437,7 @@ function renderFriends(friends) {
   }
   const head =
     `<div class="fr-row fr-head">` +
-    `<span>Friend</span><span>Their lifetime points</span><span class="fr-share">Your 15% share</span>` +
+    `<span>Friend</span><span>Their lifetime points</span><span class="fr-share">Your 10% share</span>` +
     `</div>`;
   const items = friends.map((f) => (
     `<div class="fr-row">` +
@@ -849,7 +849,7 @@ let activityRows = null;
 
 const ACT_LABEL = {
   points_credit: "Watched a sponsored line",
-  referral_points_credit: "Referral share — 15%",
+  referral_points_credit: "Referral share — 10%",
   token_claim_debit: "Converted at token launch",
 };
 

@@ -4,6 +4,14 @@ Two launches: **points** (soon, cheap, reversible) and **TGE** (later,
 expensive, one-way). Each item is a gate — nothing below it starts until it's
 done.
 
+> **star.fun variant:** if launching via star.fun, the raise **is** the TGE —
+> see [07-starfun-launch.md](07-starfun-launch.md). The points phase shrinks
+> to the window between first ad revenue and graduation; Phase-2 items 5–7
+> (deploy, liquidity seed, reserve conversion) are replaced by the raise +
+> graduation, and item 3's dry-run targets the Solana stack (Jupiter keeper +
+> Solana Merkle distributor on devnet). Everything legal (counsel, geofences,
+> W-9 pipeline) moves **before the raise**.
+
 **Decision record (2026-07-06): parallel brands on shared pieces.** AIAD and
 FreeAI are **separate businesses at runtime** — separate ad inventory,
 databases, domains, money accounts, and operator tooling; zero connections
@@ -64,7 +72,7 @@ both brands.
        §A–§D implemented in the **shared** `server/src` + edge function
        behind config — defaults preserve FreeAI's behavior exactly; the
        AIAD deployment enables them (`TOKEN_MODE=points`, the BPS knobs) —
-       with server tests covering both the legacy split and the 50/15/35
+       with server tests covering both the legacy split and the 60/10/30
        split math + reserve invariants.
 3. [ ] Coinbase business account opened (AIAD's own); reserve account
        segregated; withdrawal addresses locked; API keys IP-allowlisted.
@@ -101,8 +109,9 @@ both brands.
 ## Phase 2 — TGE runbook (ordered)
 
 1. [x] `forge build && forge test` green on the pinned toolchain — verified
-       2026-07-06 (forge 1.7.1 / solc 0.8.26, 25/25 passing) and enforced on
-       every push by the `aiad-contracts` CI job.
+       2026-07-06 (forge 1.7.1 / solc 0.8.26, 25/25 passing, including the
+       60/10/30 revision) and enforced on every push by the
+       `aiad-contracts` CI job.
 2. [ ] **Audit** of `AIAD.sol`, `CampaignFunder.sol`,
        `MerkleRewardsDistributor.sol`; findings fixed; re-audit of diffs.
 3. [ ] **Base Sepolia dry-run of the full loop**: deploy → seed test pool →
@@ -145,8 +154,8 @@ millicent balance *is* the points number).
 
 - [ ] **Backend instance**: the fresh Supabase project from the Separation
       list; shared `schema.sql` + migrations applied; the shared code
-      deployed with AIAD env: `VIEWER_SHARE_BPS=5000`,
-      `REFERRER_SHARE_BPS=1500`, `RESERVE_TRANCHE_BPS=9000`,
+      deployed with AIAD env: `VIEWER_SHARE_BPS=6000`,
+      `REFERRER_SHARE_BPS=1000`, `RESERVE_TRANCHE_BPS=9000`,
       `TOKEN_MODE=points`. The FreeAI deployment runs the same code with
       defaults and is behavior-identical to today.
 - [ ] **Admin deployment**: ships **with** the backend instance — campaign

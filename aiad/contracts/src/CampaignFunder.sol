@@ -12,14 +12,14 @@ import {IAIAD} from "./interfaces/IAIAD.sol";
 /// @title CampaignFunder — one market buy per paid ad campaign
 /// @notice The fiat sweeper deposits USDC here; when a campaign's payment
 /// clears, a keeper calls `swapAndFund` with a 0x-quoted route. The received
-/// AIAD splits `treasuryBps` (default 35%) to the protocol treasury — with an
+/// AIAD splits `treasuryBps` (default 30%) to the protocol treasury — with an
 /// optional `burnBps` slice burned — and the remainder (the viewer + referrer
 /// legs) to the MerkleRewardsDistributor. The emitted `CampaignFunded` event
 /// is the onchain source of truth for that campaign's locked token rate
 /// (aiadOut ÷ the campaign's impressions, computed offchain).
 ///
-/// The unreferred case (viewer with no referrer, protocol takes 50% not 35%)
-/// is settled offchain: the extra 15% stays in the distributor and the backend
+/// The unreferred case (viewer with no referrer, protocol takes 40% not 30%)
+/// is settled offchain: the extra 10% stays in the distributor and the backend
 /// includes the treasury address as a leaf in the Merkle root for its
 /// shortfall, so onchain balances always reconcile exactly.
 ///
@@ -40,7 +40,7 @@ contract CampaignFunder is Ownable2Step, Pausable, ReentrancyGuard {
     address public immutable treasury;
 
     address public swapTarget;
-    uint256 public treasuryBps = 3_500; // protocol's share of each campaign pool
+    uint256 public treasuryBps = 3_000; // protocol's share of each campaign pool
     uint256 public burnBps = 0; // slice of the treasury leg to burn (default: none)
     mapping(address keeper => bool allowed) public keepers;
     mapping(bytes32 campaignId => uint256 aiadOut) public fundedCampaigns;

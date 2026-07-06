@@ -8,8 +8,9 @@ The mechanics, stated as facts (see the copy rules in
 [docs/05-legal-structure.md](docs/05-legal-structure.md)): advertisers pay
 fixed dollar CPMs by card; **90% of every ad dollar** goes to the token side —
 escrowed in a USDC reserve during the points phase, market-bought into AIAD
-after launch — and each campaign's pool splits **50% to the viewer, 15% to
-their referrer, 35% to the protocol treasury**. Users are only ever paid what
+after launch — and each campaign's pool splits **60% to the viewer, 10% to their referrer, and
+30% to the protocol treasury — which holds, never sells** (the referrer leg
+joins the treasury when a viewer has no referrer). Users are only ever paid what
 revenue already bought: no minting, no emissions schedule, no oracle.
 
 This folder holds AIAD's **brand layer** — site theme + copy, contracts, and
@@ -31,7 +32,7 @@ Separation section of
 
 ## Docs index
 
-1. [Tokenomics](docs/01-tokenomics.md) — the 50/15/35 split, campaign-locked
+1. [Tokenomics](docs/01-tokenomics.md) — the 60/10/30 split, campaign-locked
    rates, points→token conversion, supply math, business P&L
 2. [Architecture](docs/02-architecture.md) — points mode vs. live mode, key
    custody, failure modes
@@ -43,6 +44,9 @@ Separation section of
    hard rules, copy rules, tax ops
 6. [Launch checklist](docs/06-launch-checklist.md) — points launch, TGE gates,
    the ordered runbook
+7. [star.fun launch](docs/07-starfun-launch.md) — assessment + adaptation for
+   launching on the star.fun launchpad (Solana) instead of the self-directed
+   Base path
 
 ## View the site
 

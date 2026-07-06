@@ -1,5 +1,12 @@
 # AIAD system architecture
 
+> **Launch-venue note:** this doc describes the self-directed Base/EVM path.
+> If the token launches on star.fun (Solana), the architecture is unchanged
+> but three parts swap: CampaignFunder → an offchain Jupiter-API buy keeper,
+> MerkleRewardsDistributor.sol → an established Solana Merkle-distributor
+> program, treasury Safe → Squads multisig. See
+> [07-starfun-launch.md](07-starfun-launch.md).
+
 Two operating modes, switched by one knob (`TOKEN_MODE=points|live`). Points
 mode is the launch state; live mode activates at TGE. Both reuse the parent
 platform's
@@ -24,9 +31,9 @@ impression tokens, and the dual Node-reference / Supabase-edge backend (see
                                             public GET /v1/reserve attestation feed
 
  user views ad ──impression token serve/redeem──▶ ledger:
-     points_credit            (viewer, 50% of the tranche's dollar value)
-     referral_points_credit   (referrer, 15% — skipped if unreferred)
-     protocol_points_credit   (protocol, 35% or 50%)
+     points_credit            (viewer, 60% of the tranche's dollar value)
+     referral_points_credit   (referrer, 10% — skipped if unreferred)
+     protocol_points_credit   (protocol, 30% — 40% when unreferred)
  balances = SUM(ledger)  ·  1,000 points = $1.00  ·  non-transferable, no withdrawal
 ```
 
@@ -40,9 +47,9 @@ impression tokens, and the dual Node-reference / Supabase-edge backend (see
                                                         ▼
                               CampaignFunder.swapAndFund(campaignId, usdcIn, minOut, 0x calldata)
                                     │  swap via 0x route (slippage-guarded)
-                                    ├──▶ 65% of AIAD → MerkleRewardsDistributor (user-claimable)
-                                    ├──▶ 35% of AIAD → protocol treasury Safe
-                                    │        └── burnBps slice → burn (default 0)
+                                    ├──▶ 70% of AIAD → MerkleRewardsDistributor (user-claimable)
+                                    ├──▶ 30% of AIAD → protocol treasury Safe (held, never sold;
+                                    │       unreferred 10% legs settle to it via a Merkle shortfall leaf)
                                     └──▶ emits CampaignFunded(campaignId, usdcIn, aiadOut)
                                               │
                                               ▼

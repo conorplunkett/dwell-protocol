@@ -1,5 +1,12 @@
 # AIAD contracts
 
+> **Venue note:** these contracts implement the self-directed **Base/EVM**
+> launch path. If the token launches on star.fun (Solana), the token is an SPL
+> mint created by the platform and this folder becomes the reference
+> implementation of the mechanics — the Solana equivalents are an offchain
+> Jupiter-API buy keeper and an established Solana Merkle-distributor program.
+> See [`../docs/07-starfun-launch.md`](../docs/07-starfun-launch.md).
+
 Three contracts, standard Foundry layout, built on **unmodified OpenZeppelin
 Contracts v5.6.1** pinned as a git submodule at `lib/openzeppelin-contracts`
 (commit `5fd1781b1454fd1ef8e722282f86f9293cacf256`, tag `v5.6.1`). No OZ code
@@ -11,13 +18,13 @@ paths via `forge-std` (pinned at `v1.16.2`).
 | Contract | Purpose |
 |---|---|
 | `src/AIAD.sol` | Fixed-supply ERC-20 (1B, 18 dec) + EIP-2612 permit + burn. Minted once to the treasury Safe; no mint function, no owner, no hooks. |
-| `src/CampaignFunder.sol` | One market buy per paid campaign: USDC in → 0x-routed swap → 65% of AIAD to the Distributor, 35% to the treasury (`burnBps` slice optionally burned, default 0). Keeper-gated, slippage-guarded, pausable; `rescue()` blocklists USDC/AIAD. `CampaignFunded` events are the locked-rate source of truth. |
+| `src/CampaignFunder.sol` | One market buy per paid campaign: USDC in → 0x-routed swap → 70% of AIAD to the Distributor, 30% to the treasury (held; `burnBps` slice optionally burned, default 0). Keeper-gated, slippage-guarded, pausable; `rescue()` blocklists USDC/AIAD. `CampaignFunded` events are the locked-rate source of truth. |
 | `src/MerkleRewardsDistributor.sol` | Cumulative `(address, cumulativeAmount)` Merkle claims. Roots advance one epoch at a time via a dedicated `rootSetter`; claims pay the delta since the last claim; pausable by the owner Safe, which can never move funds. |
 
 See [`../docs/02-architecture.md`](../docs/02-architecture.md) for how these
 fit the full system, and [`../docs/01-tokenomics.md`](../docs/01-tokenomics.md)
-for the 50/15/35 economics they implement. The unreferred-viewer case (protocol
-50% instead of 35%) settles offchain: the surplus stays in the Distributor and
+for the 60/10/30 economics they implement. The unreferred-viewer case (protocol
+40% instead of 30%) settles offchain: the surplus stays in the Distributor and
 the backend adds a treasury leaf to the Merkle root for the shortfall.
 
 ## Build and test
@@ -32,8 +39,9 @@ forge test -vv
 ```
 
 Compiler is pinned to `solc 0.8.26` in `foundry.toml` (optimizer on, 200 runs).
-Machine-verified 2026-07-06 on forge `1.7.1` / solc `0.8.26`: `forge build`
-clean (lint warnings in test files only), `forge test` 25/25 passing. The
+Machine-verified 2026-07-06 on forge `1.7.1` / solc `0.8.26` — including the
+60/10/30 split revision (`treasuryBps=3000`, #239): `forge build` clean (lint
+warnings in test files only), `forge test` 25/25 passing. The
 `aiad-contracts` CI job (`.github/workflows/ci.yml`) now runs both on every
 push/PR on the same pinned toolchain, keeping the merge gate enforced (see
 `../docs/06-launch-checklist.md`).
