@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Preview API base. Left empty while AIAD is in preview; set it (or
+       window.AIAD_API) to point the reserve ticker at a live backend. Append
+       ?dev=1 to the URL for the self-contained mock-data mode (sticky; ?dev=0
+       to exit) — handled in script.js. -->
+  <meta name="aiad-api" content="" />
+  <title>AIAD — Get paid for your attention</title>
+  <meta name="description" content="One sponsored line shows while ChatGPT, Claude, or Gemini is thinking — and the person watching gets paid. 90% of every ad dollar is escrowed for the earn side; 50% of the pool goes to the viewer as dollar-backed points." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="assets/favicon.svg" />
+</head>
+<body>
+  <!-- NAV — A$ wordmark + PREVIEW pill, section links, green portal CTA. -->
+  <header class="nav">
+    <a class="brand" href="#top">
+      <span class="logo">A$</span>
+      <span class="brand-name">AIAD</span>
+      <span class="preview-pill">Preview</span>
+    </a>
+    <nav class="nav-btns" aria-label="Primary">
+      <a href="#how" class="navbtn nav-opt2">How it works</a>
+      <a href="#split" class="navbtn">The split</a>
+      <a href="#reserve" class="navbtn nav-opt">Reserve</a>
+      <a href="#faq" class="navbtn nav-opt">FAQ</a>
+      <a href="portal.html" class="navbtn nav-opt">Portal</a>
+      <a href="portal.html" class="navbtn navbtn-cta">Open portal</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- HERO — headline + a live terminal mock: the assistant thinks, one
+         sponsored line shows, and the viewer's points tick up. All demo
+         mechanics run from script.js; the static first frame below matches
+         ADS[0] there so the line is never blank, even without JS. -->
+    <section class="hero">
+      <p class="hero-eyebrow">one sponsored line · while the model thinks · you get paid</p>
+      <h1>Watch one sponsored line.<br /><span class="h1-acc">Get paid for your attention.</span></h1>
+      <p class="sub">
+        A sponsored line shows while <strong>ChatGPT</strong>, <strong>Claude</strong>, or
+        <strong>Gemini</strong> is thinking. <strong>50%</strong> of every ad's escrowed value
+        goes to the person watching it — in AIAD points backed 1:1 by dollars.
+      </p>
+
+      <div class="demo-term win term" role="img" aria-label="Terminal demo: an assistant is thinking, a sponsored line shows, and the viewer is credited points">
+        <div class="chrome">
+          <i class="dot dot-r"></i><i class="dot dot-y"></i><i class="dot dot-g"></i>
+          <span class="label">assistant — thinking</span>
+        </div>
+        <div class="termpad">
+          <div class="prompt"><span class="chev">›</span> draft the launch plan and sanity-check the numbers <span class="cursor"></span></div>
+          <div class="thinkline"><span class="ast">✳</span> <span id="word-stock">Thinking</span>… <span class="muted">(<span id="think-secs">2</span>s)</span></div>
+          <!-- Classed/id'd "brand-*", NOT "ad-*", so ad blockers don't hide
+               our own sponsored-line demo. -->
+          <div class="sponsor-pill">
+            <span class="brandchip" id="brand-chip">R</span>
+            <span class="brand-line" id="brand-line">Ramp · Close your books faster</span>
+            <span class="pill-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          </div>
+          <div class="earnline">
+            <span class="earn-plus" id="earn-plus">+6.75 pts</span>
+            <span class="earn-note">50% of this ad's pool → you · session <strong id="earn-session">6.75 pts</strong> (<span id="earn-usd">$0.0068</span>)</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="hero-note">
+        Points are metered per view. <strong>1,000 points = $1.00</strong> of earned ad value.
+      </p>
+    </section>
+
+    <!-- ── THE SPLIT — the centerpiece. Two stacked bars: $100 of ad spend,
+         then the escrowed pool. Every width, dollar label, and percentage is
+         rendered by script.js from the single ECONOMICS const. -->
+    <section id="split" class="split">
+      <div class="wrap">
+        <div class="secthead">
+          <span class="eyebrow">The split</span>
+          <h2>Where every $100 of ad spend goes.</h2>
+          <p>Advertisers pay a fixed dollar CPM by card. <strong>90% of every ad dollar goes to the earn side.</strong> This is the full path of each dollar — mechanics, stated as facts.</p>
+        </div>
+
+        <div class="waterfall" id="waterfall">
+          <div class="wf-row">
+            <span class="wf-title">$100 of ad spend</span>
+            <div class="wf-bar" role="img" aria-label="Split of $100 of ad spend: about $2.50 card fees, about $2.50 provider fees, $5 to the business, $90 to the escrowed pool">
+              <span class="wf-seg wf-seg--fees" id="seg-card"></span>
+              <span class="wf-seg wf-seg--fees" id="seg-provider"></span>
+              <span class="wf-seg wf-seg--biz" id="seg-business"></span>
+              <span class="wf-seg wf-seg--pool" id="seg-pool"><span class="seglbl" id="seglbl-pool"></span></span>
+            </div>
+            <ul class="wf-legend">
+              <li><i class="wf-dot wf-dot--fees"></i><span><strong id="lbl-card">—</strong> card fees</span></li>
+              <li><i class="wf-dot wf-dot--fees"></i><span><strong id="lbl-provider">—</strong> provider fees</span></li>
+              <li><i class="wf-dot wf-dot--biz"></i><span><strong id="lbl-business">—</strong> to the business</span></li>
+              <li><i class="wf-dot wf-dot--pool"></i><span><strong id="lbl-pool">—</strong> to the pool (<span id="pct-pool">—</span>)</span></li>
+            </ul>
+          </div>
+
+          <div class="wf-flow" aria-hidden="true">↓ the <strong id="wf-flow-amt">—</strong> pool splits</div>
+
+          <div class="wf-row">
+            <span class="wf-title">The escrowed pool</span>
+            <div class="wf-bar" role="img" aria-label="Split of the escrowed pool: 50% to the viewer, 15% to the viewer's referrer, 35% to the protocol treasury">
+              <span class="wf-seg wf-seg--viewer" id="seg-viewer"><span class="seglbl" id="seglbl-viewer"></span></span>
+              <span class="wf-seg wf-seg--referrer" id="seg-referrer"><span class="seglbl" id="seglbl-referrer"></span></span>
+              <span class="wf-seg wf-seg--treasury" id="seg-treasury"><span class="seglbl" id="seglbl-treasury"></span></span>
+            </div>
+            <ul class="wf-legend">
+              <li><i class="wf-dot wf-dot--viewer"></i><span><strong id="lbl-viewer">—</strong> to the viewer (<span id="pct-viewer">—</span>)</span></li>
+              <li><i class="wf-dot wf-dot--referrer"></i><span><strong id="lbl-referrer">—</strong> to the viewer's referrer (<span id="pct-referrer">—</span>)</span></li>
+              <li><i class="wf-dot wf-dot--treasury"></i><span><strong id="lbl-treasury">—</strong> to the protocol treasury (<span id="pct-treasury">—</span>)</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── RESERVE — points are dollar-backed; a mock live ticker shows the
+         escrow. Figures come from RESERVE_SEED in script.js; ?dev=1 animates
+         them with a deterministic seeded ticker. -->
+    <section id="reserve" class="reserve">
+      <div class="wrap">
+        <div class="reserve-grid">
+          <div class="reserve-copy">
+            <span class="eyebrow">The reserve</span>
+            <h2>Backed by the reserve.</h2>
+            <p>Today you earn <strong>AIAD points</strong>: 1,000 points = $1.00 of earned ad value.</p>
+            <p>Every campaign's $90-per-$100 tranche is escrowed in a <strong>USDC reserve</strong> the moment the advertiser pays — so every point outstanding is matched by a dollar already held. Points are 1:1 dollar-backed, not a promise to pay later.</p>
+            <p class="reserve-caption" id="reserve-caption">preview figures</p>
+          </div>
+          <div class="reserve-stats" aria-label="Reserve ticker">
+            <div class="stat-tile">
+              <span class="stat-label">Escrowed USDC reserve</span>
+              <span class="stat-num" id="stat-reserve">—</span>
+              <span class="stat-sub">Every campaign's 90% tranche, held in USDC</span>
+            </div>
+            <div class="stat-tile">
+              <span class="stat-label">AIAD points outstanding</span>
+              <span class="stat-num" id="stat-points">—</span>
+              <span class="stat-sub">1,000 points = $1.00 of earned ad value</span>
+            </div>
+            <div class="stat-tile">
+              <span class="stat-label">Campaigns funded</span>
+              <span class="stat-num" id="stat-campaigns">—</span>
+              <span class="stat-sub">Each one escrowed on payment</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── HOW IT WORKS — four steps, mechanics only. -->
+    <section id="how" class="how">
+      <div class="wrap">
+        <div class="secthead">
+          <span class="eyebrow">How it works</span>
+          <h2>Watch. Earn. Refer. Claim.</h2>
+        </div>
+        <div class="steps">
+          <div class="step-card">
+            <span class="step-idx">01 · Watch</span>
+            <h3>One sponsored line</h3>
+            <p>While your assistant is thinking, one sponsored line shows — in the browser, the terminal, or the desktop app. Each view is metered.</p>
+          </div>
+          <div class="step-card">
+            <span class="step-idx">02 · Earn</span>
+            <h3>Points, dollar-backed</h3>
+            <p><strong id="step-viewer-pct">50%</strong> of each ad's escrowed pool is credited to you as AIAD points. 1,000 points = $1.00 of earned ad value, matched by USDC already in the reserve.</p>
+          </div>
+          <div class="step-card">
+            <span class="step-idx">03 · Refer</span>
+            <h3>15% forever</h3>
+            <p>Refer a friend and <strong id="step-ref-pct">15%</strong> of the pool on every ad they ever watch goes to you — carved from the pool, not from their share.</p>
+          </div>
+          <div class="step-card">
+            <span class="step-idx">04 · Claim</span>
+            <h3>At token launch</h3>
+            <p>Points convert to AIAD tokens under published rules. Claims move onchain (Base); swap to USDC or withdraw via licensed partners.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── REFERRALS — the 15% carve-out, with one worked example. Numbers
+         rendered from ECONOMICS in script.js. -->
+    <section id="referrals" class="referrals">
+      <div class="wrap">
+        <div class="secthead">
+          <span class="eyebrow">Referrals</span>
+          <h2>15% of the pool on every ad your friends watch. Forever.</h2>
+          <p>Refer a friend and <strong id="ref-rate">—</strong> of each ad's pool goes to you — carved from the pool itself, so their share is untouched. It never expires.</p>
+        </div>
+        <div class="ref-card">
+          <div class="ref-math">
+            <span>per $100 of ads a friend watches</span>
+            <span class="ref-arrow" aria-hidden="true">→</span>
+            <span>they earn <strong id="ref-friend">—</strong></span>
+            <span class="ref-arrow" aria-hidden="true">·</span>
+            <span>you earn <strong id="ref-you">—</strong></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── ADVERTISERS — fixed dollar CPM, one sponsored line, moderated
+         inventory. The estimate box mirrors the ECONOMICS split live as the
+         budget/CPM change. The pay CTA is inert in this preview build. -->
+    <section id="advertisers" class="advertisers">
+      <div class="adv-card">
+        <span class="eyebrow">Advertisers</span>
+        <h2>One sponsored line, in front of people who are already AI-native.</h2>
+        <p class="adv-intro">
+          You pay a <strong>fixed dollar CPM by card</strong> — no auctions, no token exposure on your side.
+          Your ad is one line of text with a link, shown while the assistant thinks.
+          Inventory is moderated: <strong>every line is reviewed before it serves.</strong>
+          90% of every dollar you spend is escrowed for the people watching.
+        </p>
+
+        <form class="adform" novalidate>
+          <div class="estimate">
+            <span class="est-head">Your budget</span>
+            <label class="est-budget">
+              <span class="est-budget-prefix">$</span>
+              <input type="number" id="budget" min="100" max="100000" step="1" placeholder="2500" inputmode="numeric" aria-label="Budget" />
+            </label>
+            <span class="est-sub">min $100 · max $100,000</span>
+
+            <div class="field cpmfield est-cpmfield">
+              <span class="flabel">CPM <em>· fixed dollar price per 1,000 sponsored views</em></span>
+              <div class="cpm-slider-wrap">
+                <output class="cpm-bubble" id="cpm-bubble">$15</output>
+                <input type="range" id="cpm" min="5" max="100" step="1" value="15" />
+                <div class="cpm-ticks">
+                  <span>min <strong id="cpm-min-lbl">$5</strong></span>
+                  <span>max <strong id="cpm-max-lbl">$100</strong></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="est-rows">
+              <div class="est-line"><strong id="est-imp">166,666</strong> <span>sponsored views</span></div>
+              <div class="est-line"><strong id="est-escrow">$2,250.00</strong> <span>escrowed to the USDC reserve (90%)</span></div>
+              <div class="est-line"><strong id="est-viewers">$1,125.00</strong> <span>paid to the people watching (50% of the pool)</span></div>
+            </div>
+          </div>
+
+          <label class="field">
+            <span class="flabel">Advertiser email <em>(required)</em></span>
+            <input type="email" name="email" autocomplete="email" placeholder="you@example.com" required />
+          </label>
+
+          <label class="field">
+            <span class="flabel">Ad line · 3–60 char <em class="count" id="adline-count">0 / 60</em></span>
+            <input type="text" id="adline" maxlength="60" placeholder="Try Linear — issue tracking built for speed" />
+          </label>
+
+          <label class="field">
+            <span class="flabel">Destination URL <em>(https:// optional) — where a click on your line goes</em></span>
+            <input type="url" name="url" autocomplete="url" placeholder="https://linear.app/" />
+          </label>
+
+          <label class="field">
+            <span class="flabel">Brand name <em>(optional)</em></span>
+            <input type="text" name="organization" autocomplete="organization" placeholder="Linear" />
+          </label>
+
+          <!-- LIVE PREVIEW — mirrors the pill viewers see while the model thinks -->
+          <div class="field adpreview">
+            <span class="flabel">Live preview <em>· what every viewer sees</em></span>
+            <div class="adpreview-bar">
+              <span class="adpreview-chip" id="prev-chip">Y</span>
+              <span class="adpreview-line" id="prev-line">Your ad here</span>
+              <span class="adpreview-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            </div>
+          </div>
+
+          <!-- One-line campaign summary, just above the pay button -->
+          <div class="adsummary">
+            <span class="adsummary-item"><strong id="sum-budget">$2,500</strong> budget</span>
+            <span class="adsummary-sep" aria-hidden="true">·</span>
+            <span class="adsummary-item"><strong id="sum-cpm">$15.00</strong> CPM</span>
+            <span class="adsummary-sep" aria-hidden="true">·</span>
+            <span class="adsummary-item"><strong id="sum-imp">166,666</strong> views</span>
+          </div>
+
+          <button class="pay-btn" id="pay-btn" type="submit">Pay by card — <span id="pay-amt">$2,500</span></button>
+          <p class="pay-note" id="pay-note">Preview build — checkout opens with the public launch.</p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ── LAUNCH PLAN — the phased-launch statement, facts only. -->
+    <section id="phases" class="trust">
+      <span class="eyebrow">Launch plan</span>
+      <h2>Points now. Token later, under published rules.</h2>
+      <p class="trust-intro">Two phases, stated plainly:</p>
+      <ul class="trust-list">
+        <li><strong>Now.</strong> You earn AIAD points: 1,000 points = $1.00 of earned ad value. Every campaign's $90-per-$100 tranche is escrowed in a USDC reserve, so points are 1:1 dollar-backed.</li>
+        <li><strong>At token launch.</strong> The reserve executes the market buys and points convert to AIAD tokens under published rules. From then on, each new campaign's buy locks that campaign's token rate per view.</li>
+        <li><strong>After launch.</strong> You claim onchain (Base) and can swap AIAD to USDC or withdraw via licensed partners.</li>
+      </ul>
+      <p class="trust-intro">The conversion rules will be published before launch and applied as written. Nothing on this page is a price promise.</p>
+    </section>
+
+    <!-- ── FAQ -->
+    <section id="faq" class="faq">
+      <span class="eyebrow">FAQ</span>
+      <details class="faq-item">
+        <summary class="faq-q">Is this crypto?</summary>
+        <div class="faq-a"><p class="faq-lead">Not yet, and never on the advertiser side. Advertisers pay fixed dollar prices by card. Today you earn <strong>points</strong> backed by escrowed USDC. At token launch, points convert to the AIAD token under published rules and claims move onchain (Base).</p></div>
+      </details>
+      <details class="faq-item">
+        <summary class="faq-q">Do I need a wallet?</summary>
+        <div class="faq-a"><p class="faq-lead">Not today. Points accrue to your AIAD account with no wallet involved. A wallet is only needed at token launch, when you claim onchain — and licensed partners handle the swap to USDC if you just want dollars out.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary class="faq-q">What are points worth?</summary>
+        <div class="faq-a"><p class="faq-lead"><strong>1,000 points = $1.00 of earned ad value.</strong> Every campaign's $90-per-$100 tranche is escrowed in a USDC reserve when the advertiser pays, so points are 1:1 dollar-backed at the moment you earn them.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary class="faq-q">How do I cash out?</summary>
+        <div class="faq-a"><p class="faq-lead">At token launch: points convert to AIAD tokens under the published rules, you claim onchain (Base), and you can swap to USDC or withdraw via licensed partners. Before launch, your balance stays as dollar-backed points in the portal.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary class="faq-q">What happens at token launch?</summary>
+        <div class="faq-a"><p class="faq-lead">The reserve executes the market buys and points convert under rules published ahead of time. From launch onward, each new campaign's buy locks that campaign's token rate per view — the rate you see is the rate you get for those views.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary class="faq-q">Is my earning guaranteed?</summary>
+        <div class="faq-a"><p class="faq-lead">Points you have already earned are matched 1:1 by escrowed USDC. How much you earn depends on how many sponsored views you actually watch — there is no fixed payout, and nothing here is a price promise about the token.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary class="faq-q">What does the advertiser see?</summary>
+        <div class="faq-a"><p class="faq-lead">A fixed dollar CPM, paid by card, for one moderated line of text with a link. Advertisers never touch points or tokens; the earn side is funded from the escrowed 90% of their spend.</p></div>
+      </details>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 AIAD · <a href="portal.html">Portal</a> · <a class="inert" role="link" aria-disabled="true">Terms</a> · <a class="inert" role="link" aria-disabled="true">Privacy</a></p>
+    <p class="fdim">One sponsored line while the model thinks — 90% of every ad dollar to the earn side.</p>
+    <p class="fdim fnote">Not affiliated with Anthropic, OpenAI, or Google.</p>
+  </footer>
+
+  <!-- Preview page. The reserve ticker reads whatever API base is set above via
+       <meta name="aiad-api">; the one developer affordance is the opt-in
+       mock-data mode at ?dev=1 (sticky; ?dev=0 to exit), handled in script.js. -->
+  <script src="script.js"></script>
+</body>
+</html>
