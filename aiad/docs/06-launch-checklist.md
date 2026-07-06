@@ -70,6 +70,32 @@ done.
 12. [ ] Monitoring: CampaignFunded/Claimed indexer lag, root cadence, reserve
         drift alarm, pool depth, failed-swap alerts — all paging.
 
+## Client surfaces (post-demo, pre- or during points launch)
+
+The web portal is the cash-out surface; **earning happens in the clients**.
+All three exist in the parent repo and are forks-and-rebrands, not rewrites —
+their earning logic (impression serve/redeem, dwell, caps) is backend-driven,
+and the only in-client change beyond branding is displaying points (the
+millicent balance *is* the points number).
+
+- [ ] **Backend instance**: fresh Supabase project for AIAD; run the parent
+      `schema.sql` + migrations + doc-04 changes; deploy the edge function
+      with AIAD config (`VIEWER_SHARE_BPS=5000`, `REFERRER_SHARE_BPS=1500`,
+      `TOKEN_MODE=points`). Decision recorded first: parallel brand
+      (separate DB, separate ad inventory) vs. rebrand-in-place (one
+      marketplace) — this checklist assumes parallel.
+- [ ] **Chrome extension**: fork, rebrand (name, icons, popup theme.css =
+      byte-copy of `web/theme.css`, inject.css --ov-* mirror), point
+      `API_BASE` at the AIAD backend, new Chrome Web Store listing (review
+      lead time: days).
+- [ ] **Terminal client**: publish under a new npm package name (`aiad` or
+      similar), rebrand strings + shell-alias block, new `API_BASE`.
+- [ ] **macOS app**: new bundle ID, rebuild, sign, notarize, ship the DMG on
+      AIAD's own releases; wire `/download/mac` in `web/vercel.json` when it
+      exists. (New Apple developer account only if AIAD becomes its own
+      legal entity.)
+- [ ] All clients display "points" with the 1,000 = $1.00 legend.
+
 ## Standing rules after launch
 
 - Fund the Distributor per-epoch, never in bulk.
