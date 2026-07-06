@@ -167,10 +167,13 @@ bar), and the macOS app. Always use it.
    `/redeem?ref=…` referral link previews as), both at the repo root and wired up
    via the OpenGraph/Twitter `<meta>` block in each page's `<head>` — are
    generated the same way: `make og` (`tools/gen-og.mjs`) renders every variant
-   in the `CARDS` list, reading the palette straight from `theme.css`. They share
-   one layout so the brand is unmistakable; only the eyebrow/headline/subhead copy
-   changes per card. Regenerate (and bump the `?v=` cache-bust in the `<meta>`
-   tags) after any palette or pitch change; never hand-edit the PNGs.
+   in the `CARDS` list, reading the palette straight from `theme.css` and the
+   fonts from the woff2 files vendored in `tools/fonts/` (so the render never
+   silently falls back to a system font). The cards are deliberately spare —
+   wordmark, one headline, at most one quiet line of context; the
+   og:description under the image carries the pitch, the picture doesn't repeat
+   it. Regenerate (and bump the `?v=` cache-bust in the `<meta>` tags) after any
+   palette or pitch change; never hand-edit the PNGs.
 
 6. **Next token group.** Radius/shadow values are still inline and not yet
    tokenized — when you first need to share one, add a `--radius-*` / `--shadow-*`

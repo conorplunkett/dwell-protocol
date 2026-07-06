@@ -2,10 +2,9 @@
 //
 // This is the picture every platform (iMessage, Slack, Discord, WhatsApp,
 // Twitter/X, Facebook, LinkedIn, Telegram…) shows when someone pastes a
-// freeai.fyi link. It has one job: make it instantly obvious what the product
-// does. So it leans on the product's own signature metaphor — the "Stock Claude
-// → With FreeAI" before/after spinner from the landing page — plus the one-line
-// pitch and the 50%-back promise.
+// freeai.fyi link. It has one job: state the offer and look like a real brand,
+// not a template. So it's deliberately spare — wordmark, one headline, flat
+// background. The og:description under the image carries the pitch.
 //
 // Like tools/gen-icons.py, this drives a local Chromium (real font rendering)
 // rather than pulling an image toolchain. Colors are read straight from the
@@ -63,149 +62,92 @@ const tok = (name) => {
 };
 
 const C = {
-  accent: tok("--accent"),
   accentD: tok("--accent-d"),
   gradA: tok("--accent-grad-a"),
   gradB: tok("--accent-grad-b"),
-  accentRGB: tok("--accent-rgb"),
   cream: tok("--bg-cream"),
-  tint: tok("--bg-tint"),
   ink: tok("--ink"),
   ink2: tok("--ink-2"),
-  gray: tok("--gray"),
-  gray2: tok("--gray-2"),
-  line: tok("--line"),
-  ovBg: tok("--ov-bar-bg"),
-  ovLine: tok("--ov-line"),
-  ovText: tok("--ov-text"),
-  ovChipBg: tok("--ov-chip-bg"),
-  ovChipInk: tok("--ov-chip-ink"),
 };
 
+const fontData = (file) =>
+  `data:font/woff2;base64,${readFileSync(join(__dirname, "fonts", file)).toString("base64")}`;
+
 // ── The card markup. Fixed at exactly the OpenGraph canonical size, 1200×630
-// (1.91:1). All variants share one layout + palette; only the eyebrow + headline
-// + subhead copy change, so every preview is unmistakably the same product. ──
-const cardHtml = ({ eyebrow, h1, sub, demo = true }) => `<!doctype html><html><head><meta charset="utf-8">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+// (1.91:1). Deliberately spare: flat brand background, the wordmark, one
+// headline, and at most one quiet line of context. The og:description under
+// the image carries the pitch — the picture doesn't have to. ──
+const cardHtml = ({ h1, note, sub }) => `<!doctype html><html><head><meta charset="utf-8">
 <style>
+  /* Fonts are vendored in tools/fonts/ (SIL OFL) and inlined as data: URIs so
+     the render is deterministic and works offline — a Google Fonts fetch here
+     would make og.png depend on the network weather of whoever last ran
+     \`make og\`. Inter-latin.woff2 is the variable font (one file, all weights). */
+  @font-face {
+    font-family: "Inter"; font-style: normal; font-weight: 100 900;
+    src: url("${fontData("Inter-latin.woff2")}") format("woff2");
+  }
+  @font-face {
+    font-family: "JetBrains Mono"; font-style: normal; font-weight: 700;
+    src: url("${fontData("JetBrainsMono-700-latin.woff2")}") format("woff2");
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 1200px; height: 630px; }
   body {
     font-family: "Inter", system-ui, sans-serif;
     color: ${C.ink};
-    background:
-      radial-gradient(1100px 520px at 86% -8%, rgba(${C.accentRGB}, 0.16), transparent 60%),
-      radial-gradient(760px 460px at 4% 116%, rgba(${C.accentRGB}, 0.10), transparent 60%),
-      ${C.cream};
-    position: relative;
+    background: ${C.cream};
     overflow: hidden;
   }
-  /* hairline frame so the card reads as a deliberate object on any chat bg */
-  .frame { position: absolute; inset: 22px; border: 1px solid ${C.line}; border-radius: 28px; }
-  .pad { position: relative; padding: 64px 72px; height: 100%; display: flex; flex-direction: column; }
+  .pad { padding: 76px 84px; height: 100%; display: flex; flex-direction: column; }
 
   .top { display: flex; align-items: center; gap: 16px; }
   .logo {
-    width: 64px; height: 64px; border-radius: 16px;
+    width: 54px; height: 54px; border-radius: 14px;
     background: linear-gradient(160deg, ${C.gradA}, ${C.gradB});
     display: flex; align-items: center; justify-content: center;
-    font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 34px; color: #fff;
-    box-shadow: 0 10px 26px rgba(${C.accentRGB}, 0.34);
+    font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 27px; color: #fff;
   }
-  .wordmark { font-weight: 800; font-size: 30px; letter-spacing: -0.02em; }
-  .domain { margin-left: auto; font-family: "JetBrains Mono", monospace; font-weight: 500;
-    font-size: 19px; color: ${C.accentD}; letter-spacing: 0.02em; }
+  .wordmark { font-weight: 700; font-size: 28px; letter-spacing: -0.02em; }
 
-  .eyebrow { margin-top: 40px; font-family: "JetBrains Mono", monospace; font-size: 17px;
-    font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: ${C.accentD}; }
-  h1 { font-weight: 900; letter-spacing: -0.035em; line-height: 1.02; font-size: 76px; margin-top: 38px; }
-  h1.with-eyebrow { margin-top: 10px; }
-  h1 .pop { color: ${C.accentD}; }
-  .sub { margin-top: 22px; font-size: 27px; line-height: 1.38; color: ${C.ink2}; font-weight: 500; max-width: 880px; }
-  .sub b { color: ${C.ink}; font-weight: 800; }
-
-  .demo { margin-top: auto; display: flex; align-items: center; gap: 18px; }
-  .card { display: flex; flex-direction: column; gap: 12px; }
-  .label { font-family: "JetBrains Mono", monospace; font-size: 15px; font-weight: 700;
-    letter-spacing: 0.12em; text-transform: uppercase; color: ${C.gray}; }
-  .pill {
-    display: inline-flex; align-items: center; gap: 12px; white-space: nowrap;
-    background: ${C.ovBg}; color: ${C.ovText};
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 14px; padding: 16px 22px; font-size: 22px; font-weight: 600;
-    box-shadow: 0 14px 34px rgba(20, 23, 28, 0.20);
-  }
-  .pill .ast { color: ${C.accent}; font-size: 22px; }
-  .pill .dots { color: ${C.gray2}; }
-  .pill .line { color: ${C.ovLine}; }
-  .chip {
-    width: 30px; height: 30px; border-radius: 8px; flex: none;
-    background: ${C.ovChipBg}; color: ${C.ovChipInk};
-    display: flex; align-items: center; justify-content: center;
-    font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 18px;
-  }
-  .arrow { font-size: 40px; color: ${C.accent}; font-weight: 800; align-self: center; margin-top: 18px; }
-
-  /* Demo-less "simple" card: vertically center the headline block instead of
-     anchoring it to the top, so it reads as deliberate, not top-heavy. */
   .mid { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-  .mid .eyebrow, .mid h1 { margin-top: 0; }
-  .mid .eyebrow { margin-bottom: 14px; }
+  .note { font-size: 30px; font-weight: 500; color: ${C.ink2}; margin-bottom: 20px; }
+  h1 { font-weight: 700; letter-spacing: -0.035em; line-height: 1.06; font-size: 92px; max-width: 980px; }
+  h1 .pop { color: ${C.accentD}; }
+  .sub { font-size: 32px; font-weight: 500; color: ${C.ink2}; margin-top: 22px; }
 </style></head>
 <body>
-  <div class="frame"></div>
   <div class="pad">
     <div class="top">
       <div class="logo">F$</div>
       <div class="wordmark">FreeAI.fyi</div>
-      <div class="domain">freeai.fyi</div>
     </div>
-${
-  demo
-    ? `
-    ${eyebrow ? `<div class="eyebrow">${eyebrow}</div>` : ""}
-    <h1 class="${eyebrow ? "with-eyebrow" : ""}">${h1}</h1>
-    <p class="sub">${sub}</p>
-
-    <div class="demo">
-      <div class="card">
-        <div class="label">Stock Claude</div>
-        <div class="pill"><span class="ast">✳</span> Thinking<span class="dots">…</span></div>
-      </div>
-      <div class="arrow">»</div>
-      <div class="card">
-        <div class="label">With FreeAI</div>
-        <div class="pill"><span class="chip">R</span> <span class="line">Ramp · Spend smarter</span></div>
-      </div>
-    </div>`
-    : `
     <div class="mid">
-      ${eyebrow ? `<div class="eyebrow">${eyebrow}</div>` : ""}
+      ${note ? `<p class="note">${note}</p>` : ""}
       <h1>${h1}</h1>
       ${sub ? `<p class="sub">${sub}</p>` : ""}
-    </div>`
-}
+    </div>
   </div>
 </body></html>`;
 
 // Every link-preview image we ship. The default (og.png) is the homepage card;
 // og-referral.png is the invite card a member's referral link
-// (redeem.html?ref=…) previews as — so a shared invite reads as "your free
-// month of Claude" rather than the generic sign-in page.
+// (redeem.html?ref=…) previews as. Note the referral card says "earn" rather
+// than "get" — there's no "your first month is free" mechanic (the old $20
+// referral bonus is retired; a referrer now earns a 10% affiliate cut of what
+// their friend earns, not a gift for the friend). "Earn a free month" stays
+// true: use the AI you already use, credits accrue from ad revenue, and a
+// month of Claude Pro is a real redeemable amount (see the redeem.html plans).
 const CARDS = [
   {
     file: "og.png",
     h1: `Get Claude <span class="pop">for free.</span>`,
-    sub: `A sponsored line shows while <b>ChatGPT, Claude &amp; Gemini</b> think — and <b>50% of the revenue</b> comes back to you as Claude Pro &amp; Max credits.`,
+    sub: "Ads while your AI thinks.",
   },
   {
     file: "og-referral.png",
-    demo: false,
-    eyebrow: "A friend invited you",
-    h1: `Get a <span class="pop">free month</span> of Claude.`,
-    sub: `Free to start — keep using the AI you already use.`,
+    note: "A friend invited you.",
+    h1: `Earn a <span class="pop">free month</span> of Claude.`,
   },
 ];
 
@@ -223,8 +165,11 @@ try {
   });
   for (const card of CARDS) {
     await page.setContent(cardHtml(card), { waitUntil: "networkidle" });
-    // Make sure the web fonts have actually painted before we snapshot.
+    // Make sure the embedded fonts have actually painted before we snapshot —
+    // a DejaVu-fallback card must never ship silently.
     await page.evaluate(() => document.fonts.ready);
+    const interOk = await page.evaluate(() => document.fonts.check('700 20px "Inter"'));
+    if (!interOk) throw new Error("gen-og: Inter did not load — refusing to snapshot a fallback-font card");
     const out = join(root, "web", card.file);
     await page.screenshot({ path: out, clip: { x: 0, y: 0, width: 1200, height: 630 } });
     console.log(`gen-og: wrote ${card.file} (1200×630 @${SCALE}x) → ${out}`);
@@ -235,3 +180,4 @@ try {
 
 // Quiet the unused import lint — pathToFileURL kept for parity with sibling tools.
 void pathToFileURL;
+
