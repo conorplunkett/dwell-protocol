@@ -433,10 +433,10 @@ function createMailer(cfg: any) {
       shell({
         preheader: `${inviterEmail} added you to their FreeAI crew — earn free Claude credits.`,
         hero: "🤝", heading: "Join your friend's FreeAI crew",
-        body: `<p style="margin:0 0 14px;"><strong style="color:#1f1e1d;">${inviterEmail}</strong> is earning free Claude credits with FreeAI and added you to their crew.</p>`
+        body: `<p style="margin:0 0 14px;"><strong style="color:#1f1e1d;">${inviterEmail}</strong> is earning free money while they use AI, and added you to their crew.</p>`
           + `<p style="margin:0 0 14px;">Earn Claude credits as you use ChatGPT, Claude or Gemini.</p>`,
         cta: { href: link, label: "Join the crew" },
-        note: `You keep 100% of what you earn. ${inviterEmail} earns an extra ${Math.round(rewardPct)}% on top — at no cost to you.`,
+        note: `${inviterEmail} earns an extra ${Math.round(rewardPct)}% on top — at no cost to you.`,
       })),
     // Confirmation to the user who just redeemed credits for a Claude gift card
     // (the fulfillment inbox gets its own separate notice above).
