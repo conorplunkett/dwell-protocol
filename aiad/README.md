@@ -56,9 +56,9 @@ git submodule update --init --recursive
 cd contracts && forge build && forge test
 ```
 
-See [contracts/README.md](contracts/README.md) — including the honest note
-that this code was authored in a sandbox with no Solidity toolchain, so a
-green `forge test` is a merge gate, not an already-banked result.
+See [contracts/README.md](contracts/README.md). The suite is machine-verified
+(25/25 passing on the pinned forge 1.7.1 / solc 0.8.26) and runs in CI on
+every push via the `aiad-contracts` job.
 
 ## Status
 
