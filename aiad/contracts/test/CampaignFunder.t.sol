@@ -85,11 +85,11 @@ contract CampaignFunderTest is Test {
         funder.swapAndFund(CAMPAIGN, TRANCHE, minOut, _swapCalldata());
     }
 
-    function test_splitsSixtyFiveThirtyFive() public {
+    function test_splitsSeventyThirty() public {
         _fund(TRANCHE, 45_000e18, 45_000e18); // $90 at $0.002 → 45,000 AIAD
 
-        assertEq(aiad.balanceOf(distributor), 29_250e18); // 65%
-        assertEq(aiad.balanceOf(treasury) - (1_000_000_000e18 - 10_000_000e18), 15_750e18); // 35%
+        assertEq(aiad.balanceOf(distributor), 31_500e18); // 70%
+        assertEq(aiad.balanceOf(treasury) - (1_000_000_000e18 - 10_000_000e18), 13_500e18); // 30%
         assertEq(funder.fundedCampaigns(CAMPAIGN), 45_000e18);
         assertEq(funder.totalUsdcSpent(), TRANCHE);
         assertEq(funder.totalAiadBurned(), 0);
@@ -99,15 +99,15 @@ contract CampaignFunderTest is Test {
 
     function test_burnBpsBurnsTreasurySlice() public {
         vm.prank(owner);
-        funder.setShares(3_500, 2_000); // burn 20% of the treasury leg
+        funder.setShares(3_000, 2_000); // burn 20% of the treasury leg
         uint256 supplyBefore = aiad.totalSupply();
 
         _fund(TRANCHE, 45_000e18, 45_000e18);
 
-        uint256 expectedBurn = (15_750e18 * 2_000) / 10_000;
+        uint256 expectedBurn = (13_500e18 * 2_000) / 10_000;
         assertEq(aiad.totalSupply(), supplyBefore - expectedBurn);
         assertEq(funder.totalAiadBurned(), expectedBurn);
-        assertEq(aiad.balanceOf(distributor), 29_250e18); // distributor leg untouched
+        assertEq(aiad.balanceOf(distributor), 31_500e18); // distributor leg untouched
     }
 
     function test_slippageGuard() public {

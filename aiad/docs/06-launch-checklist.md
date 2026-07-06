@@ -16,7 +16,7 @@ done.
 
 1. [ ] Backend changes from [04-backend-adaptation.md](04-backend-adaptation.md)
        §A–§D implemented in **both** `server/src` and the edge function, with
-       server tests covering the 85/15 split math and the reserve
+       server tests covering the 60/10/30 split math and the reserve
        invariants (`TOKEN_MODE=points`).
 2. [ ] Coinbase business account opened; reserve account segregated;
        withdrawal addresses locked; API keys IP-allowlisted.
@@ -88,7 +88,7 @@ millicent balance *is* the points number).
 
 - [ ] **Backend instance**: fresh Supabase project for AIAD; run the parent
       `schema.sql` + migrations + doc-04 changes; deploy the edge function
-      with AIAD config (`VIEWER_SHARE_BPS=8500`, `REFERRER_SHARE_BPS=1500`,
+      with AIAD config (`VIEWER_SHARE_BPS=6000`, `REFERRER_SHARE_BPS=1000`,
       `TOKEN_MODE=points`). Decision recorded first: parallel brand
       (separate DB, separate ad inventory) vs. rebrand-in-place (one
       marketplace) — this checklist assumes parallel.
