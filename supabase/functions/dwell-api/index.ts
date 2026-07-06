@@ -8,9 +8,9 @@
 // behind a node-postgres-shaped shim so server/src/repo.js transfers almost
 // verbatim (same Pool/client API).
 //
-// Routing: this function is deployed under the slug `api`, so the public base
-// is https://<ref>.supabase.co/functions/v1/api and requests arrive as
-// /api/v1/...  — we strip the slug prefix and route on the original paths.
+// Routing: this function is deployed under the slug `dwell-api`, so the public
+// base is https://<ref>.supabase.co/functions/v1/dwell-api and requests arrive
+// as /dwell-api/v1/...  — we strip the slug prefix and route on the original paths.
 // Deployed with verify_jwt=false: the API does its own auth (web-session
 // tokens, device keys, admin key, OAuth, Stripe signatures), not Supabase JWTs.
 //
@@ -3855,7 +3855,7 @@ route("GET", "/v1/admin/errors", async (ctx: any) => {
 // ─────────────────────────────── dispatch ──────────────────────────────────
 function stripPrefix(pathname: string) {
   let path = pathname.replace(/^\/functions\/v1/, ""); // defensive: platform prefix
-  path = path.replace(/^\/api(?=\/|$)/, "");            // our function slug
+  path = path.replace(/^\/dwell-api(?=\/|$)/, "");      // our function slug
   return path === "" ? "/" : path;
 }
 
