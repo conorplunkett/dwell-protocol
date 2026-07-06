@@ -932,6 +932,18 @@ function enterDashboard(email) {
   loadEarnings("7d");
   retrieveActivity(); // auto-load the ledger so it's ready when the tab opens
   loadGiftCatalog();
+  checkInventory();
+}
+
+// The out-of-inventory notice: /v1/ads is public (no session needed) and
+// returns an empty list whenever the auction has no funded campaign to serve.
+// Mirrors the same check in the extension popup.
+async function checkInventory() {
+  try {
+    const res = await apiGet("/v1/ads");
+    const hasInventory = res.status === 200 && Array.isArray(res.body.ads) && res.body.ads.length > 0;
+    if ($("inventory-notice")) $("inventory-notice").hidden = hasInventory;
+  } catch (_) {}
 }
 
 async function loadGiftCatalog() {

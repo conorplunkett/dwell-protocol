@@ -227,8 +227,10 @@ if ($("signin-btn")) {
   });
 }
 
-// Top-5 of the live bid market.
+// Top-5 of the live bid market. An empty auction gets its own row rather than
+// silently rendering nothing — the out-of-inventory notice above explains why.
 function boardHtml(ads) {
+  if (!ads.length) return `<li class="board-empty">No live ads right now — check back soon.</li>`;
   return ads
     .slice(0, 5)
     .map(
@@ -240,13 +242,23 @@ function boardHtml(ads) {
     .join("");
 }
 function renderBoard() {
+  // Instant paint from the bundled demo list — refreshBoard() below always
+  // overwrites this with the real (possibly empty) auction result, so this is
+  // only ever visible for the instant before that message round-trip resolves.
   $("board").innerHTML = boardHtml(self.BB_ADS || []);
 }
+function setInventoryNotice(hasInventory) {
+  const el = $("inventory-notice");
+  if (el) el.hidden = hasInventory;
+}
 // Pull live inventory from the background (auction-backed) so the board mirrors
-// what the injected bar would actually show; fall back to the bundled list.
+// what the injected bar would actually show — and always reflects reality, even
+// when the auction is empty, since that also drives the out-of-inventory notice.
 async function refreshBoard() {
   const ads = await send({ type: "BB_GET_ADS" });
-  if (Array.isArray(ads) && ads.length) $("board").innerHTML = boardHtml(ads);
+  const list = Array.isArray(ads) ? ads : [];
+  $("board").innerHTML = boardHtml(list);
+  setInventoryNotice(list.length > 0);
 }
 
 $("enabled").addEventListener("change", async (e) => {

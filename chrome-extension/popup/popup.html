@@ -20,6 +20,15 @@
     </label>
   </header>
 
+  <!-- Out-of-inventory notice — shown only when the live auction has nothing to
+       serve (real ads paused, not Test Mode). Hidden by default so there's no
+       flash before the first /v1/ads check resolves; see refreshBoard() in
+       popup.js. Text mirrors the web dashboard's #inventory-notice. -->
+  <div class="notice" id="inventory-notice" hidden>
+    <span class="notice-ico" aria-hidden="true">⏳</span>
+    <span class="notice-text">We're out of ad inventory right now — check back tomorrow. Test Mode below still works for trying out the ad experience.</span>
+  </div>
+
   <!-- HERO — the fuel ring is the product: credits earned toward a free month -->
   <section class="hero">
     <div class="ring">
