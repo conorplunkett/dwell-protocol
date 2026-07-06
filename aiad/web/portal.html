@@ -19,16 +19,15 @@
       }
     } catch (e) {}
   </script>
-  <!-- Production API for login, earnings, and points. Shared flows (login,
-       earnings, activity) reuse the freeai.fyi backend paths unchanged. -->
+  <!-- Production API for login, earnings, and activity. In dev mode (?dev=1)
+       portal.js never calls it — every view renders from seeded mock data. -->
   <meta name="aiad-api" content="https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/api" />
-  <title>AIAD — Sign in to your earnings portal</title>
-  <meta name="description" content="Sign in to see your AIAD points — earned ad value from the sponsored line, 1,000 points = $1.00, backed 1:1 by a USDC reserve." />
+  <title>AIAD — Portal</title>
+  <meta name="description" content="Sign in to see your AIAD points — earned ad value from the sponsored line. 1,000 points = $1.00, backed 1:1 by a USDC reserve." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="theme.css" />
-  <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="portal.css" />
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 </head>
@@ -50,26 +49,26 @@
     <!-- LEFT — hero / brand -->
     <div class="portal-left">
       <header class="portal-nav">
-        <a class="brand" href="/">
+        <a class="brand" href="index.html">
           <span class="logo">A$</span>
           <span class="brand-name">AIAD</span>
         </a>
         <nav class="portal-nav-links">
-          <a href="/">Home</a>
+          <a href="index.html">Home</a>
         </nav>
       </header>
 
       <div class="portal-hero">
         <h1 class="portal-h1">Sign in to see your AIAD points.</h1>
         <p class="portal-lead">
-          Your private dashboard shows points credited, their earned ad value,
-          and recent activity from the extension. 1,000 points = $1.00 of
-          earned ad value, backed 1:1 by a USDC reserve.
+          Your private dashboard shows points credited while your AI assistant
+          was thinking, their earned ad value, and recent activity.
+          1,000 points = $1.00 of earned ad value, backed 1:1 by a USDC reserve.
         </p>
       </div>
 
       <footer class="portal-footer">
-        <span>AIAD user portal</span>
+        <span>AIAD portal</span>
         <span>1,000 points = $1.00 of earned ad value</span>
       </footer>
     </div>
@@ -80,7 +79,7 @@
 
         <p class="auth-referral-note" id="referral-note" hidden></p>
 
-        <!-- Step 1: Google + email magic link -->
+        <!-- Step 1: Google / Apple + email magic link -->
         <div id="auth-step-providers">
           <a class="auth-btn-provider" id="google-btn" href="#">
             <svg class="provider-icon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -90,6 +89,12 @@
               <path fill="currentColor" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
             </svg>
             Continue with Google
+          </a>
+          <a class="auth-btn-provider auth-btn-apple" id="apple-btn" href="#">
+            <svg class="provider-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path fill="currentColor" d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.56-1.702z"/>
+            </svg>
+            Continue with Apple
           </a>
 
           <div class="auth-divider"><span>Sign in with email</span></div>
@@ -104,7 +109,7 @@
             class="auth-input"
             type="text"
             id="referral-code"
-            placeholder="Affiliate code (optional)"
+            placeholder="Referral code (optional)"
             autocomplete="off"
             maxlength="16"
           />
@@ -143,12 +148,12 @@
     <!-- LEFT — hero / brand -->
     <div class="portal-left">
       <header class="portal-nav">
-        <a class="brand" href="/">
+        <a class="brand" href="index.html">
           <span class="logo">A$</span>
           <span class="brand-name">AIAD</span>
         </a>
         <nav class="portal-nav-links">
-          <a href="/">Home</a>
+          <a href="index.html">Home</a>
         </nav>
       </header>
 
@@ -161,7 +166,7 @@
       </div>
 
       <footer class="portal-footer">
-        <span>AIAD user portal</span>
+        <span>AIAD portal</span>
         <span>1,000 points = $1.00 of earned ad value</span>
       </footer>
     </div>
@@ -228,28 +233,28 @@
     <!-- LEFT — hero / brand -->
     <div class="portal-left">
       <header class="portal-nav">
-        <a class="brand" href="/">
+        <a class="brand" href="index.html">
           <span class="logo">A$</span>
           <span class="brand-name">AIAD</span>
         </a>
         <nav class="portal-nav-links">
-          <a href="/">Home</a>
+          <a href="index.html">Home</a>
         </nav>
       </header>
 
       <div class="portal-hero">
-        <h1 class="portal-h1">Build your crew to start earning.</h1>
+        <h1 class="portal-h1">Invite friends to start earning.</h1>
         <p class="portal-lead">
-          AIAD grows by word of mouth. Invite friends to your crew and you earn
-          15% of their earnings in AIAD points — the referrer share carved from
-          each campaign's pool (viewer 50%, referrer 15%, protocol 35%), not a
-          bonus on top of theirs. Invite two to unlock your dashboard; a valid
-          email is all it takes to get you started.
+          AIAD grows by word of mouth. You earn 15% of every friend's earnings,
+          forever — the referrer share carved from each campaign's pool
+          (viewer 50%, referrer 15%, protocol 35%), never deducted from their
+          50%. Invite two to unlock your dashboard; a valid email is all it
+          takes to get started.
         </p>
       </div>
 
       <footer class="portal-footer">
-        <span>AIAD user portal</span>
+        <span>AIAD portal</span>
         <span>1,000 points = $1.00 of earned ad value</span>
       </footer>
     </div>
@@ -258,8 +263,8 @@
     <div class="portal-right">
       <div class="auth-card">
         <div class="auth-sent-icon">🤝</div>
-        <h2 class="onboard-title">Invite two to your crew</h2>
-        <p class="auth-sent-msg">Send two crew invites to open your earnings dashboard — you earn 15% of their earnings, carved from each campaign's pool.</p>
+        <h2 class="onboard-title">Invite two friends</h2>
+        <p class="auth-sent-msg">Send two invites to open your earnings dashboard — you earn 15% of their earnings, carved from each campaign's pool.</p>
 
         <form id="onboard-form">
           <input
@@ -281,13 +286,13 @@
             aria-label="Second friend's email"
           />
           <button class="auth-btn-primary" id="onboard-btn" type="submit">
-            Send crew invites &amp; continue
+            Send invites &amp; continue
           </button>
         </form>
 
         <p class="auth-referral-note">
           Their emails just need to be valid — they don't have to sign up for you
-          to continue. When they join your crew, you earn 15% of their earnings,
+          to continue. When they join, you earn 15% of their earnings, forever,
           carved from each campaign's pool — never deducted from their 50%.
         </p>
         <p class="auth-error" id="onboard-error" hidden></p>
@@ -298,65 +303,68 @@
 
 
   <!-- ══════════════════════════════════════════════════
-       AUTHENTICATED PAGE (shown when signed in)
+       AUTHENTICATED PORTAL (shown when signed in)
   ══════════════════════════════════════════════════ -->
-  <div id="redeem-page" hidden>
+  <div id="portal-page" hidden>
 
     <header class="nav dash-nav">
-      <a class="brand" href="/">
+      <a class="brand" href="index.html">
         <span class="logo">A$</span>
         <span class="brand-name">AIAD</span>
+        <span class="brand-sub">— Portal</span>
       </a>
       <div class="dash-account">
         <button class="wallet-chip" id="wallet-chip" type="button">
           <span class="wallet-dot" aria-hidden="true"></span>
-          Wallet: available at token launch
+          Wallet · at token launch
         </button>
-        <a href="/" class="dash-account-link">Home</a>
+        <a href="index.html" class="dash-account-link dash-home">Home</a>
         <button class="dash-account-link dash-signout" id="signout" type="button">Sign out</button>
       </div>
     </header>
 
     <!-- Primary section nav — one active view at a time. -->
-    <nav class="dash-tabs" id="dash-tabs" role="tablist" aria-label="Dashboard sections">
+    <nav class="dash-tabs" id="dash-tabs" role="tablist" aria-label="Portal sections">
       <button class="dash-tab active" data-section="earnings" type="button" role="tab" aria-selected="true">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M17 8h4v4"/></svg></span>
         <span class="dash-tab-label">Earnings</span>
+      </button>
+      <button class="dash-tab" data-section="activity" type="button" role="tab" aria-selected="false">
+        <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12"/><path d="M8 12h12"/><path d="M8 18h12"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg></span>
+        <span class="dash-tab-label">Activity</span>
+      </button>
+      <button class="dash-tab" data-section="cashout" type="button" role="tab" aria-selected="false">
+        <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M3.5 10h17"/><path d="M7 14.5h4"/></svg></span>
+        <span class="dash-tab-label">Cash out</span>
       </button>
       <button class="dash-tab" data-section="referrals" type="button" role="tab" aria-selected="false">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.5"/><path d="M17.5 19a5 5 0 0 0-3-4.6"/></svg></span>
         <span class="dash-tab-label">Referrals</span>
       </button>
-      <button class="dash-tab" data-section="ledger" type="button" role="tab" aria-selected="false">
-        <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12"/><path d="M8 12h12"/><path d="M8 18h12"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg></span>
-        <span class="dash-tab-label">Ledger</span>
-      </button>
-      <button class="dash-tab" data-section="redeem" type="button" role="tab" aria-selected="false">
-        <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M3.5 10h17"/><path d="M7 14.5h4"/></svg></span>
-        <span class="dash-tab-label">Cash out</span>
-      </button>
       <button class="dash-tab" data-section="install" type="button" role="tab" aria-selected="false">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4.5 20.5h15"/></svg></span>
-        <span class="dash-tab-label">Installation</span>
+        <span class="dash-tab-label">Install</span>
       </button>
     </nav>
 
-    <main class="redeem">
-      <section class="redeem-card" id="earnings-view">
+    <main class="portal-main">
+      <!-- ── EARNINGS ── -->
+      <section class="portal-card" id="earnings-view">
         <div class="balance-row">
           <div>
             <span class="eyebrow">AIAD points balance</span>
-            <div class="balance" id="balance">0</div>
+            <div class="balance" id="balance">0 <span class="balance-unit">points</span></div>
             <div class="balance-sub" id="balance-usd">= $0.00 of earned ad value</div>
             <div class="balance-sub" id="balance-email"></div>
           </div>
         </div>
 
         <h2 class="earn-title">How much you've earned with AIAD</h2>
-        <p class="redeem-lead">
-          Every sponsored line the extension shows credits you the viewer's 50%
-          share of that campaign's pool as AIAD points. 1,000 points = $1.00 of
-          earned ad value, backed 1:1 by the USDC reserve.
+        <p class="portal-copy">
+          Each sponsored line you watch while your AI assistant thinks credits
+          you the viewer's 50% share of that campaign's pool in AIAD points.
+          1,000 points = $1.00 of earned ad value, backed 1:1 by the USDC
+          reserve.
         </p>
 
         <div class="earn-stats">
@@ -381,7 +389,7 @@
           <div class="ecc-head">
             <div>
               <h3 class="ecc-title">Earnings activity</h3>
-              <p class="ecc-sub">Earned ad value grouped over the selected window.</p>
+              <p class="ecc-sub">Points credited over the selected window.</p>
             </div>
             <div class="earn-window" id="earn-window" role="group" aria-label="Chart window">
               <button class="ew-btn" data-window="24h" type="button">24h</button>
@@ -390,7 +398,7 @@
             </div>
           </div>
           <div class="earn-chart" id="earn-chart"><!-- SVG drawn by portal.js --></div>
-          <p class="earn-chart-foot" id="earn-chart-foot">$0.00 across 0 events</p>
+          <p class="earn-chart-foot" id="earn-chart-foot">0 points across 0 events</p>
         </div>
 
         <div class="earn-surfaces-card">
@@ -416,13 +424,14 @@
         </div>
       </section>
 
-      <section class="redeem-card" id="activity-view">
+      <!-- ── ACTIVITY LEDGER ── -->
+      <section class="portal-card" id="activity-view">
         <div class="act-head">
           <div>
             <span class="eyebrow">Activity ledger</span>
-            <h2 class="earn-title">Your credited events</h2>
-            <p class="redeem-lead">
-              Points entries from this account, retrieved on demand. Search and
+            <h2 class="earn-title">Your points entries</h2>
+            <p class="portal-copy">
+              Ledger entries from this account, retrieved on demand. Search and
               filter happen locally on the retrieved rows.
             </p>
           </div>
@@ -431,11 +440,11 @@
 
         <div class="act-controls">
           <input type="text" id="act-search" class="act-search"
-                 placeholder="Search advertiser, entry id, entry type…" disabled />
+                 placeholder="Search sponsor, entry id, entry type…" disabled />
           <select id="act-filter" class="act-filter" disabled>
             <option value="all">All entries</option>
-            <option value="points_credit">Points credits</option>
-            <option value="referral_points_credit">Referral points</option>
+            <option value="points_credit">Sponsored lines</option>
+            <option value="referral_points_credit">Referral share</option>
             <option value="token_claim_debit">Token claims</option>
           </select>
           <span class="act-count" id="act-count">0 of 0 rows</span>
@@ -450,17 +459,18 @@
         <div class="act-pager" id="act-pager" hidden></div>
       </section>
 
-      <section class="redeem-card" id="redeem-view">
+      <!-- ── CASH OUT ── -->
+      <section class="portal-card" id="cashout-view" hidden>
         <div class="balance-row">
           <div>
             <span class="eyebrow">Your points</span>
-            <div class="balance" id="co-points">0</div>
+            <div class="balance" id="co-points">0 <span class="balance-unit">points</span></div>
             <div class="balance-sub" id="co-usd">= $0.00 of earned ad value</div>
           </div>
         </div>
 
         <h2>Cash out</h2>
-        <p class="redeem-lead">
+        <p class="portal-copy">
           AIAD points are earned ad value — 1,000 points = $1.00, backed 1:1 by
           USDC held in the reserve. Cashing out opens at token launch; until
           then your points accrue here and stay recorded on the ledger.
@@ -493,37 +503,45 @@
           </div>
           <ol class="lp-steps">
             <li><strong>Claim AIAD to your wallet.</strong> Your points convert to
-              AIAD tokens at the published launch rate — into an email-based wallet
-              created for you, or one you connect yourself.</li>
+              AIAD tokens under the published rules; the claim happens onchain, on
+              Base — into an email-based wallet created for you, or one you
+              connect yourself.</li>
             <li><strong>Swap to USDC.</strong> One step inside the portal swaps
               claimed AIAD for USDC.</li>
             <li><strong>Withdraw.</strong> Move USDC to your bank account through a
               licensed partner.</li>
           </ol>
-          <p class="lp-foot">Nothing to do today — your points and the USDC reserve backing them are already recorded.</p>
         </div>
+
+        <!-- (c) Factual note on transferability + backing. -->
+        <p class="cashout-note">
+          AIAD points are non-transferable until token launch and are 1:1
+          dollar-backed by USDC held in the reserve. Nothing to do today — your
+          points and the reserve backing them are already recorded.
+        </p>
       </section>
 
-      <section class="redeem-card" id="referrals-view" hidden>
-        <!-- Affiliate: every signed-in earner is auto-enrolled at the protocol's
-             15% referrer share (self-serve, no application). The form below is
-             the partner upgrade — apply for uncapped referrals + a custom link. -->
+      <!-- ── REFERRALS ── -->
+      <section class="portal-card" id="referrals-view" hidden>
+        <!-- Every signed-in earner is auto-enrolled at the protocol's 15%
+             referrer share (self-serve, no application). The form below is the
+             partner upgrade — apply for uncapped referrals + a custom link. -->
         <div class="affiliate-block" id="affiliate-block" hidden>
-          <h2>Earn with your crew</h2>
-          <p class="redeem-lead">
-            You earn <strong id="aff-pct">15%</strong> of the earnings of everyone who
-            joins with your link — credited as AIAD points, for up to
+          <h2>Earn from referrals</h2>
+          <p class="portal-copy">
+            You earn <strong id="aff-pct">15%</strong> of every friend's earnings,
+            forever — credited as AIAD points, for up to
             <span id="aff-cap">1,000 friends</span>. That 15% is the referrer share
-            carved from each campaign's pool (viewer 50%, referrer 15%, protocol 35%),
-            not a bonus on top — and never deducted from your friends' 50%.
+            carved from each campaign's pool (viewer 50%, referrer 15%,
+            protocol 35%) — never deducted from your friends' 50%.
           </p>
 
-          <!-- Auto-enrolled: shareable link + stats (shown to everyone). -->
+          <!-- Auto-enrolled: your code + shareable link + stats. -->
           <div class="aff-approved" id="aff-approved" hidden>
-            <h3 class="ref-invite-h">Your affiliate link</h3>
+            <h3 class="ref-invite-h">Your referral code</h3>
             <div class="ref-link-row">
-              <input type="text" id="aff-link" readonly aria-label="Your affiliate link" />
-              <button class="btn-green" id="aff-copy" type="button">Copy link</button>
+              <input type="text" id="aff-link" readonly aria-label="Your referral link" />
+              <button class="btn-accent" id="aff-copy" type="button">Copy link</button>
             </div>
             <div class="ref-stats">
               <div class="ref-stat">
@@ -539,21 +557,26 @@
                 <span class="rs-label">friends remaining</span>
               </div>
             </div>
+
+            <h3 class="ref-invite-h">Your friends</h3>
+            <div class="fr-table" id="ref-friends">
+              <p class="ref-empty">No friends joined yet — share your link above.</p>
+            </div>
           </div>
 
-          <!-- Retroactively attach someone else's affiliate code. -->
+          <!-- Retroactively attach someone else's referral code. -->
           <div class="aff-have-code" id="aff-have-code" hidden>
-            <h3 class="ref-invite-h">Have an affiliate code?</h3>
+            <h3 class="ref-invite-h">Have a referral code?</h3>
             <form class="ref-invite-row" id="aff-code-form">
               <input
                 type="text"
                 id="aff-code-input"
                 class="auth-input"
-                placeholder="AFFILIATE CODE"
+                placeholder="REFERRAL CODE"
                 autocomplete="off"
-                aria-label="Affiliate code"
+                aria-label="Referral code"
               />
-              <button class="btn-green" id="aff-code-btn" type="submit">Apply code</button>
+              <button class="btn-accent" id="aff-code-btn" type="submit">Apply code</button>
             </form>
             <p class="ref-invite-msg" id="aff-code-msg" hidden></p>
           </div>
@@ -563,7 +586,7 @@
           <div class="aff-upgrade aff-upgrade-box" id="aff-upgrade" hidden>
             <form class="aff-apply" id="aff-apply-form">
               <h3 class="ref-invite-h">Want to join the partner program?</h3>
-              <p class="aff-hint">Apply for <strong>uncapped</strong> referrals and a custom affiliate link. The referrer share stays the same <strong>15%</strong> of each friend's campaign pool.</p>
+              <p class="aff-hint">Apply for <strong>uncapped</strong> referrals and a custom link. The referrer share stays the protocol's <strong>15%</strong> of each friend's campaign pool.</p>
               <div class="aff-row">
                 <input type="text" id="aff-ig" class="auth-input" placeholder="Instagram @handle" autocomplete="off" />
                 <input type="number" min="0" id="aff-ig-f" class="auth-input aff-followers" placeholder="Followers" autocomplete="off" />
@@ -576,24 +599,25 @@
                 <input type="text" id="aff-tw" class="auth-input" placeholder="Twitter / X @handle" autocomplete="off" />
                 <input type="number" min="0" id="aff-tw-f" class="auth-input aff-followers" placeholder="Followers" autocomplete="off" />
               </div>
-              <button class="btn-green" id="aff-apply-btn" type="submit">Apply for the partner program</button>
+              <button class="btn-accent" id="aff-apply-btn" type="submit">Apply for the partner program</button>
               <p class="ref-invite-msg" id="aff-apply-msg" hidden></p>
             </form>
           </div>
 
           <!-- Upgrade requested (socials submitted, awaiting review). -->
           <div class="aff-status" id="aff-upgrade-requested" hidden>
-            <p class="redeem-lead">✅ Upgrade requested — we'll review your socials and email you about your partner plan.</p>
+            <p class="portal-copy">✅ Upgrade requested — we'll review your socials and email you about your partner plan.</p>
           </div>
 
           <!-- Upgrade granted (uncapped partner plan). -->
           <div class="aff-status" id="aff-upgrade-granted" hidden>
-            <p class="redeem-lead">🎉 You're on a partner plan — <strong id="aff-custom-pct">15%</strong> referrer share, uncapped friends.</p>
+            <p class="portal-copy">🎉 You're on a partner plan — <strong id="aff-custom-pct">15%</strong> referrer share, uncapped friends.</p>
           </div>
         </div>
       </section>
 
-      <section class="redeem-card" id="install-view" hidden>
+      <!-- ── INSTALL ── -->
+      <section class="portal-card" id="install-view" hidden>
         <!-- "Active" status — a greyed A$ logo that fills into the colored logo
              the moment this account earns its first AIAD points from any service.
              Per-service activation comes from GET /v1/web/sources (see portal.js). -->
@@ -606,9 +630,10 @@
         </div>
 
         <h3 class="install-h">Set up AIAD</h3>
-        <p class="redeem-lead">
-          Each logo turns from grey to color once you earn your first AIAD
-          points from that service.
+        <p class="portal-copy">
+          Earning is in AIAD points, wherever you use your assistant. Each logo
+          turns from grey to color once you earn your first points from that
+          service.
         </p>
 
         <div class="install-list" id="install-list">
@@ -619,7 +644,7 @@
                 <span class="ic-name">Chrome extension</span>
                 <span class="ic-sub">Most popular · works in ChatGPT, Claude &amp; Gemini</span>
               </span>
-              <a class="ic-link" href="https://freeai.fyi/products">Install guide →</a>
+              <a class="ic-link" href="index.html">Install guide →</a>
             </div>
             <div class="install-active">
               <span class="logo is-inactive" data-active="chrome" aria-hidden="true">A$</span>
@@ -627,14 +652,14 @@
             </div>
           </div>
 
-          <!-- 02 · Claude Code -->
+          <!-- 02 · Terminal -->
           <div class="install-row" data-product="claude_code">
             <div class="survey-opt install-check" data-product="claude_code" aria-checked="false">
               <span class="ic-text">
-                <span class="ic-name">Claude Code</span>
+                <span class="ic-name">Terminal</span>
                 <span class="ic-sub">A reversible <code>claude</code> alias for your terminal</span>
               </span>
-              <a class="ic-link" href="https://freeai.fyi/products">Install guide →</a>
+              <a class="ic-link" href="index.html">Install guide →</a>
             </div>
             <div class="install-active">
               <span class="logo is-inactive" data-active="claude_code" aria-hidden="true">A$</span>
@@ -649,7 +674,7 @@
                 <span class="ic-name">Desktop app</span>
                 <span class="ic-sub">macOS overlay for Claude &amp; ChatGPT Desktop · macOS 13+</span>
               </span>
-              <a class="ic-link" href="https://freeai.fyi/download/mac">Download .dmg →</a>
+              <a class="ic-link" href="index.html">Download →</a>
             </div>
             <div class="install-active">
               <span class="logo is-inactive" data-active="desktop" aria-hidden="true">A$</span>
@@ -661,16 +686,16 @@
     </main>
 
     <!-- Reserve strip — points-phase accounting, in one line. Fed by
-         GET /v1/web/points/summary with a mock fallback (see portal.js). -->
+         GET /v1/web/points/summary with a seeded mock fallback (see portal.js). -->
     <div class="reserve-strip">
-      <span class="reserve-pill">Reserve: <strong id="reserve-usd">$0</strong> USDC escrowed · <strong id="reserve-points">0</strong> points outstanding</span>
+      <span class="reserve-pill">Reserve <strong id="reserve-usd">$48,120</strong> USDC · <strong id="reserve-points">3,912,400</strong> points outstanding</span>
     </div>
 
     <footer class="footer">
-      <p>© 2026 AIAD · 1,000 points = $1.00 of earned ad value</p>
+      <p>© 2026 AIAD · 1,000 points = $1.00 of earned ad value · Points are non-transferable until token launch</p>
     </footer>
 
-  </div><!-- /redeem-page -->
+  </div><!-- /portal-page -->
 
   <!-- ══════════════════════════════════════════════════
        WALLET MODAL (mock — opened from the header chip).
@@ -681,7 +706,7 @@
       <h3 class="modal-title" id="wallet-modal-title">Wallets arrive at token launch</h3>
       <p class="modal-body">
         There's nothing to connect yet. When the AIAD token launches, this chip
-        becomes your wallet — three ways to hold it:
+        becomes your wallet — claims happen onchain, on Base:
       </p>
       <ul class="modal-list">
         <li><strong>Email-based</strong> — a wallet created from the email you sign in with; no seed phrase to manage.</li>
@@ -692,7 +717,7 @@
         Until launch, points accrue to your account and are backed 1:1 by the
         USDC reserve.
       </p>
-      <button class="btn-green" id="wallet-modal-close" type="button">Got it</button>
+      <button class="btn-accent" id="wallet-modal-close" type="button">Got it</button>
     </div>
   </div>
 
