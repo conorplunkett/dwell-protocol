@@ -1,0 +1,135 @@
+/* DWELL — universal design tokens. THE CENTRAL THEME FILE and the single
+ * source of truth for every color, font, radius, shadow, and layout constant
+ * across every DWELL surface: landing page, portal, extension popup (byte-copy),
+ * injected sponsor bar (--ov-* mirror), and the macOS app (Palette mirror).
+ *
+ * Brand: "Kinetic Broadcast" (docs/brand.md) — a high-energy, content-first
+ * light mode. Vibrant red on pure white with near-black ink; depth comes from
+ * 1px borders and tonal separation, not shadows; Sora everywhere, JetBrains
+ * Mono for protocol/metadata. Vaguely-YouTube by intent: white gallery
+ * surfaces, red reserved for high-priority actions and live indicators,
+ * broadcast blue for links.
+ *
+ * EDIT HERE. Change a value in this file and every surface follows — except
+ * the hand-mirrored ones listed in AGENTS.md ▸ Design System (extension
+ * popup/theme.css byte-copy, inject.css --ov-* block, macOS Palette +
+ * onboarding tokens.css), which must be updated in the same commit.
+ * Hard rule: never hardcode a color or font-family outside this file.
+ */
+:root {
+  /* ── Brand / accent — DWELL red. Actions, brand marks, live indicators ── */
+  --accent: #ff0000;            /* primary red — buttons, brand, "live" */
+  --accent-d: #bc0100;          /* darker red — text-on-white accents, hover */
+  --accent-grad-a: #ff0000;     /* brand-mark gradient (icons read these) */
+  --accent-grad-b: #c00100;
+  --accent-rgb: 255, 0, 0;      /* --accent as channels, for rgba() tints */
+  --accent-ink: #ffffff;        /* red buttons carry white text */
+  --link: #065fd4;              /* broadcast blue — links / secondary highlights */
+
+  /* ── Surfaces — pure white, tonal separation over shadows ── */
+  --bg-cream: #ffffff;          /* page canvas (name kept for drop-in porting) */
+  --bg-tint: #f9f9f9;           /* alternating section band */
+  --card-dark: #ffffff;         /* raised cards — white, defined by --line borders */
+  --card-dark-2: #f3f3f4;       /* nested / inset tiles */
+  --surface-inset: #f9f9f9;     /* faintly inset tiles (stat cards) */
+
+  /* ── Ink & neutrals ── */
+  --ink: #0f0f0f;               /* primary text */
+  --ink-2: #282828;             /* strong secondary */
+  --gray: #606060;              /* secondary text — dark charcoal */
+  --gray-2: #909090;            /* disabled / faint only, never body text */
+  --line: #eeeeee;              /* hairlines — the 1px container borders */
+  --border-strong: #cccccc;     /* heavier hairline (inputs, hover borders) */
+
+  /* ── Fonts — Sora carries every level; mono keeps the protocol feel ── */
+  --sans: "Sora", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── Type scale (docs/brand.md ▸ Typography) ── */
+  --type-display-size: 48px;  --type-display-lh: 56px;  --type-display-weight: 800; --type-display-track: -0.02em;
+  --type-headline-size: 32px; --type-headline-lh: 40px; --type-headline-weight: 700; --type-headline-track: -0.01em;
+  --type-headline-mobile-size: 24px; --type-headline-mobile-lh: 32px;
+  --type-title-size: 20px;    --type-title-lh: 28px;    --type-title-weight: 600;
+  --type-body-lg-size: 16px;  --type-body-lg-lh: 24px;
+  --type-body-size: 14px;     --type-body-lh: 20px;
+  --type-label-size: 12px;    --type-label-lh: 16px;    --type-label-weight: 600; --type-label-track: 0.05em;
+
+  /* ── Layout rhythm (docs/brand.md ▸ Layout & Spacing) ── */
+  --space-unit: 4px;
+  --gutter: 16px;
+  --margin-mobile: 16px;
+  --margin-desktop: 24px;
+  --max-width: 1280px;
+
+  /* ── Overlay / sponsor palette — the dark pill shown while the assistant is
+   * thinking. Stays dark (it floats over third-party pages); tag tints carry
+   * the DWELL red. Mirrored by hand in inject.css + the macOS Palette. */
+  --ov-bar-bg: rgba(15, 15, 15, 0.92);
+  --ov-bar-bg-hover: rgba(26, 26, 26, 0.96);
+  --ov-bar-border: rgba(255, 255, 255, 0.08);
+  --ov-text: #f1f1f1;           /* bar default text */
+  --ov-line: #ffffff;           /* primary sponsor line */
+  --ov-dots: #aaaaaa;           /* dismiss / dots tint */
+  --ov-chip-bg: #ff0000;        /* sponsor-initial chip background */
+  --ov-chip-ink: #ffffff;       /* sponsor-initial chip text */
+  --ov-tag-bg: rgba(255, 0, 0, 0.2);
+  --ov-tag-text: #ff9d94;
+  --ov-tag-bg-test: rgba(255, 0, 0, 0.32);
+  --ov-tag-text-test: #ffb4a8;
+  --ov-test-border: rgba(255, 0, 0, 0.4);
+  --ov-demo-line: #f1f1f1;      /* landing-page before/after demo line color */
+
+  /* ── Semantic status — functional state colors (NOT brand). Success is a
+   * functional green; error is the system red (distinct from brand red by
+   * tone); warn an amber. Values tuned for the white canvas. ── */
+  --ok-bg: rgba(26, 127, 55, 0.08);
+  --ok-fg: #1a7f37;
+  --ok-line: rgba(26, 127, 55, 0.35);
+  --err-bg: rgba(186, 26, 26, 0.08);
+  --err-fg: #ba1a1a;
+  --err-line: rgba(186, 26, 26, 0.35);
+  --warn-bg: rgba(154, 103, 0, 0.08);
+  --warn-fg: #9a6700;
+  --warn-line: rgba(154, 103, 0, 0.35);
+
+  /* ── Legacy aliases — rules ported from the parent design system recolor
+   * via these. Prefer the semantic names above for new styles. ── */
+  --green: var(--accent);
+  --green-d: var(--accent-d);
+  --green-grad-a: var(--accent-grad-a);
+  --green-grad-b: var(--accent-grad-b);
+  --green-a: var(--accent-grad-a);
+  --green-b: var(--accent-grad-b);
+  --blue: var(--link);
+  --stripe: #635bff;   /* Stripe brand purple — intentionally off-palette; only the "Pay with Stripe" checkout button uses it */
+  --orange: var(--accent);
+
+  /* ── Radius — Soft (docs/brand.md ▸ Shapes): 4px standard, 8px feature
+   * cards, media containers near-sharp. Names kept from the parent system. ── */
+  --radius-xs: 2px;     /* chips, inline code, media edges */
+  --radius-sm: 4px;     /* buttons, logo, inputs */
+  --radius-md: 4px;     /* inputs, nav cards, stat tiles */
+  --radius-lg: 6px;     /* terminal, estimate box */
+  --radius-xl: 8px;     /* feature cards, install card, list rows */
+  --radius-2xl: 8px;    /* auth card */
+  --radius-3xl: 12px;   /* hero / advertiser / redeem cards */
+  --radius-pill: 999px; /* search bar, badges, status pills */
+
+  /* ── Depth — segmentation over shadows (docs/brand.md ▸ Elevation). Resting
+   * elements rely on --line borders; only active/hovered elements lift with a
+   * soft high-diffusion shadow. ── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);              /* big cards rest nearly flat */
+  --shadow-dark: 0 2px 8px rgba(0, 0, 0, 0.08);              /* demo / install cards */
+  --shadow-accent: 0 8px 24px -12px rgba(var(--accent-rgb), 0.4); /* red CTA lift */
+  --shadow-logo: 0 1px 4px rgba(var(--accent-rgb), 0.3);     /* "D$" brand mark */
+
+  /* Segmented-control nav: a link segment lifts on hover, sits a touch
+   * stronger when current; the red CTA carries its own resting + hover lift.
+   * --ring-focus is the shared keyboard focus ring. */
+  --shadow-seg-hover: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-seg-active: 0 1px 3px rgba(0, 0, 0, 0.14);
+  --shadow-cta: 0 4px 14px -8px rgba(var(--accent-rgb), 0.5);
+  --shadow-cta-hover: 0 8px 20px -8px rgba(var(--accent-rgb), 0.6);
+  --ring-focus: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
+}

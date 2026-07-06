@@ -1,0 +1,125 @@
+// Wires real dependencies from environment config.
+
+const { createRepo } = require("./repo");
+const { createStripe } = require("./stripe");
+const { createMailer } = require("./mailer");
+const { createRateLimiter } = require("./ratelimit");
+
+function loadConfig(env = process.env) {
+  const siteUrl = env.SITE_URL || "https://dwell-protocol.vercel.app";
+  return {
+    port: parseInt(env.PORT || "8787", 10),
+    databaseUrl: env.DATABASE_URL,
+    stripeSecretKey: env.STRIPE_SECRET_KEY,
+    stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET,
+    siteUrl,
+    apiBaseUrl: env.API_BASE_URL || `http://localhost:${env.PORT || 8787}`,
+    corsOrigin: env.CORS_ORIGIN || siteUrl,
+    adminKey: env.ADMIN_KEY,
+    killswitch: env.KILLSWITCH === "1", // start with ad serving disabled
+
+    revenueShare: parseFloat(env.REVENUE_SHARE || "0.5"), // user's cut, paid out as Claude credits
+    grossCpmCents: parseInt(env.GROSS_CPM_CENTS || "1200", 10),
+    dailyImpressionCap: parseInt(env.DAILY_IMPRESSION_CAP || "5000", 10),
+    ipDailyImpressionCap: parseInt(env.IP_DAILY_IMPRESSION_CAP || "5000", 10), // per source IP per UTC day; 0 disables (for shared-NAT/CGNAT audiences)
+    dailyClickCap: parseInt(env.DAILY_CLICK_CAP || "100", 10), // verified clicks per device per UTC day
+    leadDailyCap: parseInt(env.LEAD_IP_DAILY_CAP || "100", 10), // bare-email waitlist captures per source IP per UTC day; 0 disables
+    payoutThresholdCents: parseInt(env.PAYOUT_THRESHOLD_CENTS || "1000", 10), // $10
+    referralRewardCents: parseInt(env.REFERRAL_REWARD_CENTS || "2000", 10), // $20 to the referrer
+    referralCap: parseInt(env.REFERRAL_CAP || "10", 10), // max rewarded referrals per user
+    affiliateRewardBps: parseInt(env.AFFILIATE_REWARD_BPS || "1000", 10), // affiliate's cut of an affiliated user's earnings, basis points (1000 = 10%)
+    affiliateCapPeople: parseInt(env.AFFILIATE_CAP_PEOPLE || "10", 10), // max attributed friends per affiliate (dollar earnings uncapped)
+    giftFulfillmentEmail: env.GIFT_FULFILLMENT_EMAIL || "hello@dwell.example", // manual gift card fulfillment inbox
+    emailTokenTtlMs: parseInt(env.EMAIL_TOKEN_TTL_MS || "1800000", 10), // 30 min
+    emailCooldownMs: parseInt(env.EMAIL_COOLDOWN_MS || "60000", 10), // min gap between magic-link sends per email; 0 disables
+    emailIpDailyCap: parseInt(env.EMAIL_IP_DAILY_CAP || "50", 10), // magic-link/login email sends per source IP per UTC day; 0 disables (shared-NAT/CGNAT)
+    webSessionTtlMs: parseInt(env.WEB_SESSION_TTL_MS || "2592000000", 10), // 30 days
+    clickTokenTtlMs: parseInt(env.CLICK_TOKEN_TTL_MS || "120000", 10), // 2 min
+    impressionTokenTtlMs: parseInt(env.IMPRESSION_TOKEN_TTL_MS || "120000", 10), // 2 min: enough to dwell + redeem a served impression
+    impressionMinDwellMs: parseInt(env.IMPRESSION_MIN_DWELL_MS || "2000", 10), // server backstop: min ms between serve and a billable redeem. The client's on-screen qualifying view (~2s) is the real gate; this just rejects a too-fast redeem. 0 disables
+    maxBodyBytes: parseInt(env.MAX_BODY_BYTES || "65536", 10), // 64 KB
+    // OAuth
+    googleClientId: env.GOOGLE_CLIENT_ID || "",
+    googleClientSecret: env.GOOGLE_CLIENT_SECRET || "",
+    appleClientId: env.APPLE_CLIENT_ID || "",
+    appleTeamId: env.APPLE_TEAM_ID || "",
+    appleKeyId: env.APPLE_KEY_ID || "",
+    applePrivateKey: (env.APPLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    // mail
+    mailProvider: env.MAIL_PROVIDER || "console",
+    resendApiKey: env.RESEND_API_KEY,
+    mailFrom: env.MAIL_FROM,
+    mailFromAds: env.MAIL_FROM_ADS,
+    // rate limit
+    rateLimitCapacity: parseInt(env.RATE_LIMIT_CAPACITY || "120", 10),
+    rateLimitRefillPerSec: parseFloat(env.RATE_LIMIT_REFILL_PER_SEC || "5"),
+
+    // ---- DWELL token mode (dwell/docs/04) — one codebase, two deployments ----
+    // '' (default) keeps the legacy DWELL behavior byte-identical: two-way
+    // revenueShare split, no token machinery, token routes 404. The DWELL
+    // deployment defaults to points (accrual phase); TOKEN_MODE=live post-TGE,
+    // TOKEN_MODE=off for a legacy two-way-split instance (not used by DWELL).
+    tokenMode: ["points", "live"].includes(env.TOKEN_MODE) ? env.TOKEN_MODE : (env.TOKEN_MODE === "off" ? "" : "points"),
+    viewerShareBps: parseInt(env.VIEWER_SHARE_BPS || "6000", 10), // viewer's share of the reserve tranche
+    referrerShareBps: parseInt(env.REFERRER_SHARE_BPS || "1000", 10), // referrer's share (falls to protocol when unreferred)
+    reserveTrancheBps: parseInt(env.RESERVE_TRANCHE_BPS || "9000", 10), // slice of gross routed to the token side
+
+    // ---- brand — the DWELL deployment bills and writes copy under its own name ----
+    brandName: env.BRAND_NAME || "DWELL",
+    stripeProductName: env.STRIPE_PRODUCT_NAME || "DWELL spinner block — 1,000 impressions",
+    stripeProductImage: env.STRIPE_PRODUCT_IMAGE || "https://dwell-protocol.vercel.app/og.png",
+  };
+}
+
+// Postgres pool options. Managed providers (Supabase, Neon, …) require TLS;
+// turn it on for them automatically while leaving local/plaintext dev untouched.
+// Set DATABASE_SSL=1 to force TLS for any other managed host (RDS, etc.).
+function pgPoolConfig(env = process.env) {
+  const connectionString = env.DATABASE_URL || "";
+  // DWELL lives in its own Postgres schema (DB_SCHEMA, default 'dwell') so it
+  // can share a database server with other products while staying fully
+  // isolated at the top level — every connection pins search_path on startup.
+  const schema = env.DB_SCHEMA || "dwell";
+  if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error("DB_SCHEMA must be a plain identifier");
+  const needsSsl =
+    env.DATABASE_SSL === "1" ||
+    /[?&]sslmode=(require|verify-ca|verify-full)/.test(connectionString) ||
+    /\.supabase\.(co|com)\b/.test(connectionString) ||
+    /\.neon\.tech\b/.test(connectionString);
+  return { connectionString, ssl: needsSsl ? { rejectUnauthorized: false } : undefined, options: `-c search_path=${schema}` };
+}
+
+async function boot(env = process.env) {
+  const config = loadConfig(env);
+  if (!config.databaseUrl) throw new Error("DATABASE_URL is required");
+  // Token-mode split sanity (dwell/docs/04 §C): the pool must cover both shares.
+  if (config.viewerShareBps + config.referrerShareBps > 10000) {
+    throw new Error("VIEWER_SHARE_BPS + REFERRER_SHARE_BPS must be <= 10000");
+  }
+  if (config.reserveTrancheBps > 10000) throw new Error("RESERVE_TRANCHE_BPS must be <= 10000");
+  // Stripe is only exercised by advertiser checkout / webhooks — never by the
+  // earning loop. In a local devnet (DEVNET=1) we let the API boot without it
+  // so you can test devices → ledger → portal end-to-end with no Stripe account;
+  // checkout simply isn't part of that flow. Production still requires the key.
+  if (!config.stripeSecretKey) {
+    if (env.DEVNET === "1") {
+      config.stripeSecretKey = "sk_test_devnet";
+      console.warn("[dwell] DEVNET=1 — no STRIPE_SECRET_KEY; advertiser checkout is disabled, earning loop works.");
+    } else {
+      throw new Error("STRIPE_SECRET_KEY is required");
+    }
+  }
+
+  const { Pool } = require("pg");
+  const pool = new Pool(pgPoolConfig(env));
+  const repo = createRepo(pool);
+  const stripe = createStripe(config.stripeSecretKey);
+  const mailer = createMailer(config);
+  const rateLimiter = createRateLimiter({
+    capacity: config.rateLimitCapacity,
+    refillPerSec: config.rateLimitRefillPerSec,
+  });
+  return { deps: { repo, stripe, mailer, rateLimiter, config }, pool };
+}
+
+module.exports = { boot, loadConfig, pgPoolConfig };

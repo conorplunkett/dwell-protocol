@@ -1,0 +1,187 @@
+import { devicePath, resolveApiBase } from "./paths.js";
+import { delay, readJson, safeHttpUrl, writeJsonAtomic } from "./util.js";
+
+export class DwellBackend {
+  constructor({ base, fetchImpl = fetch, timeoutMs = 8000 } = {}) {
+    this.base = String(base || "").replace(/\/+$/, "");
+    this.fetchImpl = fetchImpl;
+    this.timeoutMs = timeoutMs;
+  }
+
+  async request(path, init = {}) {
+    const signal = init.signal ?? AbortSignal.timeout(this.timeoutMs);
+    return this.fetchImpl(`${this.base}${path}`, { ...init, signal });
+  }
+
+  async config() {
+    const res = await this.request("/v1/config");
+    if (!res.ok) throw new Error(`config ${res.status}`);
+    const body = await res.json();
+    return { serving: body?.serving !== false, revenueShare: body?.revenueShare };
+  }
+
+  async ads() {
+    const res = await this.request("/v1/ads");
+    if (!res.ok) throw new Error(`ads ${res.status}`);
+    const body = await res.json();
+    return (body?.ads || []).map((ad) => ({
+      id: String(ad.id || ""),
+      line: String(ad.line || ad.brand || ""),
+      url: safeHttpUrl(ad.url || ""),
+      brand: typeof ad.brand === "string" ? ad.brand : undefined,
+      category: typeof ad.cat === "string" ? ad.cat : undefined,
+      color: typeof ad.color === "string" ? ad.color : undefined,
+    })).filter((ad) => ad.id && ad.line);
+  }
+
+  async registerDevice() {
+    const res = await this.request("/v1/devices/register", { method: "POST" });
+    if (!res.ok) throw new Error(`device register ${res.status}`);
+    const body = await res.json();
+    if (!body?.deviceId || !body?.deviceKey) throw new Error("bad device response");
+    return { deviceId: String(body.deviceId), deviceKey: String(body.deviceKey) };
+  }
+
+  // Email magic-link sign-in, mirroring the Chrome extension's
+  // requestSignInLink (POST /v1/auth/request-link, authed by device creds). The
+  // click in the email hits /v1/auth/verify, which sets devices.user_id — after
+  // which this device's Claude Code credits attribute to the user's account.
+  async requestEmailLink(device, email) {
+    const res = await this.request("/v1/auth/request-link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email,
+        deviceId: device.deviceId,
+        deviceKey: device.deviceKey,
+      }),
+    });
+    if (!res.ok) {
+      let detail = "";
+      try { detail = (await res.json())?.error || ""; } catch { /* ignore */ }
+      throw new Error(detail || `request-link ${res.status}`);
+    }
+    const body = await res.json().catch(() => ({}));
+    return { ok: true, sent: body?.sent !== false };
+  }
+
+  // Whether this device is already linked to a user account. GET
+  // /v1/me/affiliate takes device creds in the query string.
+  async linkStatus(device) {
+    const qs = new URLSearchParams({
+      deviceId: device.deviceId,
+      deviceKey: device.deviceKey,
+    });
+    const res = await this.request(`/v1/me/affiliate?${qs}`);
+    if (!res.ok) throw new Error(`affiliate ${res.status}`);
+    const body = await res.json();
+    return { linked: !!body?.linked, email: typeof body?.email === "string" ? body.email : null };
+  }
+
+  async createClickIntent(device, campaignId) {
+    const res = await this.request("/v1/clicks/intent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        deviceId: device.deviceId,
+        deviceKey: device.deviceKey,
+        campaignId,
+      }),
+    });
+    if (!res.ok) throw new Error(`click intent ${res.status}`);
+    const body = await res.json();
+    const trackingUrl = safeHttpUrl(body?.trackingUrl || "");
+    if (!trackingUrl) throw new Error("bad click intent response");
+    return trackingUrl;
+  }
+
+  // Server-authoritative impressions (replaces the self-reported /v1/events
+  // batch). serve mints a single-use token for the auction winner; redeem bills
+  // it exactly once, after the qualifying on-screen dwell has elapsed between the
+  // two calls. Forged/inflated counts are impossible — the server only bills a
+  // token it actually issued.
+  async serveImpression(device) {
+    const res = await this.request("/v1/impressions/serve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deviceId: device.deviceId, deviceKey: device.deviceKey }),
+    });
+    if (!res.ok) throw new Error(`impressions/serve ${res.status}`);
+    const body = await res.json();
+    return typeof body?.token === "string" ? body.token : null; // null = capped / killswitch / no ad
+  }
+
+  async redeemImpression(device, token) {
+    const res = await this.request("/v1/impressions/redeem", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        deviceId: device.deviceId,
+        deviceKey: device.deviceKey,
+        token,
+        // Tags the credit with the surface so the portal's Install tab lights up
+        // the per-service "active" logo (grey → colored on the first credit).
+        source: "claude_code",
+      }),
+    });
+    if (!res.ok) throw new Error(`impressions/redeem ${res.status}`);
+    return { ok: true };
+  }
+}
+
+export function readDevice(home) {
+  const device = readJson(devicePath(home), null);
+  return device?.deviceId && device?.deviceKey
+    ? { deviceId: String(device.deviceId), deviceKey: String(device.deviceKey) }
+    : null;
+}
+
+export function writeDevice(home, device) {
+  // deviceKey is a bearer secret — keep it owner-only so a co-resident user on a
+  // shared host can't read it and impersonate this device.
+  writeJsonAtomic(devicePath(home), device, { mode: 0o600 });
+}
+
+export async function ensureDevice(home, backend) {
+  const cached = readDevice(home);
+  if (cached) return cached;
+  const device = await backend.registerDevice();
+  writeDevice(home, device);
+  return device;
+}
+
+export function defaultBackend({ home, env, fetchImpl } = {}) {
+  return new DwellBackend({ base: resolveApiBase({ home, env }), fetchImpl });
+}
+
+// Same shape the backend validates with (POST /v1/auth/request-link) and the
+// Chrome extension popup uses, so a typo fails locally instead of round-tripping.
+export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+// Ensure a device exists, then email a magic link that links it to `email`'s
+// account. Network-only: callers persist any local "link requested" marker.
+export async function linkAccountEmail(home, backend, email) {
+  const clean = String(email || "").trim();
+  if (!EMAIL_RE.test(clean)) throw new Error("valid email required");
+  const device = await ensureDevice(home, backend);
+  const result = await backend.requestEmailLink(device, clean);
+  return { ...result, email: clean, deviceId: device.deviceId };
+}
+
+// Poll the device's link status until it goes linked or `timeoutMs` elapses, so
+// setup can confirm the user actually clicked the magic link instead of just
+// firing it off. Probe errors are transient — keep polling. `sleep` is injected
+// for tests. Returns the last status seen ({ linked, email }).
+export async function waitForLink(backend, device, { timeoutMs = 60000, intervalMs = 2500, sleep = delay } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let last = { linked: false, email: null };
+  while (Date.now() < deadline) {
+    try {
+      last = await backend.linkStatus(device);
+      if (last.linked) return last;
+    } catch { /* transient — keep polling until the deadline */ }
+    if (Date.now() + intervalMs >= deadline) break;
+    await sleep(intervalMs);
+  }
+  return last;
+}
