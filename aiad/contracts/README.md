@@ -39,10 +39,12 @@ forge test -vv
 ```
 
 Compiler is pinned to `solc 0.8.26` in `foundry.toml` (optimizer on, 200 runs).
-No Solidity toolchain exists in the sandbox this code was authored in, so
-**compilation and tests have not been machine-verified here** — run
-`forge build && forge test` before any deployment and treat a clean run as a
-merge gate (see `../docs/06-launch-checklist.md`).
+Machine-verified 2026-07-06 on forge `1.7.1` / solc `0.8.26` — including the
+60/10/30 split revision (`treasuryBps=3000`, #239): `forge build` clean (lint
+warnings in test files only), `forge test` 25/25 passing. The
+`aiad-contracts` CI job (`.github/workflows/ci.yml`) now runs both on every
+push/PR on the same pinned toolchain, keeping the merge gate enforced (see
+`../docs/06-launch-checklist.md`).
 
 ## Deploy
 

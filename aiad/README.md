@@ -13,8 +13,14 @@ after launch — and each campaign's pool splits **60% to the viewer, 10% to the
 joins the treasury when a viewer has no referrer). Users are only ever paid what
 revenue already bought: no minting, no emissions schedule, no oracle.
 
-This folder is fully self-contained (no code dependencies on anything outside
-it) and is structured to be lifted into its own repository unchanged.
+This folder holds AIAD's **brand layer** — site theme + copy, contracts, and
+docs. Plan of record: AIAD and FreeAI are **separate businesses at runtime**
+(separate databases, ad inventory, money accounts, domains, admin keys; zero
+connections between the two sites) built on the **same underlying pieces** —
+one codebase, brand-parameterized, deployed twice, with identical UI elements
+and identical ad serving; only theme tokens and copy differ. See the
+Separation section of
+[docs/06-launch-checklist.md](docs/06-launch-checklist.md).
 
 ## Layout
 
@@ -60,9 +66,9 @@ git submodule update --init --recursive
 cd contracts && forge build && forge test
 ```
 
-See [contracts/README.md](contracts/README.md) — including the honest note
-that this code was authored in a sandbox with no Solidity toolchain, so a
-green `forge test` is a merge gate, not an already-banked result.
+See [contracts/README.md](contracts/README.md). The suite is machine-verified
+(25/25 passing on the pinned forge 1.7.1 / solc 0.8.26) and runs in CI on
+every push via the `aiad-contracts` job.
 
 ## Status
 
