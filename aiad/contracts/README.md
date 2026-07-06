@@ -18,13 +18,13 @@ paths via `forge-std` (pinned at `v1.16.2`).
 | Contract | Purpose |
 |---|---|
 | `src/AIAD.sol` | Fixed-supply ERC-20 (1B, 18 dec) + EIP-2612 permit + burn. Minted once to the treasury Safe; no mint function, no owner, no hooks. |
-| `src/CampaignFunder.sol` | One market buy per paid campaign: USDC in → 0x-routed swap → 65% of AIAD to the Distributor, 35% to the treasury (`burnBps` slice optionally burned, default 0). Keeper-gated, slippage-guarded, pausable; `rescue()` blocklists USDC/AIAD. `CampaignFunded` events are the locked-rate source of truth. |
+| `src/CampaignFunder.sol` | One market buy per paid campaign: USDC in → 0x-routed swap → 70% of AIAD to the Distributor, 30% to the treasury (held; `burnBps` slice optionally burned, default 0). Keeper-gated, slippage-guarded, pausable; `rescue()` blocklists USDC/AIAD. `CampaignFunded` events are the locked-rate source of truth. |
 | `src/MerkleRewardsDistributor.sol` | Cumulative `(address, cumulativeAmount)` Merkle claims. Roots advance one epoch at a time via a dedicated `rootSetter`; claims pay the delta since the last claim; pausable by the owner Safe, which can never move funds. |
 
 See [`../docs/02-architecture.md`](../docs/02-architecture.md) for how these
 fit the full system, and [`../docs/01-tokenomics.md`](../docs/01-tokenomics.md)
-for the 50/15/35 economics they implement. The unreferred-viewer case (protocol
-50% instead of 35%) settles offchain: the surplus stays in the Distributor and
+for the 60/10/30 economics they implement. The unreferred-viewer case (protocol
+40% instead of 30%) settles offchain: the surplus stays in the Distributor and
 the backend adds a treasury leaf to the Merkle root for the shortfall.
 
 ## Build and test

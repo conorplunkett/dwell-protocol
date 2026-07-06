@@ -245,10 +245,10 @@
       <div class="portal-hero">
         <h1 class="portal-h1">Invite friends to start earning.</h1>
         <p class="portal-lead">
-          AIAD grows by word of mouth. You earn 15% of every friend's earnings,
+          AIAD grows by word of mouth. You earn 10% of every friend's earnings,
           forever — the referrer share carved from each campaign's pool
-          (viewer 85%, referrer 15%), never deducted from their
-          85%. Invite two to unlock your dashboard; a valid email is all it
+          (viewer 60%, referrer 10%, protocol 30%), never deducted from their
+          60%. Invite two to unlock your dashboard; a valid email is all it
           takes to get started.
         </p>
       </div>
@@ -264,7 +264,7 @@
       <div class="auth-card">
         <div class="auth-sent-icon">🤝</div>
         <h2 class="onboard-title">Invite two friends</h2>
-        <p class="auth-sent-msg">Send two invites to open your earnings dashboard — you earn 15% of their earnings, carved from each campaign's pool.</p>
+        <p class="auth-sent-msg">Send two invites to open your earnings dashboard — you earn 10% of their earnings, carved from each campaign's pool.</p>
 
         <form id="onboard-form">
           <input
@@ -292,8 +292,8 @@
 
         <p class="auth-referral-note">
           Their emails just need to be valid — they don't have to sign up for you
-          to continue. When they join, you earn 15% of their earnings, forever,
-          carved from each campaign's pool — never deducted from their 85%.
+          to continue. When they join, you earn 10% of their earnings, forever,
+          carved from each campaign's pool — never deducted from their 60%.
         </p>
         <p class="auth-error" id="onboard-error" hidden></p>
       </div>
@@ -362,7 +362,7 @@
         <h2 class="earn-title">How much you've earned with AIAD</h2>
         <p class="portal-copy">
           Each sponsored line you watch while your AI assistant thinks credits
-          you the viewer's 85% share of that campaign's pool in AIAD points.
+          you the viewer's 60% share of that campaign's pool in AIAD points.
           1,000 points = $1.00 of earned ad value, backed 1:1 by the USDC
           reserve.
         </p>
@@ -523,18 +523,18 @@
 
       <!-- ── REFERRALS ── -->
       <section class="portal-card" id="referrals-view" hidden>
-        <!-- Every signed-in earner is auto-enrolled at the protocol's 15%
+        <!-- Every signed-in earner is auto-enrolled at the protocol's 10%
              referrer share (self-serve, no application). The form below is the
              partner upgrade — apply for uncapped referrals + a custom link. -->
         <div class="affiliate-block" id="affiliate-block" hidden>
           <h2>Earn from referrals</h2>
           <p class="portal-copy">
-            You earn <strong id="aff-pct">15%</strong> of every friend's earnings,
+            You earn <strong id="aff-pct">10%</strong> of every friend's earnings,
             forever — credited as AIAD points, for up to
-            <span id="aff-cap">1,000 friends</span>. That 15% is the referrer share
-            carved from each campaign's pool (viewer 85%, referrer 15% — the
-            referrer share falls to the protocol treasury when there's no
-            referrer) — never deducted from your friends' 85%.
+            <span id="aff-cap">1,000 friends</span>. That 10% is the referrer share
+            carved from each campaign's pool (viewer 60%, referrer 10%,
+            protocol 30% — the referrer share joins the treasury when there's
+            no referrer) — never deducted from your friends' 60%.
           </p>
 
           <!-- Auto-enrolled: your code + shareable link + stats. -->
@@ -583,11 +583,11 @@
           </div>
 
           <!-- Partner upgrade — apply for uncapped referrals + a custom link.
-               The referrer share itself is fixed by the protocol split at 15%. -->
+               The referrer share itself is fixed by the protocol split at 10%. -->
           <div class="aff-upgrade aff-upgrade-box" id="aff-upgrade" hidden>
             <form class="aff-apply" id="aff-apply-form">
               <h3 class="ref-invite-h">Want to join the partner program?</h3>
-              <p class="aff-hint">Apply for <strong>uncapped</strong> referrals and a custom link. The referrer share stays the protocol's <strong>15%</strong> of each friend's campaign pool.</p>
+              <p class="aff-hint">Apply for <strong>uncapped</strong> referrals and a custom link. The referrer share stays the protocol's <strong>10%</strong> of each friend's campaign pool.</p>
               <div class="aff-row">
                 <input type="text" id="aff-ig" class="auth-input" placeholder="Instagram @handle" autocomplete="off" />
                 <input type="number" min="0" id="aff-ig-f" class="auth-input aff-followers" placeholder="Followers" autocomplete="off" />
@@ -612,7 +612,7 @@
 
           <!-- Upgrade granted (uncapped partner plan). -->
           <div class="aff-status" id="aff-upgrade-granted" hidden>
-            <p class="portal-copy">🎉 You're on a partner plan — <strong id="aff-custom-pct">15%</strong> referrer share, uncapped friends.</p>
+            <p class="portal-copy">🎉 You're on a partner plan — <strong id="aff-custom-pct">10%</strong> referrer share, uncapped friends.</p>
           </div>
         </div>
       </section>

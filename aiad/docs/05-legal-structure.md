@@ -91,7 +91,7 @@ Florida LLC (opco)               Florida LLC or DE C-corp (opco)
 
 **Always (every public surface, including this repo):**
 - State mechanics as facts ("90% of every ad dollar buys AIAD on the open
-  market; 85% of the pool goes to the viewer"). Never say or imply the price
+  market; 60% of the pool goes to the viewer"). Never say or imply the price
   will rise, that buys are "price support," or that holding is an investment.
 - Banned words/framings: "moon," "price will," "appreciate," "going up,"
   "invest," "returns," "passive income," APY-anything.

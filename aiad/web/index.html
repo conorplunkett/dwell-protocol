@@ -9,7 +9,7 @@
        to exit) — handled in script.js. -->
   <meta name="aiad-api" content="" />
   <title>AIAD — Get paid for your attention</title>
-  <meta name="description" content="One sponsored line shows while ChatGPT, Claude, or Gemini is thinking — and the person watching gets paid. 90% of every ad dollar is escrowed for the earn side; 85% of the pool goes to the viewer as dollar-backed points." />
+  <meta name="description" content="One sponsored line shows while ChatGPT, Claude, or Gemini is thinking — and the person watching gets paid. 90% of every ad dollar is escrowed for the earn side; 60% of the pool goes to the viewer as dollar-backed points." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -45,7 +45,7 @@
       <h1>Watch one sponsored line.<br /><span class="h1-acc">Get paid for your attention.</span></h1>
       <p class="sub">
         A sponsored line shows while <strong>ChatGPT</strong>, <strong>Claude</strong>, or
-        <strong>Gemini</strong> is thinking. <strong>85%</strong> of every ad's escrowed value
+        <strong>Gemini</strong> is thinking. <strong>60%</strong> of every ad's escrowed value
         goes to the person watching it — in AIAD points backed 1:1 by dollars.
       </p>
 
@@ -65,8 +65,8 @@
             <span class="pill-dots" aria-hidden="true"><i></i><i></i><i></i></span>
           </div>
           <div class="earnline">
-            <span class="earn-plus" id="earn-plus">+11.48 pts</span>
-            <span class="earn-note">85% of this ad's pool → you · session <strong id="earn-session">11.48 pts</strong> (<span id="earn-usd">$0.0115</span>)</span>
+            <span class="earn-plus" id="earn-plus">+8.10 pts</span>
+            <span class="earn-note">60% of this ad's pool → you · session <strong id="earn-session">8.10 pts</strong> (<span id="earn-usd">$0.0081</span>)</span>
           </div>
         </div>
       </div>
@@ -108,7 +108,7 @@
 
           <div class="wf-row">
             <span class="wf-title">The escrowed pool</span>
-            <div class="wf-bar" role="img" aria-label="Split of the escrowed pool: 85% to the viewer, 15% to the viewer's referrer — the referrer share goes to the protocol treasury when there is no referrer">
+            <div class="wf-bar" role="img" aria-label="Split of the escrowed pool: 60% to the viewer, 10% to the viewer's referrer, 30% to the protocol treasury, which holds its share">
               <span class="wf-seg wf-seg--viewer" id="seg-viewer"><span class="seglbl" id="seglbl-viewer"></span></span>
               <span class="wf-seg wf-seg--referrer" id="seg-referrer"><span class="seglbl" id="seglbl-referrer"></span></span>
               <span class="wf-seg wf-seg--treasury" id="seg-treasury"><span class="seglbl" id="seglbl-treasury"></span></span>
@@ -116,7 +116,7 @@
             <ul class="wf-legend">
               <li><i class="wf-dot wf-dot--viewer"></i><span><strong id="lbl-viewer">—</strong> to the viewer (<span id="pct-viewer">—</span>)</span></li>
               <li><i class="wf-dot wf-dot--referrer"></i><span><strong id="lbl-referrer">—</strong> to the viewer's referrer (<span id="pct-referrer">—</span>)</span></li>
-              <li><i class="wf-dot wf-dot--treasury"></i><span>no referrer? that <strong>15%</strong> goes to the protocol treasury instead</span></li>
+              <li><i class="wf-dot wf-dot--treasury"></i><span><strong id="lbl-treasury">—</strong> to the protocol treasury (<span id="pct-treasury">—</span>) — held, never sold</span></li>
             </ul>
           </div>
         </div>
@@ -173,12 +173,12 @@
           <div class="step-card">
             <span class="step-idx">02 · Earn</span>
             <h3>Points, dollar-backed</h3>
-            <p><strong id="step-viewer-pct">85%</strong> of each ad's escrowed pool is credited to you as AIAD points. 1,000 points = $1.00 of earned ad value, matched by USDC already in the reserve.</p>
+            <p><strong id="step-viewer-pct">60%</strong> of each ad's escrowed pool is credited to you as AIAD points. 1,000 points = $1.00 of earned ad value, matched by USDC already in the reserve.</p>
           </div>
           <div class="step-card">
             <span class="step-idx">03 · Refer</span>
-            <h3>15% forever</h3>
-            <p>Refer a friend and <strong id="step-ref-pct">15%</strong> of the pool on every ad they ever watch goes to you — carved from the pool, not from their share.</p>
+            <h3>10% forever</h3>
+            <p>Refer a friend and <strong id="step-ref-pct">10%</strong> of the pool on every ad they ever watch goes to you — carved from the pool, not from their share.</p>
           </div>
           <div class="step-card">
             <span class="step-idx">04 · Claim</span>
@@ -189,13 +189,13 @@
       </div>
     </section>
 
-    <!-- ── REFERRALS — the 15% carve-out, with one worked example. Numbers
+    <!-- ── REFERRALS — the 10% carve-out, with one worked example. Numbers
          rendered from ECONOMICS in script.js. -->
     <section id="referrals" class="referrals">
       <div class="wrap">
         <div class="secthead">
           <span class="eyebrow">Referrals</span>
-          <h2>15% of the pool on every ad your friends watch. Forever.</h2>
+          <h2>10% of the pool on every ad your friends watch. Forever.</h2>
           <p>Refer a friend and <strong id="ref-rate">—</strong> of each ad's pool goes to you — carved from the pool itself, so their share is untouched. It never expires.</p>
         </div>
         <div class="ref-card">
@@ -248,7 +248,7 @@
             <div class="est-rows">
               <div class="est-line"><strong id="est-imp">166,666</strong> <span>sponsored views</span></div>
               <div class="est-line"><strong id="est-escrow">$2,250.00</strong> <span>escrowed to the USDC reserve (90%)</span></div>
-              <div class="est-line"><strong id="est-viewers">$1,912.50</strong> <span>paid to the people watching (85% of the pool)</span></div>
+              <div class="est-line"><strong id="est-viewers">$1,350.00</strong> <span>paid to the people watching (60% of the pool)</span></div>
             </div>
           </div>
 
