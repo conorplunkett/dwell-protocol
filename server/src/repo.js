@@ -221,7 +221,7 @@ function createRepo(pool) {
     );
   }
 
-  // AIAD token mode (aiad/docs/04 §B): three-way BPS split of the reserve
+  // DWELL token mode (dwell-protocol docs/04 §B): three-way BPS split of the reserve
   // tranche, replacing the legacy two-way revenueShare split. Per billed gross:
   //   pool     = gross × RESERVE_TRANCHE_BPS/10000       (the 90%)
   //   viewer   = pool × VIEWER_SHARE_BPS/10000           → points_credit (+device)
@@ -434,7 +434,7 @@ function createRepo(pool) {
           [funded.toString(), campaignId, JSON.stringify({ blocks: rows[0].blocks })]
         );
         // Token mode: earmark the campaign's reserve tranche at payment
-        // (aiad/docs/04 §A — the accounting mirror of campaign_credit). The
+        // (dwell-protocol docs/04 §A — the accounting mirror of campaign_credit). The
         // fiat sweeper later records the matching USDC escrow movement in
         // usdc_reserve_entries; a daily attestation checks the two agree.
         if (tokenSplit) {
@@ -732,7 +732,7 @@ function createRepo(pool) {
           // = price_per_block_cents millicents. Exact integer math throughout.
           const gross = BigInt(camp.rows[0].price_per_block_cents) * BigInt(billed);
           const meta = source ? { impressions: imp, billed, source } : { impressions: imp, billed };
-          // Token mode (AIAD deployment): three-way points split, same math as
+          // Token mode (DWELL deployment): three-way points split, same math as
           // the token redeem path; no platform-funded affiliate bonus.
           if (tokenSplit) {
             credited += await creditTokenSplit(c, { deviceId, campaignId: ev.campaignId, gross, tokenSplit, meta });
@@ -1026,7 +1026,7 @@ function createRepo(pool) {
         );
         const gross = BigInt(camp.rows[0].price_per_block_cents); // billed = 1
         const meta = source ? { impressions: 1, billed: 1, via: "token", source } : { impressions: 1, billed: 1, via: "token" };
-        // Token mode (AIAD deployment): three-way points split of the reserve
+        // Token mode (DWELL deployment): three-way points split of the reserve
         // tranche; the legacy platform-funded affiliate bonus does not apply.
         if (tokenSplit) {
           const viewer = await creditTokenSplit(c, { deviceId, campaignId: row.campaign_id, gross, tokenSplit, meta });
@@ -1321,8 +1321,8 @@ function createRepo(pool) {
       return { chrome: seen.has("chrome"), claude_code: seen.has("claude_code"), desktop: seen.has("desktop") };
     },
 
-    // ---------- AIAD token mode: reserve attestation ----------
-    // Public /v1/reserve numbers (aiad/docs/04 §D): what the ledger says has
+    // ---------- DWELL token mode: reserve attestation ----------
+    // Public /v1/reserve numbers (dwell-protocol docs/04 §D): what the ledger says has
     // been earmarked + accrued, next to what the keeper says is escrowed. The
     // three points legs and the allocation are ledger-derived (never stored);
     // escrowed USDC comes from usdc_reserve_entries (keeper-written).
@@ -1357,10 +1357,10 @@ function createRepo(pool) {
     },
 
     // Live mode: funded campaign pools + locked rates, from the indexer's
-    // mirror of CampaignFunded events (aiad/docs/04 §D — GET /v1/token/pools).
+    // mirror of CampaignFunded events (dwell-protocol docs/04 §D — GET /v1/token/pools).
     async tokenCampaignPools(limit = 100) {
       const { rows } = await pool.query(
-        `select campaign_id, usdc_in_micro, aiad_out_wei, to_distributor_wei,
+        `select campaign_id, usdc_in_micro, dwell_out_wei, to_distributor_wei,
                 to_treasury_wei, burned_wei, locked_rate_wei, tx_hash, funded_at
            from token_campaign_pools order by funded_at desc limit $1`,
         [Math.max(1, Math.min(500, parseInt(limit, 10) || 100))]
@@ -1368,7 +1368,7 @@ function createRepo(pool) {
       return rows.map((r) => ({
         campaignId: r.campaign_id,
         usdcInMicro: Number(r.usdc_in_micro),
-        aiadOutWei: r.aiad_out_wei,
+        dwellOutWei: r.dwell_out_wei,
         toDistributorWei: r.to_distributor_wei,
         toTreasuryWei: r.to_treasury_wei,
         burnedWei: r.burned_wei,

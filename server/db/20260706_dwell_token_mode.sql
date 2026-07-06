@@ -1,4 +1,4 @@
--- AIAD token mode (aiad/docs/04 §A) — shared schema, two deployments.
+-- DWELL token mode (dwell-protocol docs/04 §A) — shared schema, two deployments.
 --
 -- Adds the token-mode surface to the shared backend: five ledger entry types
 -- (the three-way points split, the reserve earmark, and the live-mode claim
@@ -55,11 +55,11 @@ create table if not exists token_campaign_pools (
   id uuid primary key default gen_random_uuid(),
   campaign_id uuid unique references campaigns(id),
   usdc_in_micro bigint not null,
-  aiad_out_wei numeric(78, 0) not null,
+  dwell_out_wei numeric(78, 0) not null,
   to_distributor_wei numeric(78, 0) not null,
   to_treasury_wei numeric(78, 0) not null,
   burned_wei numeric(78, 0) not null default 0,
-  locked_rate_wei numeric(78, 0) not null,     -- aiad_out * viewer share / impressions_total
+  locked_rate_wei numeric(78, 0) not null,     -- dwell_out * viewer share / impressions_total
   tx_hash text unique not null,
   funded_at timestamptz not null default now()
 );
@@ -70,7 +70,7 @@ create table if not exists token_rewards (
   epoch bigint not null,
   user_id uuid references users(id),
   wallet_address text not null,
-  cumulative_aiad_wei numeric(78, 0) not null,
+  cumulative_dwell_wei numeric(78, 0) not null,
   leaf_hash text not null,
   unique (epoch, wallet_address)
 );

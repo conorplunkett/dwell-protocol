@@ -81,23 +81,23 @@ function loadConfig() {
     // is already public) — overridable via env. Empty disables segment tagging.
     resendWaitlistSegmentId: env("RESEND_WAITLIST_SEGMENT_ID", "758789ec-3294-4ba5-90ac-765f5d6765e1"),
 
-    // ---- AIAD token mode (aiad/docs/04) — one codebase, two deployments ----
+    // ---- DWELL token mode (dwell-protocol docs/04) — one codebase, two deployments ----
     // '' (default) keeps the legacy FreeAI behavior byte-identical: two-way
-    // revenueShare split, no token machinery, token routes 404. The AIAD
+    // revenueShare split, no token machinery, token routes 404. The DWELL
     // deployment sets TOKEN_MODE=points (accrual phase) or live (post-TGE).
     tokenMode: ["points", "live"].includes(env("TOKEN_MODE")) ? env("TOKEN_MODE") : "",
     viewerShareBps: parseInt(env("VIEWER_SHARE_BPS", "6000"), 10), // viewer's share of the reserve tranche
     referrerShareBps: parseInt(env("REFERRER_SHARE_BPS", "1000"), 10), // referrer's share (falls to protocol when unreferred)
     reserveTrancheBps: parseInt(env("RESERVE_TRANCHE_BPS", "9000"), 10), // slice of gross routed to the token side
 
-    // ---- brand — the AIAD deployment bills and writes copy under its own name ----
+    // ---- brand — the DWELL deployment bills and writes copy under its own name ----
     brandName: env("BRAND_NAME", "FreeAI"),
     stripeProductName: env("STRIPE_PRODUCT_NAME", "FreeAI ad campaign"),
     stripeProductImage: env("STRIPE_PRODUCT_IMAGE", "https://freeai.fyi/og.png"),
   };
 }
 const config = loadConfig();
-// Token-mode split sanity (aiad/docs/04 §C): the pool must cover both shares.
+// Token-mode split sanity (dwell-protocol docs/04 §C): the pool must cover both shares.
 if (config.viewerShareBps + config.referrerShareBps > 10000) {
   throw new Error("VIEWER_SHARE_BPS + REFERRER_SHARE_BPS must be <= 10000");
 }
@@ -688,7 +688,7 @@ function createRepo(pool: any) {
     );
   }
 
-  // AIAD token mode (aiad/docs/04 §B): three-way BPS split of the reserve
+  // DWELL token mode (dwell-protocol docs/04 §B): three-way BPS split of the reserve
   // tranche, replacing the legacy two-way revenueShare split. Per billed gross:
   //   pool     = gross × RESERVE_TRANCHE_BPS/10000       (the 90%)
   //   viewer   = pool × VIEWER_SHARE_BPS/10000           → points_credit (+device)
@@ -878,7 +878,7 @@ function createRepo(pool: any) {
           [funded.toString(), campaignId, JSON.stringify({ impressions: rows[0].impressions_total })]
         );
         // Token mode: earmark the campaign's reserve tranche at payment
-        // (aiad/docs/04 §A — the accounting mirror of campaign_credit). The
+        // (dwell-protocol docs/04 §A — the accounting mirror of campaign_credit). The
         // fiat sweeper later records the matching USDC escrow movement in
         // usdc_reserve_entries; a daily attestation checks the two agree.
         if (tokenSplit) {
@@ -1023,7 +1023,7 @@ function createRepo(pool: any) {
           );
           const gross = BigInt(camp.rows[0].price_per_block_cents) * BigInt(billed);
           const meta = source ? { impressions: imp, billed, source } : { impressions: imp, billed };
-          // Token mode (AIAD deployment): three-way points split, same math as
+          // Token mode (DWELL deployment): three-way points split, same math as
           // the token redeem path; no platform-funded affiliate bonus.
           if (tokenSplit) {
             credited += await creditTokenSplit(c, { deviceId, campaignId: ev.campaignId, gross, tokenSplit, meta });
@@ -1285,7 +1285,7 @@ function createRepo(pool: any) {
         );
         const gross = BigInt(camp.rows[0].price_per_block_cents); // billed = 1
         const meta = source ? { impressions: 1, billed: 1, via: "token", source } : { impressions: 1, billed: 1, via: "token" };
-        // Token mode (AIAD deployment): three-way points split of the reserve
+        // Token mode (DWELL deployment): three-way points split of the reserve
         // tranche; the legacy platform-funded affiliate bonus does not apply.
         if (tokenSplit) {
           const viewer = await creditTokenSplit(c, { deviceId, campaignId: row.campaign_id, gross, tokenSplit, meta });
@@ -1504,8 +1504,8 @@ function createRepo(pool: any) {
       return { chrome: seen.has("chrome"), claude_code: seen.has("claude_code"), desktop: seen.has("desktop") };
     },
 
-    // ---------- AIAD token mode: reserve attestation ----------
-    // Public /v1/reserve numbers (aiad/docs/04 §D): what the ledger says has
+    // ---------- DWELL token mode: reserve attestation ----------
+    // Public /v1/reserve numbers (dwell-protocol docs/04 §D): what the ledger says has
     // been earmarked + accrued, next to what the keeper says is escrowed. The
     // three points legs and the allocation are ledger-derived (never stored);
     // escrowed USDC comes from usdc_reserve_entries (keeper-written).
@@ -1539,10 +1539,10 @@ function createRepo(pool: any) {
     },
 
     // Live mode: funded campaign pools + locked rates, from the indexer's
-    // mirror of CampaignFunded events (aiad/docs/04 §D — GET /v1/token/pools).
+    // mirror of CampaignFunded events (dwell-protocol docs/04 §D — GET /v1/token/pools).
     async tokenCampaignPools(limit: any = 100) {
       const { rows } = await pool.query(
-        `select campaign_id, usdc_in_micro, aiad_out_wei, to_distributor_wei,
+        `select campaign_id, usdc_in_micro, dwell_out_wei, to_distributor_wei,
                 to_treasury_wei, burned_wei, locked_rate_wei, tx_hash, funded_at
            from token_campaign_pools order by funded_at desc limit $1`,
         [Math.max(1, Math.min(500, parseInt(limit, 10) || 100))]
@@ -1550,7 +1550,7 @@ function createRepo(pool: any) {
       return rows.map((r: any) => ({
         campaignId: r.campaign_id,
         usdcInMicro: Number(r.usdc_in_micro),
-        aiadOutWei: r.aiad_out_wei,
+        dwellOutWei: r.dwell_out_wei,
         toDistributorWei: r.to_distributor_wei,
         toTreasuryWei: r.to_treasury_wei,
         burnedWei: r.burned_wei,
@@ -2689,7 +2689,7 @@ route("POST", "/v1/impressions/redeem", async (ctx: any) => {
   return json(200, { ok: true, creditedMillicents: result.creditedMillicents });
 });
 
-// ── AIAD token mode (aiad/docs/04 §D) ──
+// ── DWELL token mode (dwell-protocol docs/04 §D) ──
 // Every route here 404s when TOKEN_MODE is unset, so the FreeAI deployment
 // exposes no token surface at all. Wallet linking and claims are live-mode
 // only; in points mode they answer 409 so clients can show "at launch".
@@ -2772,7 +2772,7 @@ route("POST", "/v1/checkout", async (ctx: any) => {
     mode: "payment", customer_email: email,
     // receipt_email isn't a Checkout Session param; it lives on the PaymentIntent.
     payment_intent_data: { receipt_email: email },
-    // Brand-configurable so the AIAD deployment bills under its own Stripe
+    // Brand-configurable so the DWELL deployment bills under its own Stripe
     // product line, even before its keys move to their own account.
     line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: budgetCents, product_data: { name: config.stripeProductName || "FreeAI ad campaign", description: `${brand ? brand + " — " : ""}"${adLine}" → ${url} · ${impressions.toLocaleString("en-US")} impressions @ $${(cpmCents / 100).toFixed(2)} CPM`, images: [config.stripeProductImage || "https://freeai.fyi/og.png"] } } }],
     metadata: { campaign_id: campaignId },
