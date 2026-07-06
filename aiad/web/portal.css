@@ -1,0 +1,836 @@
+/* AIAD — User earnings portal login page styles.
+   Ported from freeai.fyi's web/portal.css onto the AIAD dark theme: every
+   hardcoded light-theme color is replaced with a theme.css token, so this file
+   contains no raw colors (AGENTS.md ▸ Design System). */
+
+/* ── Reset body for full-height split layout ── */
+.portal-body {
+  background: none;
+  min-height: 100vh;
+}
+
+/* ── Split layout ── */
+.portal-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100vh;
+  min-height: 100dvh; /* stable height under iOS Safari's collapsing URL bar */
+}
+/* `.portal-split { display: grid }` outranks the UA `[hidden]` rule, so the
+   login page must opt back into display:none when portal.js sets hidden — else
+   it stays visible on top of the signed-in dashboard. */
+#login-page[hidden] {
+  display: none;
+}
+/* Same grid-vs-[hidden] override for the first-login onboarding splits. */
+#onboarding-page[hidden],
+#survey-page[hidden] {
+  display: none;
+}
+
+/* ── First-paint auth gate ──
+   An inline <head> script adds `auth-pending` to <html> when a session token
+   (or the sticky ?dev=1 flag) is present, so returning users paint the loading
+   splash instead of a flash of the login form while portal.js confirms the
+   session. These rules govern only that first frame; portal.js removes the
+   class and drives the `hidden` attribute from then on. The `html.auth-pending`
+   qualifier (id+class+element) outranks both `.portal-split` and
+   `#portal-loading[hidden]`. */
+html.auth-pending #login-page { display: none; }
+html.auth-pending #portal-loading { display: flex; }
+
+/* Loading splash — centered spinner over the full viewport. Hidden by default
+   (anon users never see it); shown via the gate above or by portal.js clearing
+   the `hidden` attribute. */
+#portal-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+#portal-loading[hidden] {
+  display: none;
+}
+.portal-spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid rgba(var(--accent-rgb), 0.25);
+  border-top-color: var(--accent);
+  animation: portal-spin 0.7s linear infinite;
+}
+@keyframes portal-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .portal-spinner { animation-duration: 1.6s; }
+}
+
+/* ── Left column — hero ── */
+.portal-left {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, var(--bg-cream) 0%, var(--bg-tint) 55%, var(--card-dark) 100%);
+  padding: 0 48px 32px;
+  position: relative;
+  overflow: hidden;
+}
+
+.portal-left::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 30%, rgba(var(--accent-rgb),.14) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 60% at 80% 70%, rgba(var(--accent-rgb),.09) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.portal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 0 0;
+  position: relative;
+  z-index: 1;
+}
+
+.portal-nav-links {
+  display: flex;
+  gap: 28px;
+}
+
+.portal-nav-links a {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-2);
+  transition: color .15s;
+}
+
+.portal-nav-links a:hover {
+  color: var(--ink);
+}
+
+.portal-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px 0 48px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Badge ── */
+.portal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: var(--accent);
+  background: var(--card-dark);
+  border: 1.5px solid rgba(var(--accent-rgb), .4);
+  border-radius: var(--radius-pill);
+  padding: 5px 13px 5px 10px;
+  width: fit-content;
+  margin-bottom: 28px;
+}
+
+.portal-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .25);
+}
+
+.portal-h1 {
+  font-size: clamp(28px, 4vw, 52px);
+  font-weight: 900;
+  letter-spacing: -.04em;
+  line-height: 1.06;
+  color: var(--ink);
+  margin: 0 0 22px;
+}
+
+.portal-lead {
+  font-size: 17px;
+  color: var(--gray);
+  line-height: 1.6;
+  max-width: 420px;
+  margin: 0;
+}
+
+.portal-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--gray-2);
+  position: relative;
+  z-index: 1;
+}
+
+.portal-footer a {
+  color: var(--gray-2);
+  transition: color .15s;
+}
+
+.portal-footer a:hover {
+  color: var(--gray);
+}
+
+/* ── Right column ── */
+.portal-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tint);
+  padding: 32px 24px;
+}
+
+/* ── Auth card ── */
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--card-dark);
+  border-radius: var(--radius-2xl);
+  padding: 44px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow:
+    0 0 0 1px var(--line),
+    var(--shadow-card);
+}
+
+/* ── Provider buttons (Google / Apple / Email option) ── */
+.auth-btn-provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--line);
+  background: var(--card-dark-2);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+  letter-spacing: -.01em;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.auth-btn-provider:hover {
+  border-color: var(--border-strong);
+  background: var(--card-dark-2);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+}
+
+/* Apple button — inverted (light-on-dark theme flips it to ink) */
+.auth-btn-apple {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg-cream);
+}
+
+.auth-btn-apple:hover {
+  background: var(--ink-2);
+  border-color: var(--ink-2);
+  color: var(--bg-cream);
+}
+
+/* Email option button — neutral */
+.auth-btn-email-opt {
+  color: var(--gray);
+}
+
+.auth-btn-email-opt:hover {
+  color: var(--ink);
+}
+
+/* Provider icon sizing — monochrome mark, follows the button's text color */
+.provider-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--ink);
+}
+
+/* ── OR divider ── */
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-2);
+  letter-spacing: .06em;
+  margin: 2px 0;
+}
+
+.auth-or::before,
+.auth-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* ── Email step divider label ── */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--gray-2);
+  margin: 6px 0;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* ── Email input ── */
+.auth-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-md);
+  font-family: var(--sans);
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--card-dark-2);
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  -webkit-appearance: none;
+}
+
+.auth-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb),.12);
+}
+
+.auth-input::placeholder {
+  color: var(--gray-2);
+}
+
+/* ── Primary action button ── */
+.auth-btn-primary {
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: linear-gradient(180deg, var(--accent-grad-a), var(--accent-grad-b));
+  color: var(--accent-ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s, transform .1s;
+  letter-spacing: -.01em;
+  -webkit-appearance: none;
+}
+
+.auth-btn-primary:hover {
+  opacity: .9;
+}
+
+.auth-btn-primary:active {
+  transform: scale(.98);
+}
+
+.auth-btn-primary:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* ── Secondary button ── */
+.auth-btn-secondary {
+  width: 100%;
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--line);
+  background: var(--card-dark-2);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  -webkit-appearance: none;
+}
+
+.auth-btn-secondary:hover {
+  border-color: var(--border-strong);
+  background: var(--card-dark-2);
+}
+
+.auth-btn-secondary:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* ── Link-style button ── */
+.auth-link-btn {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: color .15s;
+}
+
+.auth-link-btn:hover {
+  color: var(--accent-grad-a);
+}
+
+/* ── Sent confirmation ── */
+#auth-step-sent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* display:flex above would otherwise override the hidden attribute */
+#auth-step-sent[hidden] {
+  display: none;
+}
+
+.auth-sent-icon {
+  font-size: 38px;
+  text-align: center;
+  padding: 8px 0 2px;
+}
+
+.auth-sent-msg {
+  font-size: 14px;
+  color: var(--gray);
+  text-align: center;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ── Error banner ── */
+.auth-error {
+  font-size: 13px;
+  color: var(--err-fg);
+  background: var(--err-bg);
+  border: 1px solid var(--err-line);
+  border-radius: var(--radius-sm);
+  padding: 10px 13px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ── Applied referral code note ── */
+.auth-referral-note {
+  font-size: 13px;
+  color: var(--ok-fg);
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-line);
+  border-radius: var(--radius-sm);
+  padding: 10px 13px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Stack the email step's input(s) + buttons with consistent spacing. */
+#auth-step-email { display: flex; flex-direction: column; gap: 10px; }
+#auth-step-email[hidden] { display: none; }
+
+/* ── First-login onboarding card ── */
+.onboard-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  text-align: center;
+  margin: 0;
+}
+#onboard-form { display: flex; flex-direction: column; gap: 10px; }
+
+/* ── First-login survey (models / surfaces) ── */
+/* display overrides so the hidden attribute still wins on the step containers. */
+#survey-step-models,
+#survey-step-surfaces { display: flex; flex-direction: column; gap: 14px; }
+#survey-step-models[hidden],
+#survey-step-surfaces[hidden] { display: none; }
+
+.onboard-step {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-align: center;
+}
+
+/* Multi-select option chips — toggle to .sel on click. */
+.survey-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.survey-opt {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--line);
+  background: var(--card-dark-2);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+  -webkit-appearance: none;
+}
+.survey-opt::before {
+  content: "";
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 12px;
+  border-radius: var(--radius-xs);
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface-inset);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  transition: border-color .15s, background .15s;
+}
+.survey-opt:hover {
+  border-color: var(--border-strong);
+  background: var(--card-dark-2);
+}
+.survey-opt.sel {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), .1);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+/* Check mark drawn as text (no image data-URI, so it stays token-colored). */
+.survey-opt.sel::before {
+  content: "✓";
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .portal-split {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .portal-left {
+    padding: 0 24px 28px;
+    min-height: auto;
+  }
+
+  .portal-hero {
+    padding: 24px 0 28px;
+  }
+
+  .portal-h1 {
+    font-size: 30px;
+  }
+
+  .portal-lead {
+    font-size: 15px;
+  }
+
+  .portal-footer {
+    display: none;
+  }
+
+  .portal-right {
+    padding: 28px 16px 40px;
+    align-items: flex-start;
+  }
+
+  .portal-nav {
+    padding-top: 20px;
+  }
+
+  /* 16px input so iOS Safari doesn't zoom on focus */
+  .auth-input {
+    font-size: 16px;
+  }
+
+  .auth-btn-primary,
+  .auth-btn-secondary {
+    min-height: 48px;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   INSTALL TAB — a self-serve setup checklist plus a per-service
+   "active" status. Each service's A$ logo is the colored brand chip
+   desaturated to grey (.is-inactive) until the account earns its
+   first AIAD points from that service (GET /v1/web/sources, see
+   portal.js), then it fills back into full color.
+   ════════════════════════════════════════════════════════════════ */
+
+/* Greyed-out logo = the exact same A$ chip, desaturated + dimmed. Dropping
+   .is-inactive restores the colored brand logo; the transition does the fill. */
+.logo.is-inactive { filter: grayscale(1) opacity(.5); box-shadow: none; }
+
+/* "Active status at the top" — aggregate: lit once any service is earning. */
+.install-hero {
+  display: flex; align-items: center; gap: 16px;
+  padding: 18px 20px; margin-bottom: 26px;
+  border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--card-dark);
+}
+.install-hero-logo {
+  width: 54px; height: 54px; border-radius: 15px; font-size: 23px; flex: none;
+  transition: filter .45s ease, box-shadow .45s ease;
+}
+.install-hero-text .eyebrow { margin-bottom: 4px; }
+.install-hero-text .earn-title { margin: 0 0 4px; }
+.install-hero-text .redeem-lead { margin: 0; }
+
+.install-h { font-size: 17px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 6px; }
+
+/* Rows: the install checklist (left) + per-service active status (right). */
+.install-list { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
+.install-row { display: grid; grid-template-columns: 1fr auto; align-items: stretch; gap: 14px; }
+
+/* The checkbox reuses the .survey-opt chip; widen it and stack name + sub. It's
+   read-only — server-driven, never clicked — so kill the pointer + hover afford. */
+.install-check { align-items: center; padding: 15px 18px; cursor: default; }
+.install-check:hover { border-color: var(--line); background: var(--card-dark-2); }
+.install-check.sel:hover { border-color: var(--accent); background: rgba(var(--accent-rgb), .1); }
+.install-check .ic-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+/* Install guide link now lives in the left box, pinned to its right edge. */
+.install-check .ic-link { margin-left: auto; padding-left: 14px; white-space: nowrap; }
+.ic-name { font-size: 15px; font-weight: 700; color: var(--ink); }
+.ic-sub { font-size: 13px; font-weight: 500; color: var(--gray); }
+.ic-sub code { font-family: var(--mono); font-size: 12px; background: var(--bg-tint); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+/* Per-service active status — logo + label + guide link. */
+.install-active {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  min-width: 128px; padding: 12px 14px; text-align: center;
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card-dark);
+}
+.install-active .logo { transition: filter .45s ease, box-shadow .45s ease; }
+.ia-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; font-weight: 700; color: var(--gray-2); }
+.install-active.is-live { border-color: var(--ok-line); background: var(--ok-bg); }
+.install-active.is-live .ia-label { color: var(--ok-fg); }
+.ic-link { font-size: 12.5px; font-weight: 600; color: var(--accent); }
+
+@media (max-width: 560px) {
+  .install-row { grid-template-columns: 1fr; }
+  .install-active { flex-direction: row; justify-content: space-between; min-width: 0; padding: 10px 14px; }
+}
+
+/* Earnings tab: per-surface connection status row — same logo/label visuals as the
+   install tiles (reuses .logo.is-inactive + .ia-label), but a 3-up row with the
+   surface name on top. Driven by the same applyServiceActivation() / GET /v1/web/sources. */
+.earn-surfaces-card {
+  margin-top: 16px; padding: 20px 22px;
+  border: 1px solid var(--line); border-radius: 18px; background: var(--card-dark);
+}
+.ess-title { font-size: 15px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 3px; }
+.ess-sub { font-size: 13px; font-weight: 500; color: var(--gray); margin: 0 0 16px; }
+.earn-surfaces { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.earn-surface {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 16px 12px; text-align: center;
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-inset);
+}
+.es-surface-name { font-size: 14px; font-weight: 700; color: var(--ink); }
+.earn-surface .logo { transition: filter .45s ease, box-shadow .45s ease; }
+.earn-surface.is-live { border-color: var(--ok-line); background: var(--ok-bg); }
+.earn-surface.is-live .ia-label { color: var(--ok-fg); }
+
+@media (max-width: 560px) {
+  .earn-surfaces { grid-template-columns: 1fr; }
+  .earn-surface { flex-direction: row; justify-content: space-between; text-align: left; }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   AIAD ADDITIONS — wallet chip + modal, "available at token launch"
+   cash-out preview, and the reserve strip. All new-to-AIAD; every
+   color is a theme.css token.
+   ════════════════════════════════════════════════════════════════ */
+
+/* Header wallet chip — a mock pill; clicking opens the wallet modal. */
+.wallet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--card-dark);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+  -webkit-appearance: none;
+}
+.wallet-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--ink);
+}
+.wallet-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn-fg);
+  box-shadow: 0 0 0 3px var(--warn-bg);
+}
+
+/* Minimal modal — backdrop centers a card; [hidden] wins over display:flex. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+}
+.modal-backdrop[hidden] { display: none; }
+.modal-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--card-dark);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-card);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-title {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  margin: 0;
+}
+.modal-body {
+  font-size: 14px;
+  color: var(--gray);
+  line-height: 1.6;
+  margin: 0;
+}
+.modal-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+.modal-list strong { color: var(--ink); }
+
+/* Cash out tab — the future-flow preview card, clearly labeled. */
+.launch-preview {
+  margin-top: 18px;
+  padding: 20px 22px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--surface-inset);
+}
+.lp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.lp-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  margin: 0;
+}
+.lp-badge {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.lp-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--gray);
+  line-height: 1.55;
+}
+.lp-steps strong { color: var(--ink); font-weight: 700; }
+.lp-foot {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--gray-2);
+}
+
+/* Reserve strip — one mono line of points-phase accounting above the footer. */
+.reserve-strip {
+  display: flex;
+  justify-content: center;
+  padding: 8px 20px 0;
+}
+.reserve-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--gray);
+  border: 1px solid var(--line);
+  background: var(--card-dark);
+  border-radius: var(--radius-pill);
+  padding: 7px 16px;
+  text-align: center;
+}
+.reserve-pill strong { color: var(--ink); font-weight: 700; }
