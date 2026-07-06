@@ -1,5 +1,12 @@
 # AIAD system architecture
 
+> **Launch-venue note:** this doc describes the self-directed Base/EVM path.
+> If the token launches on star.fun (Solana), the architecture is unchanged
+> but three parts swap: CampaignFunder → an offchain Jupiter-API buy keeper,
+> MerkleRewardsDistributor.sol → an established Solana Merkle-distributor
+> program, treasury Safe → Squads multisig. See
+> [07-starfun-launch.md](07-starfun-launch.md).
+
 Two operating modes, switched by one knob (`TOKEN_MODE=points|live`). Points
 mode is the launch state; live mode activates at TGE. Both reuse the parent
 platform's

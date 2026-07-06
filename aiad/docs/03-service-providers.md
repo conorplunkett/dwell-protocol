@@ -13,6 +13,13 @@ July 2026 — re-verify pricing before contracts are signed.
 | User cash-out (offramp) | Zero Hash or MoonPay | Coinbase Offramp, Bridge |
 | Job automation (later) | Gelato | Chainlink Automation; plain cron is fine at launch |
 
+> **star.fun path:** if the token launches on star.fun
+> ([07-starfun-launch.md](07-starfun-launch.md)) the chain is **Solana** and
+> three rows change: routing = **Jupiter swap API**, liquidity = **Meteora**
+> (seeded by the launchpad, no self-seed cost), treasury multisig = **Squads**.
+> Privy, Coinbase (fiat→USDC), and the offramp partners are unchanged — Privy
+> and the offramps support Solana.
+
 ## Base (chain)
 
 Coinbase's L2. Sub-cent transactions, native Coinbase onramp integration, the

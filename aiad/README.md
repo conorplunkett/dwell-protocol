@@ -37,6 +37,9 @@ it) and is structured to be lifted into its own repository unchanged.
    hard rules, copy rules, tax ops
 6. [Launch checklist](docs/06-launch-checklist.md) — points launch, TGE gates,
    the ordered runbook
+7. [star.fun launch](docs/07-starfun-launch.md) — assessment + adaptation for
+   launching on the star.fun launchpad (Solana) instead of the self-directed
+   Base path
 
 ## View the site
 
