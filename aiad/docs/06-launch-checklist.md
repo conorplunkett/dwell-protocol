@@ -4,44 +4,50 @@ Two launches: **points** (soon, cheap, reversible) and **TGE** (later,
 expensive, one-way). Each item is a gate — nothing below it starts until it's
 done.
 
-**Decision record (2026-07-06): parallel brand — full separation.** AIAD and
-FreeAI are **separate businesses**. Separate ad inventory, separate databases,
-separate domains, separate money accounts, separate operator tooling — zero
-connections between the sites, in either direction. The `aiad/` folder lifts
-out into its own repository (it is self-contained by design); the parent
-product is not modified. The Separation section below is the enforcement list.
-(This supersedes a same-day rebrand-in-place note that briefly stood here.)
+**Decision record (2026-07-06): parallel brands on shared pieces.** AIAD and
+FreeAI are **separate businesses at runtime** — separate ad inventory,
+databases, domains, money accounts, and operator tooling; zero connections
+between the sites in either direction. But the code is **not forked**: both
+brands run the same underlying pieces. The UI elements and the ad-serving
+machinery (backend, extension, terminal, macOS) are identical and
+brand-parameterized — only the theme tokens and (slightly) the copy differ.
+One codebase, two deployments. (This supersedes two same-day notes —
+rebrand-in-place, then fork-and-diverge — that briefly stood here.)
 
-## Separation — two businesses, zero connections
+## Separation — two businesses, zero runtime connections
 
-Everything AIAD runs is its own instance. Code is forked once at lift-out and
-then diverges freely; nothing is shared, linked, or reused **at runtime**.
+Everything AIAD runs is its own **instance**: no shared data, keys, accounts,
+or domains. The **code** is shared by design (decision record above) — one
+implementation, deployed twice; a fix or UI change lands once and ships to
+both brands.
 
-- [ ] **Own repository**: lift `aiad/` out unchanged; fork in the backend
-      (`server/` + `supabase/functions/api`), the three clients, and the
-      admin dashboard as AIAD-owned copies; own CI (the `aiad-contracts` job
-      and site checks move with it), own secrets store.
+- [ ] **One codebase, two deployments** (this repo): the backend and the
+      three clients gain a small brand/config layer instead of forks —
+      `aiad/` holds only the brand layer (site theme + copy, contracts,
+      docs). Each deployment gets its own secrets store; CI runs both
+      brands' checks (it already runs the AIAD contracts, copy-rule, and
+      cross-brand greps).
 - [ ] **Own legal + money stack**: AIAD entity per
       [05-legal-structure.md](05-legal-structure.md); own bank account; own
       **Stripe account** (advertisers pay AIAD, never FreeAI's Stripe); own
       Coinbase business account; own **Resend account + sending domain** and
       support inbox.
-- [ ] **Own database**: fresh Supabase project in its own org; the parent
-      `schema.sql` + migrations + doc-04 changes applied to an **empty** DB.
-      No data migration of any kind — no users, devices, balances,
-      campaigns, referral codes, or ad inventory imported from FreeAI. Own
+- [ ] **Own database**: fresh Supabase project in its own org; the shared
+      `schema.sql` + migrations applied to an **empty** DB. No data
+      migration of any kind — no users, devices, balances, campaigns,
+      referral codes, or ad inventory imported from FreeAI. Own
       `DATABASE_URL`, service keys, session/webhook secrets, `ADMIN_KEY`.
 - [ ] **Own site**: AIAD domain + its own Vercel project (root =
-      `aiad/web`, or `web/` after lift-out). No links, redirects, shared
-      assets, or shared analytics between the two sites in either direction
-      — enforced by the cross-brand grep in CI while both still live in
-      this repo.
-- [ ] **Own admin dashboard**: fork `web/admin.{html,js,css}` into AIAD,
-      restyled on the black/green theme, served from the AIAD site, pointed
-      at the AIAD backend with its own `ADMIN_KEY`; grows the AIAD-only
-      surfaces (reserve attestation view,
-      `POST /v1/admin/epochs/publish-root`). No shared operator tooling,
-      no shared admin keys.
+      `aiad/web`). No links, redirects, shared assets, or shared analytics
+      between the two sites in either direction — enforced by the
+      cross-brand grep in CI.
+- [ ] **Own admin dashboard deployment**: the **same** admin UI
+      (`web/admin.{html,js,css}` elements), served from the AIAD site on
+      the black/green theme and pointed at the AIAD backend with its own
+      `ADMIN_KEY`; the AIAD-only surfaces (reserve attestation view,
+      `POST /v1/admin/epochs/publish-root`) are additive panels behind the
+      same brand/config layer. No shared operator sessions, no shared
+      admin keys.
 - [ ] **Own distribution identities**: new Chrome Web Store listing under
       AIAD's own developer account; new npm package/scope; own Apple
       Developer account + bundle ID; DMG shipped from AIAD's own releases.
@@ -52,27 +58,33 @@ then diverges freely; nothing is shared, linked, or reused **at runtime**.
 ## Phase 1 — points launch
 
 1. [ ] The **runtime rows of the Separation list are done**: money stack,
-       database, site, admin dashboard, secrets. (The repo lift-out may
-       trail the launch — the folder is self-contained either way — but
-       nothing AIAD serves in production may touch a FreeAI account, key,
-       or database.)
+       database, site, admin deployment, secrets. Nothing AIAD serves in
+       production may touch a FreeAI account, key, or database.
 2. [ ] Backend changes from [04-backend-adaptation.md](04-backend-adaptation.md)
-       §A–§D implemented in **both** the forked `server/src` and edge
-       function, with server tests covering the 50/15/35 split math and the
-       reserve invariants (`TOKEN_MODE=points`).
+       §A–§D implemented in the **shared** `server/src` + edge function
+       behind config — defaults preserve FreeAI's behavior exactly; the
+       AIAD deployment enables them (`TOKEN_MODE=points`, the BPS knobs) —
+       with server tests covering both the legacy split and the 50/15/35
+       split math + reserve invariants.
 3. [ ] Coinbase business account opened (AIAD's own); reserve account
        segregated; withdrawal addresses locked; API keys IP-allowlisted.
 4. [ ] Fiat sweeper (keeper job 1) running against Stripe test mode →
        Coinbase sandbox; `usdc_reserve_entries` reconcile to the cent.
 5. [ ] Public reserve page live (`GET /v1/reserve` + portal strip): escrowed
        USDC vs. outstanding points, updated daily.
-6. [ ] AIAD site live on its **own domain + own Vercel project** (root =
-       `aiad/web`, or `web/` after lift-out); "PREVIEW" pill removed;
-       `aiad-api` meta tag pointed at the AIAD edge function; OG cards +
-       favicon final; copy passes the
+6. [ ] **AIAD site rebuilt from the FreeAI UI elements**: portal and admin
+       reuse `web/`'s markup/components verbatim with the AIAD `theme.css`
+       tokens and copy swapped (the design system is already fully
+       token-driven, so a re-skin is theme + copy, not new UI); the landing
+       page may differ in copy but draws from the same element library.
+       Document the pairing in AGENTS.md alongside the existing theme-mirror
+       discipline so changes port both ways.
+7. [ ] AIAD site live on its **own domain + own Vercel project** (root =
+       `aiad/web`); "PREVIEW" pill removed; `aiad-api` meta tag pointed at
+       the AIAD edge function; OG cards + favicon final; copy passes the
        [05-legal-structure.md](05-legal-structure.md) rules (the
        banned-language grep runs in CI — `site` job).
-7. [ ] Points accrue end-to-end in production: view ad → `points_credit` →
+8. [ ] Points accrue end-to-end in production: view ad → `points_credit` →
        portal balance → reserve attestation matches.
 
 ## TGE gate criteria (all true before Phase 2 starts)
@@ -125,33 +137,38 @@ then diverges freely; nothing is shared, linked, or reused **at runtime**.
 ## Client surfaces (post-demo, pre- or during points launch)
 
 The web portal is the cash-out surface; **earning happens in the clients**.
-All three exist in the parent repo and are forks-and-rebrands, not rewrites —
-their earning logic (impression serve/redeem, dwell, caps) is backend-driven,
-and the only in-client change beyond branding is displaying points (the
+All three ship for both brands **from the same source** — the ad-serving
+logic (impression serve/redeem, dwell, caps) is identical and backend-driven;
+a brand/config layer supplies the name, icons, theme tokens, copy strings,
+and `API_BASE`. The only behavioral difference is displaying points (the
 millicent balance *is* the points number).
 
 - [ ] **Backend instance**: the fresh Supabase project from the Separation
-      list; parent `schema.sql` + migrations + doc-04 changes applied in the
-      AIAD fork (both `server/src` and the edge function in the same
-      commit); env: `VIEWER_SHARE_BPS=5000`, `REFERRER_SHARE_BPS=1500`,
-      `RESERVE_TRANCHE_BPS=9000`, `TOKEN_MODE=points`.
-- [ ] **Admin dashboard**: the fork from the Separation list ships **with**
-      the backend instance — campaign approval, receipts, and the
-      killswitch must work from day one; there is no fallback to FreeAI's
-      admin.
-- [ ] **Chrome extension**: fork + rebrand (name, icons, popup theme.css =
-      byte-copy of the AIAD `web/theme.css`, inject.css `--ov-*` mirror);
-      `API_BASE` → the AIAD backend; **new** Web Store listing under AIAD's
-      developer account (review lead time: days).
-- [ ] **Terminal client**: new npm package (`aiad` or similar) under AIAD's
-      own scope; rebrand strings + the marked shell-alias block — use a
-      distinct block marker and function name so the AIAD and FreeAI
-      clients can coexist on one machine without touching each other's
-      alias blocks. FreeAI's package is not modified.
-- [ ] **macOS app**: new bundle ID, rebuild, sign, notarize under AIAD's
-      Apple Developer account; ship the DMG on AIAD's own GitHub releases;
-      wire `/download/mac` in the AIAD site's `vercel.json` when it exists.
-- [ ] All clients display "points" with the 1,000 = $1.00 legend.
+      list; shared `schema.sql` + migrations applied; the shared code
+      deployed with AIAD env: `VIEWER_SHARE_BPS=5000`,
+      `REFERRER_SHARE_BPS=1500`, `RESERVE_TRANCHE_BPS=9000`,
+      `TOKEN_MODE=points`. The FreeAI deployment runs the same code with
+      defaults and is behavior-identical to today.
+- [ ] **Admin deployment**: ships **with** the backend instance — campaign
+      approval, receipts, and the killswitch must work from day one; there
+      is no fallback to FreeAI's admin.
+- [ ] **Chrome extension**: one source, two packaged artifacts — add a
+      brand switch to the packaging step (`make package-ext BRAND=aiad`)
+      that swaps manifest name, icons, popup `theme.css` (byte-copy of the
+      AIAD `web/theme.css`), the inject.css `--ov-*` mirror, and
+      `API_BASE`; **new** Web Store listing under AIAD's own developer
+      account (review lead time: days).
+- [ ] **Terminal client**: same source published under a second npm name
+      (`aiad` or similar, AIAD's own scope) with a brand config — bin
+      name, copy strings, a distinct marked shell-alias block, and
+      `API_BASE` — so both brands' clients can coexist on one machine
+      without touching each other's alias blocks.
+- [ ] **macOS app**: same Swift source, second build target — bundle ID,
+      icon, brand strings, palette values, `API_BASE` — signed and
+      notarized under AIAD's own Apple Developer account; DMG on AIAD's
+      own GitHub releases; wire `/download/mac` in the AIAD site's
+      `vercel.json` when it exists.
+- [ ] All AIAD clients display "points" with the 1,000 = $1.00 legend.
 
 ## Standing rules after launch
 

@@ -12,12 +12,14 @@ after launch — and each campaign's pool splits **50% to the viewer, 15% to
 their referrer, 35% to the protocol treasury**. Users are only ever paid what
 revenue already bought: no minting, no emissions schedule, no oracle.
 
-This folder is fully self-contained (no code dependencies on anything outside
-it) and is structured to be lifted into its own repository unchanged. That
-lift-out is the plan of record: AIAD is a **separate business** from FreeAI —
-separate repo, database, ad inventory, money accounts, clients, and admin
-tooling, with zero runtime connections between the two sites (see the
-Separation section of [docs/06-launch-checklist.md](docs/06-launch-checklist.md)).
+This folder holds AIAD's **brand layer** — site theme + copy, contracts, and
+docs. Plan of record: AIAD and FreeAI are **separate businesses at runtime**
+(separate databases, ad inventory, money accounts, domains, admin keys; zero
+connections between the two sites) built on the **same underlying pieces** —
+one codebase, brand-parameterized, deployed twice, with identical UI elements
+and identical ad serving; only theme tokens and copy differ. See the
+Separation section of
+[docs/06-launch-checklist.md](docs/06-launch-checklist.md).
 
 ## Layout
 
