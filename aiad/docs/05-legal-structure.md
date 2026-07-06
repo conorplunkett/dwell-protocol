@@ -122,6 +122,20 @@ without advice in either direction.
 - Issuer-side treatment of the retained allocations (vesting, 83(b)-analog
   questions, treasury sales) — dedicated tax counsel at TGE.
 
+## If launching via star.fun — read this first
+
+A star.fun raise ([07-starfun-launch.md](07-starfun-launch.md)) **breaches
+hard rule 1 in substance**: the platform's bonding curve publicly sells 60% of
+supply at the project's instigation, marketed as fractional company
+ownership, with no KYC and no US geofence — an offering in substance, wrapped
+in the BVI/Cayman structure this doc otherwise avoids, under English-law ToS.
+The earned-rewards shelter still covers the ad-viewing side, but the raise
+itself is a separate securities event. Consequences: the points-first shelter
+collapses (the token is live and priced from day one), and **counsel sign-off
+becomes a pre-raise hard gate** — on the raise, the wrapper, the copy, and the
+geofence decision. Hard rules 2–4 (no custody, partner offramps, geofences)
+apply unchanged on Solana.
+
 ## Phase gates
 
 Points → TGE is a one-way door. Gate criteria and the ordered runbook live in

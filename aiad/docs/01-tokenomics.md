@@ -24,6 +24,13 @@ bought — no minting, no emissions schedule, no oracle.
 
 ### Initial allocation (starting point — final numbers set with counsel at TGE)
 
+> **star.fun path:** this table is superseded by the platform's fixed preset —
+> **60% public sale / 20% team (3-mo cliff + 9-mo vest) / 20% liquidity** — if
+> the token launches there. Rewards are unaffected (they're bought on the open
+> market, never drawn from an allocation), and the protocol treasury
+> self-builds from its 35–50% share of every campaign buy. See
+> [07-starfun-launch.md](07-starfun-launch.md).
+
 | Bucket | % | Notes |
 |---|---|---|
 | Community / earn-side incentives | 35% | Launch boosts, early-supporter conversion sweeteners, future programs |
@@ -152,7 +159,9 @@ appreciation assumed:
 | $5M | $250K | $1.575M–2.25M | $1.825M–2.5M |
 
 (The range depends on the referred/unreferred mix — unreferred viewers push the
-protocol share from 35% to 50%.) The team allocation (20%, vested) is the
+protocol share from 35% to 50%.) On the star.fun path a third stream exists:
+the **founder's 0.5% of all secondary trading volume**, paid by the platform
+([07-starfun-launch.md](07-starfun-launch.md)). The team allocation (20%, vested) is the
 equity-like upside on top; it is deliberately excluded from these tables and
 from all public materials.
 

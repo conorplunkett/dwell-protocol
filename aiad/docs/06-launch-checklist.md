@@ -4,6 +4,14 @@ Two launches: **points** (soon, cheap, reversible) and **TGE** (later,
 expensive, one-way). Each item is a gate — nothing below it starts until it's
 done.
 
+> **star.fun variant:** if launching via star.fun, the raise **is** the TGE —
+> see [07-starfun-launch.md](07-starfun-launch.md). The points phase shrinks
+> to the window between first ad revenue and graduation; Phase-2 items 5–7
+> (deploy, liquidity seed, reserve conversion) are replaced by the raise +
+> graduation, and item 3's dry-run targets the Solana stack (Jupiter keeper +
+> Solana Merkle distributor on devnet). Everything legal (counsel, geofences,
+> W-9 pipeline) moves **before the raise**.
+
 ## Phase 1 — points launch
 
 1. [ ] Backend changes from [04-backend-adaptation.md](04-backend-adaptation.md)

@@ -1,5 +1,12 @@
 # AIAD contracts
 
+> **Venue note:** these contracts implement the self-directed **Base/EVM**
+> launch path. If the token launches on star.fun (Solana), the token is an SPL
+> mint created by the platform and this folder becomes the reference
+> implementation of the mechanics — the Solana equivalents are an offchain
+> Jupiter-API buy keeper and an established Solana Merkle-distributor program.
+> See [`../docs/07-starfun-launch.md`](../docs/07-starfun-launch.md).
+
 Three contracts, standard Foundry layout, built on **unmodified OpenZeppelin
 Contracts v5.6.1** pinned as a git submodule at `lib/openzeppelin-contracts`
 (commit `5fd1781b1454fd1ef8e722282f86f9293cacf256`, tag `v5.6.1`). No OZ code
