@@ -47,6 +47,9 @@ Separation section of
 7. [star.fun launch](docs/07-starfun-launch.md) — assessment + adaptation for
    launching on the star.fun launchpad (Solana) instead of the self-directed
    Base path, including the points→token conversion bridge
+8. [Base Sepolia dry-run](docs/08-testnet-dry-run.md) — the executable
+   runbook for the full testnet loop: Stripe test-mode buy → sweeper →
+   `swapAndFund` → 60/10/30 earnings → Merkle root → claims → failure drills
 
 ## View the site
 
