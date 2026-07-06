@@ -148,7 +148,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     return ip ? crypto.createHmac("sha256", config.adminKey || "ip-salt").update(ip).digest("hex") : null;
   }
 
-  // AIAD token mode (aiad/docs/04): when TOKEN_MODE is set (the AIAD
+  // DWELL token mode (dwell-protocol docs/04): when TOKEN_MODE is set (the DWELL
   // deployment), impressions split three ways into points entries instead of
   // the legacy two-way credit, and the token routes below come alive. Absent
   // (the FreeAI deployment, and legacy test configs) everything is unchanged.
@@ -295,7 +295,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     json(res, 200, { ok: true, creditedMillicents: result.creditedMillicents });
   });
 
-  // ---------- AIAD token mode (aiad/docs/04 §D) ----------
+  // ---------- DWELL token mode (dwell-protocol docs/04 §D) ----------
   // Every route here 404s when TOKEN_MODE is unset, so the FreeAI deployment
   // exposes no token surface at all. Wallet linking and claims are live-mode
   // only; in points mode they answer 409 so clients can show "at launch".
@@ -400,7 +400,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
         quantity: nBlocks,
         price_data: {
           currency: "usd", unit_amount: priceCents,
-          // Brand-configurable so the AIAD deployment bills under its own
+          // Brand-configurable so the DWELL deployment bills under its own
           // Stripe product line, even before its keys move to their own account.
           product_data: {
             name: config.stripeProductName || "FreeAI spinner block — 1,000 impressions",

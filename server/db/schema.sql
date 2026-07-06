@@ -283,11 +283,11 @@ create index if not exists referral_invites_email_idx on referral_invites (lower
 
 -- Full ledger entry-type set (extends the base CHECK above). Drop + re-add so
 -- re-running is idempotent and existing databases pick up new values. This is the
--- authoritative list — mirrors production and server/db/20260706_aiad_token_mode.sql.
+-- authoritative list — mirrors production and server/db/20260706_dwell_token_mode.sql.
 -- 'click_credit' is the retired 50x click credit (kept for history); verified
 -- clicks now record a zero-value 'click_event' (analytics only, never billed).
 -- The points_* / reserve / token types are written only when TOKEN_MODE is set
--- (the AIAD deployment; aiad/docs/04 §A) — a legacy FreeAI database never
+-- (the DWELL deployment; dwell-protocol docs/04 §A) — a legacy FreeAI database never
 -- produces them, but the shared schema knows them.
 alter table ledger drop constraint if exists ledger_entry_type_check;
 alter table ledger add constraint ledger_entry_type_check check (entry_type in (
@@ -437,9 +437,9 @@ create table if not exists email_leads (
 );
 create index if not exists email_leads_kind_created_idx on email_leads (kind, created_at desc);
 
--- ── AIAD token mode (aiad/docs/04 §A) ────────────────────────────────────────
+-- ── DWELL token mode (dwell-protocol docs/04 §A) ────────────────────────────────────────
 -- Shared schema for both deployments; only a TOKEN_MODE deployment writes to
--- these. Mirrors server/db/20260706_aiad_token_mode.sql.
+-- these. Mirrors server/db/20260706_dwell_token_mode.sql.
 
 -- Wallet linking (live mode). Alongside the existing stripe_account_id.
 alter table users add column if not exists wallet_address text unique;
@@ -464,11 +464,11 @@ create table if not exists token_campaign_pools (
   id uuid primary key default gen_random_uuid(),
   campaign_id uuid unique references campaigns(id),
   usdc_in_micro bigint not null,
-  aiad_out_wei numeric(78, 0) not null,
+  dwell_out_wei numeric(78, 0) not null,
   to_distributor_wei numeric(78, 0) not null,
   to_treasury_wei numeric(78, 0) not null,
   burned_wei numeric(78, 0) not null default 0,
-  locked_rate_wei numeric(78, 0) not null,     -- aiad_out * viewer share / impressions_total
+  locked_rate_wei numeric(78, 0) not null,     -- dwell_out * viewer share / impressions_total
   tx_hash text unique not null,
   funded_at timestamptz not null default now()
 );
@@ -479,7 +479,7 @@ create table if not exists token_rewards (
   epoch bigint not null,
   user_id uuid references users(id),
   wallet_address text not null,
-  cumulative_aiad_wei numeric(78, 0) not null,
+  cumulative_dwell_wei numeric(78, 0) not null,
   leaf_hash text not null,
   unique (epoch, wallet_address)
 );

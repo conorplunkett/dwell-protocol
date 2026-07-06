@@ -1396,8 +1396,8 @@ const fakeMailer = {
     await api("POST", "/v1/admin/campaigns/receipts-auto", { adminKey: "test-admin", enabled: false });
   });
 
-  // ---------- AIAD token mode (aiad/docs/04) ----------
-  // A second app over the SAME database with TOKEN_MODE=points — the AIAD
+  // ---------- DWELL token mode (dwell-protocol docs/04) ----------
+  // A second app over the SAME database with TOKEN_MODE=points — the DWELL
   // deployment shape. The legacy app above already proved the default path is
   // untouched; these checks prove the split math, the ledger closure, the
   // reserve earmark, and the token routes.
@@ -1443,8 +1443,8 @@ const fakeMailer = {
   let campT;
   await check("token mode: funding a campaign earmarks the 90% reserve tranche at payment", async () => {
     const r = await apiT("POST", "/v1/checkout", {
-      email: "ads@aiad.example", adLine: "AIAD funded campaign", url: "https://example.com/",
-      brand: "AiadCo", pricePerBlock: 1000, blocks: 5,
+      email: "ads@dwell.example", adLine: "DWELL funded campaign", url: "https://example.com/",
+      brand: "DwellCo", pricePerBlock: 1000, blocks: 5,
     });
     campT = r.body.campaignId;
     await payWebhookT(campT);
@@ -1459,7 +1459,7 @@ const fakeMailer = {
     const dev = (await apiT("POST", "/v1/devices/register")).body;
     const before = await campLedger(campT);
     const serve = await apiT("POST", "/v1/impressions/serve", { ...dev });
-    assert.strictEqual(serve.body.ad.brand, "AiadCo", "token campaign wins the auction");
+    assert.strictEqual(serve.body.ad.brand, "DwellCo", "token campaign wins the auction");
     const redeem = await apiT("POST", "/v1/impressions/redeem", { ...dev, token: serve.body.token, source: "claude_code" });
     assert.strictEqual(redeem.status, 200);
     assert.strictEqual(redeem.body.creditedMillicents, 54_000, "viewer earns 60% of the 90% pool");
@@ -1475,11 +1475,11 @@ const fakeMailer = {
 
   await check("token mode: referred viewer routes 10% to the referrer inside the split (no platform-funded bonus)", async () => {
     // referrer signs up, viewer signs up with their code, viewer's device links
-    const refSess = await loginVia("aiad-ref@example.com");
+    const refSess = await loginVia("dwell-ref@example.com");
     const code = (await api("GET", "/v1/web/affiliate", undefined, { Authorization: `Bearer ${refSess}` })).body.code;
-    await loginVia("aiad-viewer@example.com", code);
+    await loginVia("dwell-viewer@example.com", code);
     const dev = (await apiT("POST", "/v1/devices/register")).body;
-    await apiT("POST", "/v1/auth/request-link", { ...dev, email: "aiad-viewer@example.com" });
+    await apiT("POST", "/v1/auth/request-link", { ...dev, email: "dwell-viewer@example.com" });
     await api("GET", mailbox.at(-1).link.replace(base, ""));
 
     const before = await campLedger(campT);
@@ -1491,7 +1491,7 @@ const fakeMailer = {
     assert.strictEqual(led.protocol_points_credit.sum - before.protocol_points_credit.sum, 27_000, "protocol takes 30% when referred");
     assert.strictEqual(led.affiliate_credit, undefined, "the legacy platform-funded bonus is retired in token mode");
     assert.strictEqual(
-      (await repo.balanceForUser(await userId("aiad-ref@example.com"))).balanceMillicents, 9_000,
+      (await repo.balanceForUser(await userId("dwell-ref@example.com"))).balanceMillicents, 9_000,
       "referrer's balance sees the points leg");
 
     // the legacy batch path splits identically (10 impressions in one batch)
@@ -1503,12 +1503,12 @@ const fakeMailer = {
 
     // viewer balance = their points (device-scoped credits roll up to the account)
     assert.strictEqual(
-      (await repo.balanceForUser(await userId("aiad-viewer@example.com"))).balanceMillicents, 594_000,
+      (await repo.balanceForUser(await userId("dwell-viewer@example.com"))).balanceMillicents, 594_000,
       "viewer keeps 54,000 + 540,000 points");
   });
 
   await check("token mode: reserve invariant holds and /v1/reserve + points summary report it", async () => {
-    // per-campaign invariant (aiad/docs/04 §A): accrued legs never exceed the earmark
+    // per-campaign invariant (dwell-protocol docs/04 §A): accrued legs never exceed the earmark
     const led = await campLedger(campT);
     const accrued = led.points_credit.sum + led.referral_points_credit.sum + led.protocol_points_credit.sum;
     assert.ok(accrued <= led.reserve_allocation.sum, "accrued points ≤ reserve_allocation");
@@ -1522,7 +1522,7 @@ const fakeMailer = {
     assert.strictEqual(r.body.escrowedMicroUsdc, 0, "keeper hasn't escrowed anything in tests");
 
     // the millicent balance IS the points number (1,000 points = $1.00)
-    const viewerSess = await loginVia("aiad-viewer@example.com");
+    const viewerSess = await loginVia("dwell-viewer@example.com");
     const sum = await apiT("GET", "/v1/web/points/summary", undefined, { Authorization: `Bearer ${viewerSess}` });
     assert.strictEqual(sum.body.points, 594_000);
     assert.strictEqual(sum.body.usdEquivalent, 5.94);
@@ -1533,7 +1533,7 @@ const fakeMailer = {
     assert.strictEqual((await api("GET", "/v1/token/pools")).status, 404);
     assert.strictEqual((await api("GET", "/v1/web/points/summary")).status, 404);
     assert.strictEqual((await apiT("GET", "/v1/token/pools")).body.pools.length, 0, "pools empty during the points phase");
-    const viewerSess = await loginVia("aiad-viewer@example.com");
+    const viewerSess = await loginVia("dwell-viewer@example.com");
     assert.strictEqual((await apiT("POST", "/v1/web/wallet", {}, { Authorization: `Bearer ${viewerSess}` })).status, 409, "wallet linking is live-mode only");
     assert.strictEqual((await apiT("GET", "/v1/web/token/claim-proof", undefined, { Authorization: `Bearer ${viewerSess}` })).status, 409);
     assert.strictEqual((await apiT("POST", "/v1/admin/epochs/publish-root", { adminKey: "test-admin" })).status, 409);
