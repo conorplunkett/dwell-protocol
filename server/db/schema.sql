@@ -283,9 +283,12 @@ create index if not exists referral_invites_email_idx on referral_invites (lower
 
 -- Full ledger entry-type set (extends the base CHECK above). Drop + re-add so
 -- re-running is idempotent and existing databases pick up new values. This is the
--- authoritative list — mirrors production and server/db/20260625_remove_click_50x.sql.
+-- authoritative list — mirrors production and server/db/20260706_aiad_token_mode.sql.
 -- 'click_credit' is the retired 50x click credit (kept for history); verified
 -- clicks now record a zero-value 'click_event' (analytics only, never billed).
+-- The points_* / reserve / token types are written only when TOKEN_MODE is set
+-- (the AIAD deployment; aiad/docs/04 §A) — a legacy FreeAI database never
+-- produces them, but the shared schema knows them.
 alter table ledger drop constraint if exists ledger_entry_type_check;
 alter table ledger add constraint ledger_entry_type_check check (entry_type in (
   'campaign_credit',       -- advertiser paid; campaign funded          (+ campaign)
@@ -299,7 +302,12 @@ alter table ledger add constraint ledger_entry_type_check check (entry_type in (
   'referral_credit',       -- $20 bonus for a qualified referral         (+ user)
   'affiliate_credit',      -- 10% of an affiliated user's earnings       (+ user)
   'admin_credit',          -- manual balance adjustment up   (admin)    (+ user/device)
-  'admin_debit'            -- manual balance adjustment down (admin)    (- user/device)
+  'admin_debit',           -- manual balance adjustment down (admin)    (- user/device)
+  'points_credit',           -- token mode: viewer's 60% of the reserve tranche   (+ device)
+  'referral_points_credit',  -- token mode: referrer's 10%, carved from the pool  (+ user)
+  'protocol_points_credit',  -- token mode: protocol's 30% (40% unreferred)       (+ platform)
+  'reserve_allocation',      -- token mode: campaign's 90% tranche earmarked at payment (+ platform)
+  'token_claim_debit'        -- live mode: entitlement moved into an onchain Merkle root (- user)
 ));
 
 -- ── Affiliates ───────────────────────────────────────────────────────────────
@@ -428,4 +436,61 @@ create table if not exists email_leads (
   unique (email, kind)
 );
 create index if not exists email_leads_kind_created_idx on email_leads (kind, created_at desc);
+
+-- ── AIAD token mode (aiad/docs/04 §A) ────────────────────────────────────────
+-- Shared schema for both deployments; only a TOKEN_MODE deployment writes to
+-- these. Mirrors server/db/20260706_aiad_token_mode.sql.
+
+-- Wallet linking (live mode). Alongside the existing stripe_account_id.
+alter table users add column if not exists wallet_address text unique;
+alter table users add column if not exists wallet_provider text
+  check (wallet_provider in ('privy', 'external'));
+alter table users add column if not exists wallet_linked_at timestamptz;
+
+-- Points mode: one row per escrow movement; feeds the public reserve page.
+-- Written by the fiat-sweeper keeper (Coinbase transfers), never by the API.
+create table if not exists usdc_reserve_entries (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid references campaigns(id),
+  amount_micro_usdc bigint not null,          -- 6-dp USDC units
+  direction text not null check (direction in ('escrow', 'release', 'tge_buy')),
+  external_ref text,                          -- Coinbase transfer id / tx hash
+  created_at timestamptz not null default now()
+);
+create index if not exists usdc_reserve_entries_campaign_idx on usdc_reserve_entries (campaign_id);
+
+-- Live mode: mirror of CampaignFunded events — the locked-rate source of truth.
+create table if not exists token_campaign_pools (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid unique references campaigns(id),
+  usdc_in_micro bigint not null,
+  aiad_out_wei numeric(78, 0) not null,
+  to_distributor_wei numeric(78, 0) not null,
+  to_treasury_wei numeric(78, 0) not null,
+  burned_wei numeric(78, 0) not null default 0,
+  locked_rate_wei numeric(78, 0) not null,     -- aiad_out * viewer share / impressions_total
+  tx_hash text unique not null,
+  funded_at timestamptz not null default now()
+);
+
+-- Live mode: per-user cumulative entitlements per published root.
+create table if not exists token_rewards (
+  id uuid primary key default gen_random_uuid(),
+  epoch bigint not null,
+  user_id uuid references users(id),
+  wallet_address text not null,
+  cumulative_aiad_wei numeric(78, 0) not null,
+  leaf_hash text not null,
+  unique (epoch, wallet_address)
+);
+
+-- Live mode: mirror of Claimed events.
+create table if not exists token_claims (
+  id uuid primary key default gen_random_uuid(),
+  wallet_address text not null,
+  amount_wei numeric(78, 0) not null,
+  cumulative_wei numeric(78, 0) not null,
+  tx_hash text unique not null,
+  claimed_at timestamptz not null default now()
+);
 

@@ -53,6 +53,20 @@ function loadConfig(env = process.env) {
     // rate limit
     rateLimitCapacity: parseInt(env.RATE_LIMIT_CAPACITY || "120", 10),
     rateLimitRefillPerSec: parseFloat(env.RATE_LIMIT_REFILL_PER_SEC || "5"),
+
+    // ---- AIAD token mode (aiad/docs/04) — one codebase, two deployments ----
+    // '' (default) keeps the legacy FreeAI behavior byte-identical: two-way
+    // revenueShare split, no token machinery, token routes 404. The AIAD
+    // deployment sets TOKEN_MODE=points (accrual phase) or live (post-TGE).
+    tokenMode: ["points", "live"].includes(env.TOKEN_MODE) ? env.TOKEN_MODE : "",
+    viewerShareBps: parseInt(env.VIEWER_SHARE_BPS || "6000", 10), // viewer's share of the reserve tranche
+    referrerShareBps: parseInt(env.REFERRER_SHARE_BPS || "1000", 10), // referrer's share (falls to protocol when unreferred)
+    reserveTrancheBps: parseInt(env.RESERVE_TRANCHE_BPS || "9000", 10), // slice of gross routed to the token side
+
+    // ---- brand — the AIAD deployment bills and writes copy under its own name ----
+    brandName: env.BRAND_NAME || "FreeAI",
+    stripeProductName: env.STRIPE_PRODUCT_NAME || "FreeAI spinner block — 1,000 impressions",
+    stripeProductImage: env.STRIPE_PRODUCT_IMAGE || "https://freeai.fyi/og.png",
   };
 }
 
@@ -72,6 +86,11 @@ function pgPoolConfig(env = process.env) {
 async function boot(env = process.env) {
   const config = loadConfig(env);
   if (!config.databaseUrl) throw new Error("DATABASE_URL is required");
+  // Token-mode split sanity (aiad/docs/04 §C): the pool must cover both shares.
+  if (config.viewerShareBps + config.referrerShareBps > 10000) {
+    throw new Error("VIEWER_SHARE_BPS + REFERRER_SHARE_BPS must be <= 10000");
+  }
+  if (config.reserveTrancheBps > 10000) throw new Error("RESERVE_TRANCHE_BPS must be <= 10000");
   // Stripe is only exercised by advertiser checkout / webhooks — never by the
   // earning loop. In a local devnet (DEVNET=1) we let the API boot without it
   // so you can test devices → ledger → portal end-to-end with no Stripe account;

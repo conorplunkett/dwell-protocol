@@ -4,13 +4,14 @@ Two launches: **points** (soon, cheap, reversible) and **TGE** (later,
 expensive, one-way). Each item is a gate — nothing below it starts until it's
 done.
 
-> **star.fun variant:** if launching via star.fun, the raise **is** the TGE —
-> see [07-starfun-launch.md](07-starfun-launch.md). The points phase shrinks
-> to the window between first ad revenue and graduation; Phase-2 items 5–7
+> **Venue decision (2026-07-06): star.fun.** The raise **is** the TGE — see
+> [07-starfun-launch.md](07-starfun-launch.md). The points phase shrinks to
+> the window between first ad revenue and graduation; Phase-2 items 5–7
 > (deploy, liquidity seed, reserve conversion) are replaced by the raise +
 > graduation, and item 3's dry-run targets the Solana stack (Jupiter keeper +
 > Solana Merkle distributor on devnet). Everything legal (counsel, geofences,
-> W-9 pipeline) moves **before the raise**.
+> W-9 pipeline) moves **before the raise**. The Base/EVM path (docs 02–03,
+> `../contracts/`) remains the documented and CI-verified fallback.
 
 **Decision record (2026-07-06): parallel brands on shared pieces.** AIAD and
 FreeAI are **separate businesses at runtime** — separate ad inventory,
@@ -68,12 +69,16 @@ both brands.
 1. [ ] The **runtime rows of the Separation list are done**: money stack,
        database, site, admin deployment, secrets. Nothing AIAD serves in
        production may touch a FreeAI account, key, or database.
-2. [ ] Backend changes from [04-backend-adaptation.md](04-backend-adaptation.md)
+2. [x] Backend changes from [04-backend-adaptation.md](04-backend-adaptation.md)
        §A–§D implemented in the **shared** `server/src` + edge function
        behind config — defaults preserve FreeAI's behavior exactly; the
        AIAD deployment enables them (`TOKEN_MODE=points`, the BPS knobs) —
        with server tests covering both the legacy split and the 60/10/30
-       split math + reserve invariants.
+       split math + reserve invariants. *(Landed 2026-07-06: schema +
+       `20260706_aiad_token_mode.sql`, three-way split with ledger closure,
+       reserve earmark at payment, `/v1/reserve` + points summary; the
+       live-mode §D surfaces are staged 409/501 stubs until the TGE
+       tooling ships. 54-check suite green, both splits covered.)*
 3. [ ] Coinbase business account opened (AIAD's own); reserve account
        segregated; withdrawal addresses locked; API keys IP-allowlisted.
 4. [ ] Fiat sweeper (keeper job 1) running against Stripe test mode →

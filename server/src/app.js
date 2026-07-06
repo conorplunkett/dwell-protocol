@@ -148,6 +148,18 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     return ip ? crypto.createHmac("sha256", config.adminKey || "ip-salt").update(ip).digest("hex") : null;
   }
 
+  // AIAD token mode (aiad/docs/04): when TOKEN_MODE is set (the AIAD
+  // deployment), impressions split three ways into points entries instead of
+  // the legacy two-way credit, and the token routes below come alive. Absent
+  // (the FreeAI deployment, and legacy test configs) everything is unchanged.
+  const tokenSplit = config.tokenMode
+    ? {
+        reserveTrancheBps: config.reserveTrancheBps ?? 9000,
+        viewerShareBps: config.viewerShareBps ?? 6000,
+        referrerShareBps: config.referrerShareBps ?? 1000,
+      }
+    : null;
+
   // ---------- health & catalog ----------
   route("GET", "/healthz", async (req, res) => json(res, 200, { ok: true }));
 
@@ -155,7 +167,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     let leaderboardPublic = false, liveTopCpm = false;
     try { leaderboardPublic = (await repo.getSetting("leaderboard_public")) === true; } catch { /* settings table absent */ }
     try { liveTopCpm = (await repo.getSetting("live_top_cpm")) === true; } catch { /* settings table absent */ }
-    json(res, 200, { serving, revenueShare: config.revenueShare, leaderboardPublic, liveTopCpm });
+    json(res, 200, { serving, revenueShare: config.revenueShare, leaderboardPublic, liveTopCpm, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) });
   });
 
   route("GET", "/v1/ads", async (req, res) => {
@@ -209,6 +221,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
         source: ["chrome", "claude_code", "desktop"].includes(body.source) ? body.source : null,
         revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
         ipHash: hashIp(req), ipDailyCap: config.ipDailyImpressionCap,
+        tokenSplit,
       });
       json(res, 200, { ok: true, ...result });
     } catch (err) {
@@ -273,13 +286,74 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     const result = await repo.redeemImpression({
       token: body.token, deviceId: device.id, revenueShare: config.revenueShare,
       minDwellMs: config.impressionMinDwellMs,
-      source,
+      source, tokenSplit,
     });
     if (!result.ok) {
       const status = result.reason === "not_found" ? 404 : 409; // used / expired / too_soon
       return json(res, status, { ok: false, reason: result.reason });
     }
     json(res, 200, { ok: true, creditedMillicents: result.creditedMillicents });
+  });
+
+  // ---------- AIAD token mode (aiad/docs/04 §D) ----------
+  // Every route here 404s when TOKEN_MODE is unset, so the FreeAI deployment
+  // exposes no token surface at all. Wallet linking and claims are live-mode
+  // only; in points mode they answer 409 so clients can show "at launch".
+  const tokenModeOff = (res) => json(res, 404, { error: "not found" });
+  const liveOnly = (res) =>
+    config.tokenMode === "live"
+      ? json(res, 501, { error: "not implemented — ships with the TGE tooling" })
+      : json(res, 409, { error: "live mode only — points phase is accrual-only" });
+
+  // Public reserve attestation: escrowed USDC vs. outstanding points.
+  route("GET", "/v1/reserve", async (req, res) => {
+    if (!config.tokenMode) return tokenModeOff(res);
+    const r = await repo.reserveStatus();
+    json(res, 200, { mode: config.tokenMode, ...r, updatedAt: new Date().toISOString() });
+  });
+
+  // Public: funded campaign pools + locked rates (live mode fills this via the
+  // indexer; empty during the points phase).
+  route("GET", "/v1/token/pools", async (req, res, body, rawBody, query) => {
+    if (!config.tokenMode) return tokenModeOff(res);
+    json(res, 200, { pools: await repo.tokenCampaignPools(query.get("limit")) });
+  });
+
+  // Points balance for the signed-in user — the portal balance card. The
+  // millicent balance IS the points number (1,000 points = $1.00).
+  route("GET", "/v1/web/points/summary", async (req, res, body, rawBody, query) => {
+    if (!config.tokenMode) return tokenModeOff(res);
+    const user = await repo.userForSession(sessionFrom(req, body, query));
+    if (!user) return json(res, 401, { error: "not signed in" });
+    const e = await repo.earningsForUser(user.id);
+    json(res, 200, {
+      mode: config.tokenMode,
+      points: e.balanceMillicents,
+      usdEquivalent: e.balanceMillicents / 100000,
+      todayPoints: e.todayMillicents,
+      monthPoints: e.monthMillicents,
+      lifetimePoints: e.lifetimeMillicents,
+    });
+  });
+
+  // Live-mode surfaces, staged: linking a wallet, fetching a claim proof, and
+  // triggering the root publisher all arrive with the TGE keeper tooling.
+  route("POST", "/v1/web/wallet", async (req, res, body, rawBody, query) => {
+    if (!config.tokenMode) return tokenModeOff(res);
+    const user = await repo.userForSession(sessionFrom(req, body, query));
+    if (!user) return json(res, 401, { error: "not signed in" });
+    return liveOnly(res);
+  });
+  route("GET", "/v1/web/token/claim-proof", async (req, res, body, rawBody, query) => {
+    if (!config.tokenMode) return tokenModeOff(res);
+    const user = await repo.userForSession(sessionFrom(req, body, query));
+    if (!user) return json(res, 401, { error: "not signed in" });
+    return liveOnly(res);
+  });
+  route("POST", "/v1/admin/epochs/publish-root", async (req, res, body, rawBody, query) => {
+    if (!config.tokenMode) return tokenModeOff(res);
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    return liveOnly(res);
   });
 
   // ---------- pre-account email capture (launch waitlist) ----------
@@ -326,10 +400,12 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
         quantity: nBlocks,
         price_data: {
           currency: "usd", unit_amount: priceCents,
+          // Brand-configurable so the AIAD deployment bills under its own
+          // Stripe product line, even before its keys move to their own account.
           product_data: {
-            name: "FreeAI spinner block — 1,000 impressions",
+            name: config.stripeProductName || "FreeAI spinner block — 1,000 impressions",
             description: `${brand ? brand + " — " : ""}"${adLine}" → ${url}`,
-            images: ["https://freeai.fyi/og.png"],
+            images: [config.stripeProductImage || "https://freeai.fyi/og.png"],
           },
         },
       }],
@@ -355,7 +431,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
       case "checkout.session.completed": {
         const obj = event.data?.object || {};
         if (obj.metadata?.campaign_id) {
-          const paid = await repo.markCampaignPaid(obj.metadata.campaign_id, obj.payment_intent);
+          const paid = await repo.markCampaignPaid(obj.metadata.campaign_id, obj.payment_intent, { tokenSplit });
           // Only on the transitioning call (paid is the campaign details, not
           // false). Wrapped so a mail outage never rolls back the funded state —
           // the webhook event is already claimed and won't be retried.
