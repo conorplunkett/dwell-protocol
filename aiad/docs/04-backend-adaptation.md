@@ -1,10 +1,14 @@
 # Backend adaptation guide
 
-How the existing parent-repo backend becomes the AIAD backend. This is a
+How the parent-repo backend becomes the AIAD backend. This is a
 **specification, not applied code** — nothing in the main repo is modified by
-the `aiad/` folder. When implemented, every change below must land in **both**
-backends in the same commit (AGENTS.md rule): the reference Node server
-(`server/src/`, tested in CI) and the production Supabase Edge Function
+the `aiad/` folder. Per the separation decision in
+[06-launch-checklist.md](06-launch-checklist.md), the changes below are
+applied to **AIAD's forked copy** of the backend in its own repository,
+against its own database — the parent repo's running product is never
+touched. Within that fork, every change must land in **both** backends in the
+same commit (AGENTS.md rule): the reference Node server (`server/src/`,
+tested in CI) and the production Supabase Edge Function
 (`supabase/functions/api/index.ts`), with `server/db/schema.sql` staying the
 schema authority.
 

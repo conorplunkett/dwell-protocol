@@ -4,45 +4,75 @@ Two launches: **points** (soon, cheap, reversible) and **TGE** (later,
 expensive, one-way). Each item is a gate — nothing below it starts until it's
 done.
 
-**Decision record (2026-07-06): rebrand-in-place.** FreeAI *becomes* the AIAD
-version — one product, one marketplace, one backend, this repo. There is no
-parallel brand: the existing Supabase project, ad inventory, advertiser
-accounts, and user balances carry over. Items below that used to assume a
-parallel fork are written for the in-place conversion; the extra work that
-decision creates (balance conversion, advertiser terms, brand swap) is called
-out in Phase 1.
+**Decision record (2026-07-06): parallel brand — full separation.** AIAD and
+FreeAI are **separate businesses**. Separate ad inventory, separate databases,
+separate domains, separate money accounts, separate operator tooling — zero
+connections between the sites, in either direction. The `aiad/` folder lifts
+out into its own repository (it is self-contained by design); the parent
+product is not modified. The Separation section below is the enforcement list.
+(This supersedes a same-day rebrand-in-place note that briefly stood here.)
+
+## Separation — two businesses, zero connections
+
+Everything AIAD runs is its own instance. Code is forked once at lift-out and
+then diverges freely; nothing is shared, linked, or reused **at runtime**.
+
+- [ ] **Own repository**: lift `aiad/` out unchanged; fork in the backend
+      (`server/` + `supabase/functions/api`), the three clients, and the
+      admin dashboard as AIAD-owned copies; own CI (the `aiad-contracts` job
+      and site checks move with it), own secrets store.
+- [ ] **Own legal + money stack**: AIAD entity per
+      [05-legal-structure.md](05-legal-structure.md); own bank account; own
+      **Stripe account** (advertisers pay AIAD, never FreeAI's Stripe); own
+      Coinbase business account; own **Resend account + sending domain** and
+      support inbox.
+- [ ] **Own database**: fresh Supabase project in its own org; the parent
+      `schema.sql` + migrations + doc-04 changes applied to an **empty** DB.
+      No data migration of any kind — no users, devices, balances,
+      campaigns, referral codes, or ad inventory imported from FreeAI. Own
+      `DATABASE_URL`, service keys, session/webhook secrets, `ADMIN_KEY`.
+- [ ] **Own site**: AIAD domain + its own Vercel project (root =
+      `aiad/web`, or `web/` after lift-out). No links, redirects, shared
+      assets, or shared analytics between the two sites in either direction
+      — enforced by the cross-brand grep in CI while both still live in
+      this repo.
+- [ ] **Own admin dashboard**: fork `web/admin.{html,js,css}` into AIAD,
+      restyled on the black/green theme, served from the AIAD site, pointed
+      at the AIAD backend with its own `ADMIN_KEY`; grows the AIAD-only
+      surfaces (reserve attestation view,
+      `POST /v1/admin/epochs/publish-root`). No shared operator tooling,
+      no shared admin keys.
+- [ ] **Own distribution identities**: new Chrome Web Store listing under
+      AIAD's own developer account; new npm package/scope; own Apple
+      Developer account + bundle ID; DMG shipped from AIAD's own releases.
+- [ ] **No cross-honoring**: the AIAD backend accepts no FreeAI device keys,
+      sessions, impression tokens, or referral codes, and vice versa —
+      fresh secrets everywhere makes this structural, not policy.
 
 ## Phase 1 — points launch
 
-1. [ ] Backend changes from [04-backend-adaptation.md](04-backend-adaptation.md)
-       §A–§D implemented in **both** `server/src` and the edge function, with
-       server tests covering the 50/15/35 split math and the reserve
-       invariants (`TOKEN_MODE=points`).
-2. [ ] Coinbase business account opened; reserve account segregated;
-       withdrawal addresses locked; API keys IP-allowlisted.
-3. [ ] Fiat sweeper (keeper job 1) running against Stripe test mode →
+1. [ ] The **runtime rows of the Separation list are done**: money stack,
+       database, site, admin dashboard, secrets. (The repo lift-out may
+       trail the launch — the folder is self-contained either way — but
+       nothing AIAD serves in production may touch a FreeAI account, key,
+       or database.)
+2. [ ] Backend changes from [04-backend-adaptation.md](04-backend-adaptation.md)
+       §A–§D implemented in **both** the forked `server/src` and edge
+       function, with server tests covering the 50/15/35 split math and the
+       reserve invariants (`TOKEN_MODE=points`).
+3. [ ] Coinbase business account opened (AIAD's own); reserve account
+       segregated; withdrawal addresses locked; API keys IP-allowlisted.
+4. [ ] Fiat sweeper (keeper job 1) running against Stripe test mode →
        Coinbase sandbox; `usdc_reserve_entries` reconcile to the cent.
-4. [ ] Public reserve page live (`GET /v1/reserve` + portal strip): escrowed
+5. [ ] Public reserve page live (`GET /v1/reserve` + portal strip): escrowed
        USDC vs. outstanding points, updated daily.
-5. [ ] AIAD site goes live as **the** site: the production Vercel project's
-       Root Directory switches from `web` to `aiad/web` (carrying over
-       `web/vercel.json`'s redirects — `/download/mac` — into
-       `aiad/web/vercel.json`); domain decision recorded (keep serving on
-       `freeai.fyi` vs. move to an AIAD domain with redirects); "PREVIEW"
-       pill removed; `aiad-api` meta tag pointed at the production edge
-       function; OG cards regenerated for the black/green brand; copy passes
-       the [05-legal-structure.md](05-legal-structure.md) rules (the
-       banned-language grep now runs in CI — `site` job).
-6. [ ] **Balance conversion policy recorded and announced**: existing FreeAI
-       millicent balances convert to points 1:1 (the millicent balance *is*
-       the points number, 1,000 = $1.00); gift-card redemption stays
-       deprecated-but-running per [04-backend-adaptation.md](04-backend-adaptation.md)
-       §D as the legacy exit, with a sunset date announced separately.
-7. [ ] **Advertiser terms updated for the split change**: gross now routes
-       90% to the token side (vs. the old 50% user share) — checkout copy,
-       receipts, FAQ, and any active-campaign comms reflect it before the
-       switch flips.
-8. [ ] Points accrue end-to-end in production: view ad → `points_credit` →
+6. [ ] AIAD site live on its **own domain + own Vercel project** (root =
+       `aiad/web`, or `web/` after lift-out); "PREVIEW" pill removed;
+       `aiad-api` meta tag pointed at the AIAD edge function; OG cards +
+       favicon final; copy passes the
+       [05-legal-structure.md](05-legal-structure.md) rules (the
+       banned-language grep runs in CI — `site` job).
+7. [ ] Points accrue end-to-end in production: view ad → `points_credit` →
        portal balance → reserve attestation matches.
 
 ## TGE gate criteria (all true before Phase 2 starts)
@@ -100,33 +130,27 @@ their earning logic (impression serve/redeem, dwell, caps) is backend-driven,
 and the only in-client change beyond branding is displaying points (the
 millicent balance *is* the points number).
 
-- [ ] **Backend instance**: the existing Supabase project converts in place —
-      dated migration for the doc-04 §A schema changes; §B split + §C config
-      + §D endpoints land in **both** `server/src` and the edge function in
-      the same commit; production env gets `VIEWER_SHARE_BPS=5000`,
-      `REFERRER_SHARE_BPS=1500`, `RESERVE_TRANCHE_BPS=9000`,
-      `TOKEN_MODE=points`. (Decision: rebrand-in-place — see the decision
-      record at the top.)
-- [ ] **Design system swap**: `aiad/web/theme.css` (black/green) becomes the
-      project's single source of truth per AGENTS.md — the token-mirror
-      table (popup byte-copy, inject.css `--ov-*`, macOS `Palette`,
-      onboarding `tokens.css`), `make icons`/`make og`, and the AGENTS.md
-      design rules all repoint from the cream/coral system in the same
-      change.
-- [ ] **Chrome extension**: rebrand the **existing** Web Store listing in
-      place (name, icons, popup theme.css = byte-copy of the AIAD
-      `web/theme.css`, inject.css `--ov-*` mirror); `API_BASE` unchanged
-      (same backend). Existing installs auto-update into the new brand —
-      time the store review (lead time: days) to land with the site switch.
-- [ ] **Terminal client**: publish under the new name (`aiad` or similar),
-      deprecate `@freeai.fyi/terminal` on npm with a pointer; rebrand
-      strings + the marked shell-alias block (setup must cleanly replace the
-      old FreeAI block on upgrade).
-- [ ] **macOS app**: rebrand + rebuild, sign, notarize, ship the DMG as a
-      new GitHub release so the existing `/download/mac` redirect serves the
-      AIAD build; existing users get the update via the site (no
-      auto-update channel). Same developer account until AIAD is its own
-      legal entity.
+- [ ] **Backend instance**: the fresh Supabase project from the Separation
+      list; parent `schema.sql` + migrations + doc-04 changes applied in the
+      AIAD fork (both `server/src` and the edge function in the same
+      commit); env: `VIEWER_SHARE_BPS=5000`, `REFERRER_SHARE_BPS=1500`,
+      `RESERVE_TRANCHE_BPS=9000`, `TOKEN_MODE=points`.
+- [ ] **Admin dashboard**: the fork from the Separation list ships **with**
+      the backend instance — campaign approval, receipts, and the
+      killswitch must work from day one; there is no fallback to FreeAI's
+      admin.
+- [ ] **Chrome extension**: fork + rebrand (name, icons, popup theme.css =
+      byte-copy of the AIAD `web/theme.css`, inject.css `--ov-*` mirror);
+      `API_BASE` → the AIAD backend; **new** Web Store listing under AIAD's
+      developer account (review lead time: days).
+- [ ] **Terminal client**: new npm package (`aiad` or similar) under AIAD's
+      own scope; rebrand strings + the marked shell-alias block — use a
+      distinct block marker and function name so the AIAD and FreeAI
+      clients can coexist on one machine without touching each other's
+      alias blocks. FreeAI's package is not modified.
+- [ ] **macOS app**: new bundle ID, rebuild, sign, notarize under AIAD's
+      Apple Developer account; ship the DMG on AIAD's own GitHub releases;
+      wire `/download/mac` in the AIAD site's `vercel.json` when it exists.
 - [ ] All clients display "points" with the 1,000 = $1.00 legend.
 
 ## Standing rules after launch

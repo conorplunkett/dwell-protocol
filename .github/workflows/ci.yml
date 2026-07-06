@@ -114,6 +114,10 @@ jobs:
       - name: AIAD copy rules (banned language, docs/05-legal-structure.md)
         run: |
           ! grep -rin -E 'moon|price will|appreciat|going up|invest' aiad/web
+      - name: Brand separation (zero cross-mentions between the two sites)
+        run: |
+          ! grep -rIil 'freeai' aiad/web
+          ! grep -rIil 'aiad' web
 
   aiad-contracts:
     runs-on: ubuntu-latest

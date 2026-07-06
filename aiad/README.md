@@ -13,7 +13,11 @@ their referrer, 35% to the protocol treasury**. Users are only ever paid what
 revenue already bought: no minting, no emissions schedule, no oracle.
 
 This folder is fully self-contained (no code dependencies on anything outside
-it) and is structured to be lifted into its own repository unchanged.
+it) and is structured to be lifted into its own repository unchanged. That
+lift-out is the plan of record: AIAD is a **separate business** from FreeAI —
+separate repo, database, ad inventory, money accounts, clients, and admin
+tooling, with zero runtime connections between the two sites (see the
+Separation section of [docs/06-launch-checklist.md](docs/06-launch-checklist.md)).
 
 ## Layout
 
