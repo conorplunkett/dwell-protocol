@@ -1,0 +1,117 @@
+/* AIAD — universal design tokens. THE SINGLE SOURCE OF TRUTH for color and
+ * fonts across every AIAD surface: the landing page and the portal.
+ *
+ * Palette: terminal green on a near-black canvas with cool near-white ink and
+ * cool neutral grays — the AIAD counterpart to freeai.fyi's coral-on-cream.
+ * A second "overlay / sponsor" palette (--ov-*) styles the sponsored pill shown
+ * while an assistant is thinking, carried over from the FreeAI design system.
+ *
+ * Structure and token names deliberately mirror freeai.fyi's web/theme.css so
+ * the two products stay one design family and pages can be ported between them
+ * by swapping only this file. Hard rule (AGENTS.md ▸ Design System): never
+ * hardcode a color or font-family outside this file — add or reuse a token,
+ * then reference it with var(--…).
+ *
+ * All ink/gray pairs meet WCAG AA against --bg-black (#0a0c0b).
+ */
+:root {
+  /* ── Brand / accent — AIAD green ── */
+  --accent: #22e584;
+  --accent-d: #14b866;
+  --accent-grad-a: #34f096;
+  --accent-grad-b: #0fa35c;
+  --accent-rgb: 34, 229, 132;   /* --accent as channels, for rgba() shadows/tints */
+
+  /* ── Surfaces ── */
+  --bg-cream: #0a0c0b;          /* page canvas (name kept for drop-in porting; black here) */
+  --bg-tint: #101412;           /* alternating section band */
+  --card-dark: #141917;         /* raised cards (dark-on-dark) */
+  --card-dark-2: #1a201d;       /* nested / inset tiles */
+
+  /* ── Ink & neutrals (cool, on dark) ── */
+  --ink: #e8f2ec;               /* primary text — 15.6:1 on --bg-cream */
+  --ink-2: #b9c8bf;
+  --gray: #7d8c83;              /* secondary text — 5.4:1 */
+  --gray-2: #55625b;            /* disabled / faint only, never body text */
+  --line: #232b27;              /* hairlines */
+
+  /* ── Fonts — identical stacks to freeai.fyi ── */
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "Inter", system-ui, -apple-system, sans-serif;
+
+  /* ── On-accent ink — green buttons carry near-black text (10.9:1) ── */
+  --accent-ink: #04130b;
+
+  /* ── Overlay / sponsor palette — the dark pill shown while the assistant is
+   * thinking. Same roles as freeai.fyi; the tag tints shift to AIAD green. */
+  --ov-bar-bg: rgba(14, 18, 16, 0.92);
+  --ov-bar-bg-hover: rgba(18, 23, 20, 0.96);
+  --ov-bar-border: rgba(255, 255, 255, 0.05);
+  --ov-text: #e9f2ec;           /* bar default text */
+  --ov-line: #f1f7f3;           /* primary sponsor line */
+  --ov-dots: #8ba498;           /* dismiss / dots tint */
+  --ov-chip-bg: #ffd54a;        /* sponsor-initial chip background */
+  --ov-chip-ink: #1b251e;       /* sponsor-initial chip text */
+  --ov-tag-bg: rgba(34, 229, 132, 0.14);
+  --ov-tag-text: #6fe8ab;
+  --ov-tag-bg-test: rgba(34, 229, 132, 0.24);
+  --ov-tag-text-test: #9df0c6;
+  --ov-test-border: rgba(34, 229, 132, 0.3);
+  --ov-demo-line: #e7f0ea;      /* landing-page before/after demo line color */
+
+  /* ── Semantic status — functional state colors (NOT brand). On AIAD, success
+   * shares the brand green family; error stays a warm red; warn an amber. */
+  --ok-bg: rgba(34, 229, 132, 0.1);
+  --ok-fg: #4df09a;
+  --ok-line: rgba(34, 229, 132, 0.28);
+  --err-bg: rgba(255, 107, 92, 0.1);
+  --err-fg: #ff8a7a;
+  --err-line: rgba(255, 107, 92, 0.3);
+  --warn-bg: rgba(255, 200, 87, 0.1);
+  --warn-fg: #ffd66e;
+  --warn-line: rgba(255, 200, 87, 0.3);
+
+  /* ── Legacy aliases — ported freeai.fyi rules recolor via these. Prefer the
+   * semantic names above for new styles. */
+  --green: var(--accent);
+  --green-d: var(--accent-d);
+  --green-grad-a: var(--accent-grad-a);
+  --green-grad-b: var(--accent-grad-b);
+  --green-a: var(--accent-grad-a);
+  --green-b: var(--accent-grad-b);
+  --blue: var(--accent-d);
+  --stripe: #635bff;   /* Stripe brand purple — intentionally off-palette; only the "Pay with Stripe" checkout button uses it */
+  --orange: var(--accent);
+
+  /* ── Semantic surface / border aliases — prefer these in new work. ── */
+  --surface-inset: #0e1210;     /* faintly inset tiles (stat cards) */
+  --border-strong: #33403a;     /* a heavier hairline than --line (hover borders) */
+
+  /* ── Radius — same scale as freeai.fyi ── */
+  --radius-xs: 5px;     /* chips, inline code */
+  --radius-sm: 8px;     /* small buttons, logo */
+  --radius-md: 11px;    /* inputs, nav cards, stat tiles */
+  --radius-lg: 14px;    /* terminal, estimate box */
+  --radius-xl: 16px;    /* demo cards, install card, list rows */
+  --radius-2xl: 20px;   /* auth card */
+  --radius-3xl: 24px;   /* hero / advertiser / redeem cards */
+  --radius-pill: 999px; /* nav buttons, badges, status pills */
+
+  /* ── Shadows — deeper than the light theme so cards read on black; the
+   * accent-tinted ones reference --accent-rgb so the green glow stays in one
+   * place. ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 30px 70px -45px rgba(0, 0, 0, 0.9);       /* big raised cards */
+  --shadow-dark: 0 18px 44px -24px rgba(0, 0, 0, 0.75);      /* demo / install cards */
+  --shadow-accent: 0 12px 28px -14px rgba(var(--accent-rgb), 0.55); /* green CTA glow */
+  --shadow-logo: 0 2px 8px rgba(var(--accent-rgb), 0.35);    /* "A$" brand mark */
+
+  /* Segmented-control nav: a link segment lifts onto a card pill on hover,
+   * sits a touch stronger when current, and the green CTA carries its own
+   * resting + hover glow. --ring-focus is the shared green keyboard focus ring. */
+  --shadow-seg-hover: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-seg-active: 0 1px 3px rgba(0, 0, 0, 0.55);
+  --shadow-cta: 0 8px 18px -10px rgba(var(--accent-rgb), 0.6);
+  --shadow-cta-hover: 0 12px 24px -10px rgba(var(--accent-rgb), 0.75);
+  --ring-focus: 0 0 0 3px rgba(var(--accent-rgb), 0.35);
+}
