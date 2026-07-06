@@ -58,7 +58,7 @@ at TGE).
 Email-based embedded wallets: TEE key management, user-controlled (the company
 never has unilateral control — a legal load-bearing wall), user-initiated
 export, and **wallet pregeneration from an email address** — which maps
-perfectly onto freeai.fyi's magic-link accounts: every user can have a wallet
+perfectly onto the platform's magic-link accounts: every user can have a wallet
 waiting before they ever touch crypto. Free to 10K MAU (~$299–499/mo beyond).
 Stripe-owned since 2025 — same vendor family as payments. Env: `PRIVY_APP_ID`,
 `PRIVY_APP_SECRET`. Fallback: Coinbase CDP Embedded Wallets (Base-native,

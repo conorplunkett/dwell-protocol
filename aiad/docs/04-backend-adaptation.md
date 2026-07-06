@@ -1,6 +1,6 @@
 # Backend adaptation guide
 
-How the existing freeai.fyi backend becomes the AIAD backend. This is a
+How the existing parent-repo backend becomes the AIAD backend. This is a
 **specification, not applied code** — nothing in the main repo is modified by
 the `aiad/` folder. When implemented, every change below must land in **both**
 backends in the same commit (AGENTS.md rule): the reference Node server
@@ -165,7 +165,7 @@ Startup assert: `VIEWER_SHARE_BPS + REFERRER_SHARE_BPS ≤ 10000`.
 | `GET /v1/token/pools` | public | Funded campaign pools + locked rates (from `token_campaign_pools`). |
 | `POST /v1/admin/epochs/publish-root` | admin key | Trigger the root publisher out-of-band (normally cron). |
 
-**Deprecated but left running** (hidden from copy, per the freeai.fyi
+**Deprecated but left running** (hidden from copy, per the parent repo's
 playbook): gift-card redemption (`POST /v1/web/redemptions`), Stripe Connect
 onboarding (`/v1/connect/onboard`), and the `payouts.js` sweep.
 

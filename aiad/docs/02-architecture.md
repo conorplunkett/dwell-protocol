@@ -1,7 +1,8 @@
 # AIAD system architecture
 
 Two operating modes, switched by one knob (`TOKEN_MODE=points|live`). Points
-mode is the launch state; live mode activates at TGE. Both reuse freeai.fyi's
+mode is the launch state; live mode activates at TGE. Both reuse the parent
+platform's
 existing money core: the append-only millicent ledger, server-authoritative
 impression tokens, and the dual Node-reference / Supabase-edge backend (see
 [04-backend-adaptation.md](04-backend-adaptation.md)).
@@ -58,7 +59,7 @@ impression tokens, and the dual Node-reference / Supabase-edge backend (see
 ## Campaign lifecycle
 
 `pending_payment → pending_review → active → exhausted` (unchanged from
-freeai.fyi), with one added transition: on `markCampaignPaid`, the 90% tranche
+the parent platform), with one added transition: on `markCampaignPaid`, the 90% tranche
 is committed — points mode records `reserve_allocation`; live mode enqueues the
 `swapAndFund` keeper job. A rejected campaign refunds via Stripe as today; its
 tranche is released from the reserve (points) or its pool is returned to the

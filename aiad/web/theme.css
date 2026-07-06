@@ -2,13 +2,12 @@
  * fonts across every AIAD surface: the landing page and the portal.
  *
  * Palette: terminal green on a near-black canvas with cool near-white ink and
- * cool neutral grays — the AIAD counterpart to freeai.fyi's coral-on-cream.
+ * cool neutral grays.
  * A second "overlay / sponsor" palette (--ov-*) styles the sponsored pill shown
- * while an assistant is thinking, carried over from the FreeAI design system.
+ * while an assistant is thinking.
  *
- * Structure and token names deliberately mirror freeai.fyi's web/theme.css so
- * the two products stay one design family and pages can be ported between them
- * by swapping only this file. Hard rule (AGENTS.md ▸ Design System): never
+ * Token names match the parent repo's design system so pages port between
+ * the two codebases by swapping only this file. Hard rule: never
  * hardcode a color or font-family outside this file — add or reuse a token,
  * then reference it with var(--…).
  *
@@ -35,7 +34,7 @@
   --gray-2: #55625b;            /* disabled / faint only, never body text */
   --line: #232b27;              /* hairlines */
 
-  /* ── Fonts — identical stacks to freeai.fyi ── */
+  /* ── Fonts ── */
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans: "Inter", system-ui, -apple-system, sans-serif;
 
@@ -43,7 +42,7 @@
   --accent-ink: #04130b;
 
   /* ── Overlay / sponsor palette — the dark pill shown while the assistant is
-   * thinking. Same roles as freeai.fyi; the tag tints shift to AIAD green. */
+   * thinking. The tag tints carry the AIAD green. */
   --ov-bar-bg: rgba(14, 18, 16, 0.92);
   --ov-bar-bg-hover: rgba(18, 23, 20, 0.96);
   --ov-bar-border: rgba(255, 255, 255, 0.05);
@@ -71,7 +70,8 @@
   --warn-fg: #ffd66e;
   --warn-line: rgba(255, 200, 87, 0.3);
 
-  /* ── Legacy aliases — ported freeai.fyi rules recolor via these. Prefer the
+  /* ── Legacy aliases — rules ported from the parent design system recolor
+   * via these. Prefer the
    * semantic names above for new styles. */
   --green: var(--accent);
   --green-d: var(--accent-d);
@@ -87,7 +87,7 @@
   --surface-inset: #0e1210;     /* faintly inset tiles (stat cards) */
   --border-strong: #33403a;     /* a heavier hairline than --line (hover borders) */
 
-  /* ── Radius — same scale as freeai.fyi ── */
+  /* ── Radius ── */
   --radius-xs: 5px;     /* chips, inline code */
   --radius-sm: 8px;     /* small buttons, logo */
   --radius-md: 11px;    /* inputs, nav cards, stat tiles */

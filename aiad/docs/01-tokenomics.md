@@ -33,7 +33,7 @@ bought — no minting, no emissions schedule, no oracle.
 
 ## The advertiser dollar
 
-Advertisers pay a **fixed dollar CPM** by card, exactly like freeai.fyi today.
+Advertisers pay a **fixed dollar CPM** by card, exactly like the existing ad platform today.
 Per $100 of ad spend:
 
 | Leg | Amount | Where it goes |
@@ -57,7 +57,7 @@ The $90 tranche (points: its dollar value; live: the tokens it bought) splits:
 | Protocol treasury | **35%** (or **50%** when the viewer has no referrer) | remainder — keeps integer math exact |
 
 The referrer share is carved **out of the pool**, not paid on top (this differs
-from freeai.fyi's affiliate program, which pays a platform-funded 10% bonus).
+from the existing platform's affiliate program, which pays a platform-funded 10% bonus).
 The protocol share **accrues to the protocol treasury** — it is the business's
 second revenue stream alongside the 5% fiat margin. `BURN_BPS` (default 0) can
 route a fraction of the treasury leg to burn; leaving it 0 is deliberate.
@@ -85,7 +85,7 @@ Properties: the buy's execution price *is* the price discovery (no oracle);
 users can never be owed more value than revenue bought; old campaigns keep
 their locked rate while new campaigns re-price at current market; earnings
 accrue instantly per qualified view (same 2-second dwell + anti-fraud caps as
-freeai.fyi — see [04-backend-adaptation.md](04-backend-adaptation.md)).
+the existing platform — see [04-backend-adaptation.md](04-backend-adaptation.md)).
 
 ## Phase 1 — points (launch now)
 
@@ -93,7 +93,7 @@ No token exists at launch. Users accrue **AIAD points** on the existing
 append-only millicent ledger:
 
 - **1,000 points = $1.00 of earned ad value** (1 point = 1 millicent — points
-  *are* the ledger unit freeai.fyi already uses).
+  *are* the ledger unit the existing backend already uses).
 - Same 50/15/35 split of the 90% tranche, applied to dollar value.
 - The $90 tranche per campaign is **escrowed in the USDC reserve** — points are
   visibly 1:1 dollar-backed. A public reserve page shows escrowed total vs.
