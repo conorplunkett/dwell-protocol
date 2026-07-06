@@ -261,10 +261,19 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     const device = await authDeviceFrom(body);
     if (!device) return json(res, 401, { error: "bad device credentials" });
     if (!body.token) return json(res, 400, { error: "token required" });
+    const source = ["chrome", "claude_code", "desktop"].includes(body.source) ? body.source : null;
+    // The browser extension earns nothing until its device is linked to an
+    // account. Enforced here (not just client-side) so a tampered extension
+    // can't accrue credits the account-scoped web portal could never show —
+    // the mismatch behind "popup says $0.20, portal says $0". Other clients
+    // (terminal, desktop) keep the device-scoped model and are unaffected.
+    if (source === "chrome" && !(await repo.userForDevice(device.id))) {
+      return json(res, 403, { ok: false, reason: "unlinked" });
+    }
     const result = await repo.redeemImpression({
       token: body.token, deviceId: device.id, revenueShare: config.revenueShare,
       minDwellMs: config.impressionMinDwellMs,
-      source: ["chrome", "claude_code", "desktop"].includes(body.source) ? body.source : null,
+      source,
     });
     if (!result.ok) {
       const status = result.reason === "not_found" ? 404 : 409; // used / expired / too_soon

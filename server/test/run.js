@@ -297,8 +297,10 @@ const fakeMailer = {
     const expectDev = Number((BigInt(price) * 900n) / 1000n); // revenueShare 0.9, billed 1
     const before = await remainingOf(impCampaign);
 
-    // base config dwell = 0, so an immediate redeem is billable
-    const redeem = await api("POST", "/v1/impressions/redeem", { ...dev, token: serve.body.token, source: "chrome" });
+    // base config dwell = 0, so an immediate redeem is billable. Use a
+    // device-scoped source (terminal); the "chrome" source additionally requires
+    // a linked account, which is exercised in the auto-link test below.
+    const redeem = await api("POST", "/v1/impressions/redeem", { ...dev, token: serve.body.token, source: "claude_code" });
     assert.strictEqual(redeem.status, 200);
     assert.strictEqual(redeem.body.ok, true);
     assert.strictEqual(redeem.body.creditedMillicents, expectDev, "device earns exactly its share of one impression");
@@ -933,6 +935,14 @@ const fakeMailer = {
 
   await check("extension auto-links a device to the signed-in web account (no magic link)", async () => {
     const dev = (await api("POST", "/v1/devices/register")).body;
+    // Before linking, a "chrome" redeem earns nothing — enforced server-side so a
+    // tampered extension can't bank credits the account portal could never show.
+    const preServe = await api("POST", "/v1/impressions/serve", { ...dev });
+    if (preServe.body.token) {
+      const refused = await api("POST", "/v1/impressions/redeem", { ...dev, token: preServe.body.token, source: "chrome" });
+      assert.strictEqual(refused.status, 403, "unlinked chrome device is refused");
+      assert.strictEqual(refused.body.reason, "unlinked");
+    }
     const sess = await loginVia("linkme@example.com");
     // bad device creds and bad session are both rejected
     assert.strictEqual(
@@ -949,6 +959,13 @@ const fakeMailer = {
     assert.strictEqual(
       (await poolNs.query("select user_id from devices where id = $1", [dev.deviceId])).rows[0].user_id, uid,
       "device now belongs to the web user");
+    // now that it's linked, a "chrome" redeem is accepted and credits the account
+    const linkedServe = await api("POST", "/v1/impressions/serve", { ...dev });
+    if (linkedServe.body.token) {
+      const earned = await api("POST", "/v1/impressions/redeem", { ...dev, token: linkedServe.body.token, source: "chrome" });
+      assert.strictEqual(earned.status, 200, "linked chrome device earns");
+      assert.strictEqual(earned.body.ok, true);
+    }
     // and the device-scoped crew endpoint now reports linked, with a code
     const aff = await api("GET", `/v1/me/affiliate?deviceId=${dev.deviceId}&deviceKey=${dev.deviceKey}`);
     assert.strictEqual(aff.body.linked, true);
