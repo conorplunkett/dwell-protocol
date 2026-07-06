@@ -263,10 +263,36 @@ function isFirstPartyUrl(u) {
   }
 }
 
+// Reconcile the local optimistic earnings counter with the server's
+// authoritative ledger. The popup must never show credits the server doesn't
+// owe (the old bundled-ad fallback ticked earnings no campaign ever funded);
+// the local counter stays for snappy between-sync feedback, but the ledger
+// wins on every refresh.
+async function refreshEarnings() {
+  if (typeof fetch !== "function") return;
+  const device = await getDevice();
+  if (!device) return;
+  try {
+    // Device creds go in headers, never the query string (see getCrew).
+    const res = await fetch(`${API_BASE}/v1/me/earnings`, {
+      headers: { "x-device-id": device.deviceId, "x-device-key": device.deviceKey },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    // balanceUsd is the SPENDABLE number: credits minus redemptions/payouts,
+    // including admin adjustments — the honest figure for the popup's
+    // progress-toward-a-free-month ring.
+    if (typeof data.balanceUsd === "number") {
+      await chrome.storage.local.set({ earnings: data.balanceUsd });
+    }
+  } catch (_) {}
+}
+
 async function refreshAll() {
   await getOrRegisterDevice();
   await refreshConfig();
   await refreshAds();
+  await refreshEarnings();
 }
 
 // ---------- crew (affiliate) ----------
@@ -397,12 +423,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case "BB_GET_ADS": {
         const s = await getState();
         const blocked = (s.blockedCategories || []).map((c) => String(c).toLowerCase());
-        // Prefer live inventory from the auction; fall back to the bundled list
-        // when offline or before the first fetch. Category blocking applies to both.
+        // Real mode serves ONLY live, funded inventory from the auction. The
+        // bundled BB_ADS list is demo content (popup board, Test Mode): showing
+        // it as a real ad would tick the earnings counter for money no
+        // advertiser ever paid — a promise the server can never honour. When
+        // the auction is empty, no ad shows and nothing earns.
         const { liveAds } = await chrome.storage.local.get(["liveAds"]);
-        const source = Array.isArray(liveAds) && liveAds.length ? liveAds : self.BB_ADS;
-        const ads = source.filter((a) => !blocked.includes(a.cat));
-        sendResponse(ads.length ? ads : source);
+        const source = Array.isArray(liveAds) ? liveAds : [];
+        sendResponse(source.filter((a) => !blocked.includes(a.cat)));
         break;
       }
       case "BB_IMPRESSION": {

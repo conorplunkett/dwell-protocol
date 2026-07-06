@@ -338,6 +338,14 @@
       </div>
     </header>
 
+    <!-- Out-of-inventory notice — shown only when the live auction has nothing
+         to serve. Toggled by checkInventory() in redeem.js against the public
+         /v1/ads endpoint; text mirrors the extension popup's version. -->
+    <div class="dash-notice" id="inventory-notice" hidden>
+      <span class="dash-notice-ico" aria-hidden="true">⏳</span>
+      <span>Out of ad inventory right now - they will be back tomorrow.</span>
+    </div>
+
     <!-- Primary section nav — one active view at a time. -->
     <nav class="dash-tabs" id="dash-tabs" role="tablist" aria-label="Dashboard sections">
       <button class="dash-tab active" data-section="earnings" type="button" role="tab" aria-selected="true">

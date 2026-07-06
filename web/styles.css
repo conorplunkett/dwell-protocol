@@ -968,6 +968,15 @@ a { color: inherit; text-decoration: none; }
 .dash-tab-ico svg { width: 100%; height: 100%; display: block; }
 .dash-tabs + .redeem { padding-top: 26px; }
 
+/* out-of-inventory notice — informational, not an error: --bg-tint keeps it calm */
+.dash-notice {
+  display: flex; align-items: flex-start; gap: 10px;
+  width: min(716px, 100% - 28px); margin: 18px auto 0; padding: 13px 16px;
+  background: var(--bg-tint); border: 1px solid var(--line); border-radius: 14px;
+  font-size: 13.5px; color: var(--ink-2); line-height: 1.5;
+}
+.dash-notice-ico { flex: none; font-size: 15px; line-height: 1.5; }
+
 /* Gift-card delivery — read-only "delivered to" card replacing the bare input. */
 .redeem-delivery {
   display: flex; align-items: center; gap: 13px; max-width: 420px;

@@ -292,10 +292,13 @@ function createRepo(pool) {
 
     // ---------- auction ----------
     async activeAds(limit = 20) {
+      // paid_at guards every serve/credit path: a campaign that never went
+      // through payment (e.g. a row seeded straight to 'active') must never
+      // show or mint credits — user credits have to be backed by real budget.
       const { rows } = await pool.query(
         `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard
            from campaigns
-          where status = 'active' and impressions_remaining > 0
+          where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc
           limit $1`,
         [limit]
@@ -639,7 +642,7 @@ function createRepo(pool) {
           // lock the campaign row; never bill past its remaining budget
           const camp = await c.query(
             `select price_per_block_cents, impressions_remaining from campaigns
-              where id = $1 and status = 'active' for update`,
+              where id = $1 and status = 'active' and paid_at is not null for update`,
             [ev.campaignId]
           );
           if (!camp.rows[0]) continue;
@@ -684,11 +687,15 @@ function createRepo(pool) {
 
     // ---------- earnings & payouts ----------
     async earningsForDevice(deviceId) {
+      // admin_credit/admin_debit are manual balance adjustments (e.g. a
+      // cancelled-redemption refund, or wiping credits an unfunded campaign
+      // minted) — they move the spendable balance but not lifetime "earned".
       const { rows } = await pool.query(
         `select
            coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit')), 0)::bigint as earned,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
-           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
          from ledger
          where device_id = $1
             or user_id = (select user_id from devices where id = $1 and user_id is not null)`,
@@ -701,7 +708,7 @@ function createRepo(pool) {
         earnedMillicents: earned,
         paidOutMillicents: -paidOut,
         redeemedMillicents: -redeemed,
-        balanceMillicents: earned + paidOut + redeemed,
+        balanceMillicents: earned + paidOut + redeemed + Number(rows[0].adjusted),
       };
     },
 
@@ -882,7 +889,7 @@ function createRepo(pool) {
       const pick = await pool.query(
         `select id, brand, ad_line, url, category, color, price_per_block_cents
            from campaigns
-          where status = 'active' and impressions_remaining > 0
+          where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc
           limit 1`
       );
@@ -925,7 +932,7 @@ function createRepo(pool) {
         // Bill one impression, never past the campaign's remaining budget.
         const camp = await c.query(
           `select price_per_block_cents, impressions_remaining from campaigns
-            where id = $1 and status = 'active' for update`,
+            where id = $1 and status = 'active' and paid_at is not null for update`,
           [row.campaign_id]
         );
         if (!camp.rows[0] || camp.rows[0].impressions_remaining < 1) {
@@ -986,6 +993,9 @@ function createRepo(pool) {
               + coalesce((select sum(amount_millicents) from ledger
                            where entry_type = 'gift_redemption_debit'
                              and device_id in (select id from devices where user_id = u.id)), 0)
+              + coalesce((select sum(amount_millicents) from ledger
+                           where entry_type in ('admin_credit','admin_debit')
+                             and (user_id = u.id or device_id in (select id from devices where user_id = u.id))), 0)
              >= $1`,
         [thresholdMillicents]
       );
@@ -1105,11 +1115,14 @@ function createRepo(pool) {
     // Aggregate credit balance for a user, across every device linked to them
     // plus any user-level ledger entries (redemptions/payouts).
     async balanceForUser(userId) {
+      // admin_credit/admin_debit adjust the spendable balance (see
+      // earningsForDevice) without rewriting lifetime "earned".
       const { rows } = await pool.query(
         `select
            coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit')), 0)::bigint as earned,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
-           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
          from ledger
          where user_id = $1
             or device_id in (select id from devices where user_id = $1)`,
@@ -1122,7 +1135,7 @@ function createRepo(pool) {
         earnedMillicents: earned,
         paidOutMillicents: -paidOut,
         redeemedMillicents: -redeemed,
-        balanceMillicents: earned + paidOut + redeemed,
+        balanceMillicents: earned + paidOut + redeemed + Number(rows[0].adjusted),
       };
     },
 
@@ -1136,7 +1149,8 @@ function createRepo(pool) {
            coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit') and created_at >= date_trunc('day', now())), 0)::bigint as today,
            coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit') and created_at >= date_trunc('month', now())), 0)::bigint as month,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
-           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
          from ledger
          where user_id = $1
             or device_id in (select id from devices where user_id = $1)`,
@@ -1153,7 +1167,7 @@ function createRepo(pool) {
         monthMillicents: month,
         redeemedMillicents: -redeemed,
         paidOutMillicents: -paidOut,
-        balanceMillicents: earned + paidOut + redeemed,
+        balanceMillicents: earned + paidOut + redeemed + Number(rows[0].adjusted),
       };
     },
 
@@ -1234,7 +1248,7 @@ function createRepo(pool) {
         const bal = await c.query(
           `select coalesce(sum(amount_millicents), 0)::bigint as balance from ledger
             where (user_id = $1 or device_id in (select id from devices where user_id = $1))
-              and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','payout_debit','gift_redemption_debit')`,
+              and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','payout_debit','gift_redemption_debit','admin_credit','admin_debit')`,
           [userId]
         );
         const costMillicents = BigInt(amountCents) * 1000n;

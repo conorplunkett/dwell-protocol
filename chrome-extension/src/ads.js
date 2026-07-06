@@ -1,6 +1,9 @@
-// Shared ad inventory — the live "bid market".
+// Demo ad inventory — popup board + Test Mode display ONLY.
 // Attached to globalThis so it works in content scripts, the popup, and the
-// service worker (via importScripts). In production these come from the auction.
+// service worker (via importScripts). These brands never paid anything, so
+// they are NEVER served as real ads and never earn: real serving uses only
+// the live inventory from /v1/ads (funded campaigns), and when the auction
+// is empty no ad shows at all.
 (function (g) {
   g.BB_ADS = [
     { brand: "Fluidstack", chip: "F", color: "#1d6cff", ink: "#fff", line: "building 10GW of compute — join us.", url: "https://freeai.fyi/go/fluidstack", cat: "infra" },

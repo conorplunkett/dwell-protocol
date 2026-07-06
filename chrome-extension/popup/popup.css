@@ -214,6 +214,16 @@ body {
 .board .chip { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-xs); font-weight: 800; font-size: 11px; flex: none; }
 .board .ln { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .board .ln b { font-weight: 800; color: var(--ink); }
+.board .board-empty { color: var(--gray); font-style: italic; }
+
+/* out-of-inventory notice — informational, not an error: --bg-tint keeps it calm */
+.notice {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: 12px 16px 0; padding: 10px 12px;
+  background: var(--bg-tint); border: 1px solid var(--line); border-radius: var(--radius-md);
+  font-size: 12px; color: var(--ink-2); line-height: 1.45;
+}
+.notice-ico { flex: none; font-size: 13px; line-height: 1.45; }
 
 /* live status line */
 .status {
