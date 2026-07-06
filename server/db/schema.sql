@@ -324,7 +324,7 @@ create table if not exists affiliates (
   twitter_followers integer check (twitter_followers is null or twitter_followers >= 0),
   reward_bps integer not null default 1000,             -- the affiliate's cut, basis points (1000 = 10%)
   cap_millicents bigint not null default 100000000,     -- legacy dollar cap (no longer enforced; kept for archive)
-  cap_people integer not null default 1000,             -- the cap is now people-based: max attributed friends per affiliate
+  cap_people integer not null default 10,               -- the cap is now people-based: max attributed friends per affiliate
   credited_millicents bigint not null default 0,        -- running lifetime tally of credits earned (uncapped)
   review_note text,
   created_at timestamptz not null default now(),

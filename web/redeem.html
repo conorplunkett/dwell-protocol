@@ -333,6 +333,7 @@
         <span class="brand-name">FreeAI.fyi</span>
       </a>
       <div class="dash-account">
+        <span class="dash-account-who" id="nav-signed-in" hidden></span>
         <a href="/" class="dash-account-link">Home</a>
         <button class="dash-account-link dash-signout" id="signout" type="button">Sign out</button>
       </div>
@@ -516,7 +517,7 @@
           <p class="redeem-lead">
             You earn <strong id="aff-pct">10%</strong> of the ad revenue of everyone who
             joins with your link — for life, dropped into your balance as credits, for up to
-            <span id="aff-cap">1,000 friends</span>.
+            <span id="aff-cap">10 friends</span>.
           </p>
 
           <!-- Auto-enrolled: shareable link + stats (shown to everyone). -->
@@ -536,27 +537,10 @@
                 <span class="rs-label">credits earned</span>
               </div>
               <div class="ref-stat">
-                <span class="rs-num" id="aff-remaining">1,000</span>
+                <span class="rs-num" id="aff-remaining">10</span>
                 <span class="rs-label">friends remaining</span>
               </div>
             </div>
-          </div>
-
-          <!-- Retroactively attach someone else's affiliate code. -->
-          <div class="aff-have-code" id="aff-have-code" hidden>
-            <h3 class="ref-invite-h">Have an affiliate code?</h3>
-            <form class="ref-invite-row" id="aff-code-form">
-              <input
-                type="text"
-                id="aff-code-input"
-                class="auth-input"
-                placeholder="AFFILIATE CODE"
-                autocomplete="off"
-                aria-label="Affiliate code"
-              />
-              <button class="btn-green" id="aff-code-btn" type="submit">Apply code</button>
-            </form>
-            <p class="ref-invite-msg" id="aff-code-msg" hidden></p>
           </div>
 
           <!-- Influencer upgrade — apply for more than 10% + uncapped + custom link. -->
@@ -579,6 +563,23 @@
               <button class="btn-green" id="aff-apply-btn" type="submit">Apply for affiliate program</button>
               <p class="ref-invite-msg" id="aff-apply-msg" hidden></p>
             </form>
+          </div>
+
+          <!-- Retroactively attach someone else's affiliate code. -->
+          <div class="aff-have-code" id="aff-have-code" hidden>
+            <h3 class="ref-invite-h">Have an affiliate code?</h3>
+            <form class="ref-invite-row" id="aff-code-form">
+              <input
+                type="text"
+                id="aff-code-input"
+                class="auth-input"
+                placeholder="AFFILIATE CODE"
+                autocomplete="off"
+                aria-label="Affiliate code"
+              />
+              <button class="btn-green" id="aff-code-btn" type="submit">Apply code</button>
+            </form>
+            <p class="ref-invite-msg" id="aff-code-msg" hidden></p>
           </div>
 
           <!-- Upgrade requested (socials submitted, awaiting review). -->

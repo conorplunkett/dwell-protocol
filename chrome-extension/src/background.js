@@ -57,9 +57,13 @@ async function recordImpression(mock) {
   if (mock) {
     next = { testImpressions: s.testImpressions + 1 };
   } else {
+    // No credit until the device is linked to an account — otherwise the popup
+    // would show earnings the account-scoped web portal can never display. We
+    // still count the impression so the popup reflects that ads are being served.
+    const linked = await isDeviceLinked();
     next = {
       impressions: s.impressions + 1,
-      earnings: +(s.earnings + perImpressionNet(s)).toFixed(6),
+      earnings: linked ? +(s.earnings + perImpressionNet(s)).toFixed(6) : s.earnings,
     };
   }
   await chrome.storage.local.set(next);
@@ -205,6 +209,11 @@ async function tickImpressionToken() {
   try {
     const device = await getOrRegisterDevice();
     if (!device) return;
+    // Register the device regardless (so it exists and can be linked from the
+    // website later), but bill nothing until it's linked to an account: skip the
+    // serve→redeem while anonymous so no credit lands on a device the account-
+    // scoped web portal can't attribute to a user.
+    if (!(await isDeviceLinked())) return;
     const { impToken } = await chrome.storage.local.get(["impToken"]);
     // Redeem the previously-served token once its 2s dwell has elapsed. Gating on
     // the client side (not just the server min-dwell) keeps an honest redeem from
@@ -326,6 +335,24 @@ async function getCrew() {
     } catch (_) {}
     return { linked: false, friends: [] };
   }
+}
+
+// Earning is gated on the device being linked to a freeai.fyi account (see
+// recordImpression / tickImpressionToken). An anonymous device must never accrue
+// credits: the web portal is account-scoped, so device-only earnings can never
+// show up there — the exact mismatch where the popup reads e.g. $0.20 but the
+// portal reads $0. Cached briefly so a burst of impression ticks doesn't hammer
+// /v1/me/affiliate; getCrew falls back to its own cache on a transient error, so
+// an already-linked device stays "linked" through a blip rather than flapping.
+// Only positive results are cached: while anonymous we re-check every call so
+// earning begins the instant the user connects their account (no up-to-TTL lag).
+let linkState = { linked: false, at: 0 };
+const LINK_TTL_MS = 60 * 1000;
+async function isDeviceLinked() {
+  if (linkState.linked && Date.now() - linkState.at < LINK_TTL_MS) return true;
+  const crew = await getCrew();
+  linkState = { linked: !!(crew && crew.linked === true), at: Date.now() };
+  return linkState.linked;
 }
 
 // Invite a friend to the crew from the popup. Device-scoped: the backend reads

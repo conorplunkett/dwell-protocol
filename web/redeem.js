@@ -147,6 +147,12 @@ function showRedeemPage(email) {
   hideAllPages();
   $("redeem-page").hidden = false;
   $("balance-email").textContent = email;
+  // Dashboard nav: surface who's signed in, to the left of the Home link.
+  const who = $("nav-signed-in");
+  if (who) {
+    who.textContent = "Signed in as " + email;
+    who.hidden = false;
+  }
   // Gift cards always go to the account email; the server ignores any
   // client-supplied recipient, so we just display it.
   accountEmail = email;
@@ -258,7 +264,7 @@ async function loadAffiliate() {
 
   const upgraded = !!body.upgraded;
   const requested = !!body.upgradeRequested;
-  const capPeople = body.capPeople ?? 1000;
+  const capPeople = body.capPeople ?? 10;
   const attributed = body.attributedCount || 0;
   const uncapped = capPeople >= 100000; // 100k+ friends = effectively unlimited
 

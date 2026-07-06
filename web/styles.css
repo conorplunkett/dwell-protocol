@@ -941,6 +941,11 @@ a { color: inherit; text-decoration: none; }
 /* Account cluster — Home + Sign out kept separate from the section nav, styled as
    quiet text links so the segmented tabs below read as the primary navigation. */
 .dash-account { display: flex; align-items: center; gap: 2px; }
+.dash-account-who {
+  font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--gray);
+  padding: 7px 10px; margin-right: 2px; max-width: 220px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
 .dash-account-link {
   font-family: var(--sans); font-size: 13.5px; font-weight: 600; color: var(--gray);
   padding: 7px 12px; border: none; border-radius: 999px; background: transparent;

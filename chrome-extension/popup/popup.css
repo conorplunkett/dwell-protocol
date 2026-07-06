@@ -235,6 +235,21 @@ body {
 .status.off .dot { background: var(--gray-2); }
 
 /* footer */
+/* account status — which freeai.fyi account this device is linked to */
+.account-status {
+  display: flex; align-items: center; gap: 7px;
+  padding: 11px 18px; border-top: 1px solid var(--line);
+}
+.account-status .acct-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--gray-2); flex: 0 0 auto;
+}
+.account-status.connected .acct-dot { background: var(--ok-fg); }
+.account-status .acct-text {
+  font-size: 12px; color: var(--gray); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.account-status.connected .acct-text { color: var(--ink); }
+
 .foot {
   display: flex; align-items: center; justify-content: space-between;
   padding: 13px 18px 16px; border-top: 1px solid var(--line);
