@@ -1396,6 +1396,152 @@ const fakeMailer = {
     await api("POST", "/v1/admin/campaigns/receipts-auto", { adminKey: "test-admin", enabled: false });
   });
 
+  // ---------- AIAD token mode (aiad/docs/04) ----------
+  // A second app over the SAME database with TOKEN_MODE=points — the AIAD
+  // deployment shape. The legacy app above already proved the default path is
+  // untouched; these checks prove the split math, the ledger closure, the
+  // reserve earmark, and the token routes.
+  const cfgToken = {
+    ...config,
+    tokenMode: "points",
+    viewerShareBps: 6000, referrerShareBps: 1000, reserveTrancheBps: 9000,
+  };
+  const { server: sT } = createApp({ repo, stripe, mailer: fakeMailer, rateLimiter: bigLimiter, config: cfgToken });
+  await new Promise((r) => sT.listen(0, r));
+  const baseT = `http://127.0.0.1:${sT.address().port}`;
+  const apiT = async (method, p, body, headers = {}) => {
+    const res = await fetch(baseT + p, {
+      method, redirect: "manual",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
+    });
+    const text = await res.text();
+    let parsed = null;
+    try { parsed = text ? JSON.parse(text) : null; } catch { parsed = text; }
+    return { status: res.status, body: parsed, headers: res.headers, text };
+  };
+  const payWebhookT = async (campaignId) => {
+    const payload = JSON.stringify({
+      id: "evt_" + crypto.randomBytes(6).toString("hex"), type: "checkout.session.completed",
+      data: { object: { metadata: { campaign_id: campaignId }, payment_intent: "pi_t_" + crypto.randomBytes(4).toString("hex") } },
+    });
+    return apiT("POST", "/v1/webhooks/stripe", payload, { "stripe-signature": signWebhookPayload(payload, WEBHOOK_SECRET) });
+  };
+  // Ledger sums for one campaign, keyed by entry type.
+  const campLedger = async (campaignId) => {
+    const { rows } = await poolNs.query(
+      "select entry_type, coalesce(sum(amount_millicents),0)::bigint as sum, count(*)::int as n from ledger where campaign_id = $1 group by entry_type",
+      [campaignId]
+    );
+    return Object.fromEntries(rows.map((r) => [r.entry_type, { sum: Number(r.sum), n: r.n }]));
+  };
+
+  // $1,000 CPM so this campaign outbids everything the earlier checks created
+  // (ImpTok bids $999). gross/impression = 100,000 mc → pool 90,000 · viewer
+  // 54,000 · referrer 9,000 · protocol 27,000 (referred) / 36,000 (unreferred)
+  // · business fee 10,000.
+  let campT;
+  await check("token mode: funding a campaign earmarks the 90% reserve tranche at payment", async () => {
+    const r = await apiT("POST", "/v1/checkout", {
+      email: "ads@aiad.example", adLine: "AIAD funded campaign", url: "https://example.com/",
+      brand: "AiadCo", pricePerBlock: 1000, blocks: 5,
+    });
+    campT = r.body.campaignId;
+    await payWebhookT(campT);
+    await approve(campT);
+    const led = await campLedger(campT);
+    assert.strictEqual(led.campaign_credit.sum, 500_000_000, "funded $5,000");
+    assert.strictEqual(led.reserve_allocation.sum, 450_000_000, "earmarked exactly 90% of gross");
+    assert.strictEqual(led.reserve_allocation.n, 1, "earmarked once (webhook dedupe holds)");
+  });
+
+  await check("token mode: unreferred impression splits 60/–/40 of the tranche with ledger closure", async () => {
+    const dev = (await apiT("POST", "/v1/devices/register")).body;
+    const before = await campLedger(campT);
+    const serve = await apiT("POST", "/v1/impressions/serve", { ...dev });
+    assert.strictEqual(serve.body.ad.brand, "AiadCo", "token campaign wins the auction");
+    const redeem = await apiT("POST", "/v1/impressions/redeem", { ...dev, token: serve.body.token, source: "claude_code" });
+    assert.strictEqual(redeem.status, 200);
+    assert.strictEqual(redeem.body.creditedMillicents, 54_000, "viewer earns 60% of the 90% pool");
+    const led = await campLedger(campT);
+    assert.strictEqual(led.points_credit.sum, 54_000);
+    assert.strictEqual(led.protocol_points_credit.sum, 36_000, "unreferred: the referrer leg falls to the protocol");
+    assert.strictEqual(led.referral_points_credit, undefined, "no referrer row when unattributed");
+    assert.strictEqual((led.platform_fee?.sum || 0) - (before.platform_fee?.sum || 0), 10_000, "business 10% keeps the ledger closed");
+    assert.strictEqual(led.impression_credit, undefined, "legacy credit type never written in token mode");
+    // closure: the four legs sum to the billed gross
+    assert.strictEqual(54_000 + 36_000 + 10_000, 100_000);
+  });
+
+  await check("token mode: referred viewer routes 10% to the referrer inside the split (no platform-funded bonus)", async () => {
+    // referrer signs up, viewer signs up with their code, viewer's device links
+    const refSess = await loginVia("aiad-ref@example.com");
+    const code = (await api("GET", "/v1/web/affiliate", undefined, { Authorization: `Bearer ${refSess}` })).body.code;
+    await loginVia("aiad-viewer@example.com", code);
+    const dev = (await apiT("POST", "/v1/devices/register")).body;
+    await apiT("POST", "/v1/auth/request-link", { ...dev, email: "aiad-viewer@example.com" });
+    await api("GET", mailbox.at(-1).link.replace(base, ""));
+
+    const before = await campLedger(campT);
+    const serve = await apiT("POST", "/v1/impressions/serve", { ...dev });
+    const redeem = await apiT("POST", "/v1/impressions/redeem", { ...dev, token: serve.body.token, source: "claude_code" });
+    assert.strictEqual(redeem.body.creditedMillicents, 54_000, "viewer's share is unchanged by attribution");
+    const led = await campLedger(campT);
+    assert.strictEqual(led.referral_points_credit.sum, 9_000, "referrer's 10% is carved from the pool");
+    assert.strictEqual(led.protocol_points_credit.sum - before.protocol_points_credit.sum, 27_000, "protocol takes 30% when referred");
+    assert.strictEqual(led.affiliate_credit, undefined, "the legacy platform-funded bonus is retired in token mode");
+    assert.strictEqual(
+      (await repo.balanceForUser(await userId("aiad-ref@example.com"))).balanceMillicents, 9_000,
+      "referrer's balance sees the points leg");
+
+    // the legacy batch path splits identically (10 impressions in one batch)
+    await apiT("POST", "/v1/events", { ...dev, batchKey: "bT", events: [{ campaignId: campT, impressions: 10, clicks: 0 }] });
+    const led2 = await campLedger(campT);
+    assert.strictEqual(led2.points_credit.sum - led.points_credit.sum, 540_000);
+    assert.strictEqual(led2.referral_points_credit.sum - led.referral_points_credit.sum, 90_000);
+    assert.strictEqual(led2.protocol_points_credit.sum - led.protocol_points_credit.sum, 270_000);
+
+    // viewer balance = their points (device-scoped credits roll up to the account)
+    assert.strictEqual(
+      (await repo.balanceForUser(await userId("aiad-viewer@example.com"))).balanceMillicents, 594_000,
+      "viewer keeps 54,000 + 540,000 points");
+  });
+
+  await check("token mode: reserve invariant holds and /v1/reserve + points summary report it", async () => {
+    // per-campaign invariant (aiad/docs/04 §A): accrued legs never exceed the earmark
+    const led = await campLedger(campT);
+    const accrued = led.points_credit.sum + led.referral_points_credit.sum + led.protocol_points_credit.sum;
+    assert.ok(accrued <= led.reserve_allocation.sum, "accrued points ≤ reserve_allocation");
+
+    const r = await apiT("GET", "/v1/reserve");
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.mode, "points");
+    assert.strictEqual(r.body.allocatedMillicents, 450_000_000);
+    assert.strictEqual(r.body.accruedPointsMillicents, accrued);
+    assert.strictEqual(r.body.outstandingPointsMillicents, accrued, "nothing claimed yet");
+    assert.strictEqual(r.body.escrowedMicroUsdc, 0, "keeper hasn't escrowed anything in tests");
+
+    // the millicent balance IS the points number (1,000 points = $1.00)
+    const viewerSess = await loginVia("aiad-viewer@example.com");
+    const sum = await apiT("GET", "/v1/web/points/summary", undefined, { Authorization: `Bearer ${viewerSess}` });
+    assert.strictEqual(sum.body.points, 594_000);
+    assert.strictEqual(sum.body.usdEquivalent, 5.94);
+  });
+
+  await check("token routes 404 on the legacy deployment; live-only surfaces answer 409 in points mode", async () => {
+    assert.strictEqual((await api("GET", "/v1/reserve")).status, 404, "FreeAI deployment exposes no token surface");
+    assert.strictEqual((await api("GET", "/v1/token/pools")).status, 404);
+    assert.strictEqual((await api("GET", "/v1/web/points/summary")).status, 404);
+    assert.strictEqual((await apiT("GET", "/v1/token/pools")).body.pools.length, 0, "pools empty during the points phase");
+    const viewerSess = await loginVia("aiad-viewer@example.com");
+    assert.strictEqual((await apiT("POST", "/v1/web/wallet", {}, { Authorization: `Bearer ${viewerSess}` })).status, 409, "wallet linking is live-mode only");
+    assert.strictEqual((await apiT("GET", "/v1/web/token/claim-proof", undefined, { Authorization: `Bearer ${viewerSess}` })).status, 409);
+    assert.strictEqual((await apiT("POST", "/v1/admin/epochs/publish-root", { adminKey: "test-admin" })).status, 409);
+    assert.strictEqual((await apiT("POST", "/v1/admin/epochs/publish-root", { adminKey: "wrong" })).status, 401);
+  });
+
+  sT.close();
+
   // ---------- cleanup ----------
   server.close();
   await poolNs.end();

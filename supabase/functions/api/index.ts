@@ -80,9 +80,37 @@ function loadConfig() {
     // broadcast targets exactly them. Not a secret (just an id; the project ref
     // is already public) — overridable via env. Empty disables segment tagging.
     resendWaitlistSegmentId: env("RESEND_WAITLIST_SEGMENT_ID", "758789ec-3294-4ba5-90ac-765f5d6765e1"),
+
+    // ---- AIAD token mode (aiad/docs/04) — one codebase, two deployments ----
+    // '' (default) keeps the legacy FreeAI behavior byte-identical: two-way
+    // revenueShare split, no token machinery, token routes 404. The AIAD
+    // deployment sets TOKEN_MODE=points (accrual phase) or live (post-TGE).
+    tokenMode: ["points", "live"].includes(env("TOKEN_MODE")) ? env("TOKEN_MODE") : "",
+    viewerShareBps: parseInt(env("VIEWER_SHARE_BPS", "6000"), 10), // viewer's share of the reserve tranche
+    referrerShareBps: parseInt(env("REFERRER_SHARE_BPS", "1000"), 10), // referrer's share (falls to protocol when unreferred)
+    reserveTrancheBps: parseInt(env("RESERVE_TRANCHE_BPS", "9000"), 10), // slice of gross routed to the token side
+
+    // ---- brand — the AIAD deployment bills and writes copy under its own name ----
+    brandName: env("BRAND_NAME", "FreeAI"),
+    stripeProductName: env("STRIPE_PRODUCT_NAME", "FreeAI ad campaign"),
+    stripeProductImage: env("STRIPE_PRODUCT_IMAGE", "https://freeai.fyi/og.png"),
   };
 }
 const config = loadConfig();
+// Token-mode split sanity (aiad/docs/04 §C): the pool must cover both shares.
+if (config.viewerShareBps + config.referrerShareBps > 10000) {
+  throw new Error("VIEWER_SHARE_BPS + REFERRER_SHARE_BPS must be <= 10000");
+}
+if (config.reserveTrancheBps > 10000) throw new Error("RESERVE_TRANCHE_BPS must be <= 10000");
+// When TOKEN_MODE is set, impressions split three ways into points entries
+// instead of the legacy two-way credit (passed into ingestBatch/redeem/paid).
+const tokenSplit = config.tokenMode
+  ? {
+      reserveTrancheBps: config.reserveTrancheBps,
+      viewerShareBps: config.viewerShareBps,
+      referrerShareBps: config.referrerShareBps,
+    }
+  : null;
 
 // ─────────────────────────── postgres pool ─────────────────────────────────
 // SUPABASE_DB_URL points at the Supavisor pooler inside the platform network.
@@ -625,10 +653,11 @@ function createRepo(pool: any) {
   // earnings are UNCAPPED now (the cap is people-based, enforced at attribution);
   // credited_millicents stays as a lifetime "credits earned" tally. The affiliate
   // row is locked FOR UPDATE to serialize the tally update.
-  async function creditAffiliate(client: any, affiliatedUserId: string | null, baseMillicents: any) {
-    if (!affiliatedUserId) return;
-    const base = BigInt(baseMillicents);
-    if (base <= 0n) return;
+  // The device's user's approved affiliate, row-locked to serialize tally
+  // updates. Shared by the legacy platform-funded bonus (creditAffiliate) and
+  // the token-mode referrer leg (creditTokenSplit). Null when unattributed.
+  async function approvedAffiliateFor(client: any, affiliatedUserId: string | null) {
+    if (!affiliatedUserId) return null;
     const a = await client.query(
       `select a.id, a.user_id, a.reward_bps
          from affiliates a
@@ -637,7 +666,14 @@ function createRepo(pool: any) {
         for update of a`,
       [affiliatedUserId]
     );
-    const aff = a.rows[0];
+    return a.rows[0] || null;
+  }
+
+  async function creditAffiliate(client: any, affiliatedUserId: string | null, baseMillicents: any) {
+    if (!affiliatedUserId) return;
+    const base = BigInt(baseMillicents);
+    if (base <= 0n) return;
+    const aff = await approvedAffiliateFor(client, affiliatedUserId);
     if (!aff) return;
     const share = (base * BigInt(aff.reward_bps)) / 10000n;
     if (share <= 0n) return;
@@ -650,6 +686,57 @@ function createRepo(pool: any) {
       "update affiliates set credited_millicents = credited_millicents + $2 where id = $1",
       [aff.id, share.toString()]
     );
+  }
+
+  // AIAD token mode (aiad/docs/04 §B): three-way BPS split of the reserve
+  // tranche, replacing the legacy two-way revenueShare split. Per billed gross:
+  //   pool     = gross × RESERVE_TRANCHE_BPS/10000       (the 90%)
+  //   viewer   = pool × VIEWER_SHARE_BPS/10000           → points_credit (+device)
+  //   referrer = pool × REFERRER_SHARE_BPS/10000 if attributed
+  //                                                      → referral_points_credit (+user)
+  //   protocol = pool − viewer − referrer                → protocol_points_credit (+platform)
+  //   business = gross − pool                            → platform_fee (+platform)
+  // The platform_fee row keeps the ledger closed (rows sum to gross, same
+  // invariant as the legacy path), so campaign spend metrics stay exact. The
+  // legacy platform-funded affiliate bonus is retired here — the referrer's cut
+  // is carved from the pool — but the crew tally keeps accruing for the UI.
+  // Returns the viewer's credit (what the device earned). Mirrors server/src/repo.js.
+  async function creditTokenSplit(c: any, { deviceId, campaignId, gross, tokenSplit, meta }: any) {
+    const du = await c.query("select user_id from devices where id = $1", [deviceId]);
+    const aff = await approvedAffiliateFor(c, du.rows[0]?.user_id);
+    const pool_ = (gross * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+    const viewer = (pool_ * BigInt(tokenSplit.viewerShareBps)) / 10000n;
+    const referrer = aff ? (pool_ * BigInt(tokenSplit.referrerShareBps)) / 10000n : 0n;
+    const protocol = pool_ - viewer - referrer; // remainder keeps millicent exactness
+    const business = gross - pool_;
+    await c.query(
+      `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
+       values ('points_credit', $1, $2, $3, ($4::jsonb #>> '{}')::jsonb)`,
+      [viewer.toString(), deviceId, campaignId, JSON.stringify(meta)]
+    );
+    if (aff && referrer > 0n) {
+      await c.query(
+        `insert into ledger (entry_type, amount_millicents, user_id, campaign_id, meta)
+         values ('referral_points_credit', $1, $2, $3, ($4::jsonb #>> '{}')::jsonb)`,
+        [referrer.toString(), aff.user_id, campaignId,
+         JSON.stringify({ affiliateId: aff.id, affiliatedUserId: du.rows[0].user_id })]
+      );
+      await c.query(
+        "update affiliates set credited_millicents = credited_millicents + $2 where id = $1",
+        [aff.id, referrer.toString()]
+      );
+    }
+    await c.query(
+      `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+       values ('protocol_points_credit', $1, $2, '{}')`,
+      [protocol.toString(), campaignId]
+    );
+    await c.query(
+      `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+       values ('platform_fee', $1, $2, '{}')`,
+      [business.toString(), campaignId]
+    );
+    return viewer;
   }
 
   // Mint a unique affiliate code (unique across users.referral_code AND
@@ -766,7 +853,7 @@ function createRepo(pool: any) {
     async attachCheckoutSession(campaignId: string, sessionId: string) {
       await pool.query("update campaigns set stripe_checkout_session_id = $2 where id = $1", [campaignId, sessionId]);
     },
-    async markCampaignPaid(campaignId: string, paymentIntentId: string) {
+    async markCampaignPaid(campaignId: string, paymentIntentId: string, { tokenSplit }: any = {}) {
       return tx(async (c: any) => {
         const { rows } = await c.query(
           `update campaigns cmp set status = 'pending_review', paid_at = now(),
@@ -790,6 +877,18 @@ function createRepo(pool: any) {
            values ('campaign_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
           [funded.toString(), campaignId, JSON.stringify({ impressions: rows[0].impressions_total })]
         );
+        // Token mode: earmark the campaign's reserve tranche at payment
+        // (aiad/docs/04 §A — the accounting mirror of campaign_credit). The
+        // fiat sweeper later records the matching USDC escrow movement in
+        // usdc_reserve_entries; a daily attestation checks the two agree.
+        if (tokenSplit) {
+          const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+             values ('reserve_allocation', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+            [tranche.toString(), campaignId, JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps })]
+          );
+        }
         return {
           email: rows[0].email,
           brand: rows[0].brand,
@@ -865,7 +964,7 @@ function createRepo(pool: any) {
       );
       return !!rows[0];
     },
-    async ingestBatch({ deviceId, batchKey, events, source, revenueShare, dailyCap, ipHash, ipDailyCap }: any) {
+    async ingestBatch({ deviceId, batchKey, events, source, revenueShare, dailyCap, ipHash, ipDailyCap, tokenSplit }: any) {
       return tx(async (c: any) => {
         const claimedImpressions = events.reduce((n: number, e: any) => n + (e.impressions || 0), 0);
         const claimedClicks = events.reduce((n: number, e: any) => n + (e.clicks || 0), 0);
@@ -923,6 +1022,13 @@ function createRepo(pool: any) {
             [ev.campaignId, billed]
           );
           const gross = BigInt(camp.rows[0].price_per_block_cents) * BigInt(billed);
+          const meta = source ? { impressions: imp, billed, source } : { impressions: imp, billed };
+          // Token mode (AIAD deployment): three-way points split, same math as
+          // the token redeem path; no platform-funded affiliate bonus.
+          if (tokenSplit) {
+            credited += await creditTokenSplit(c, { deviceId, campaignId: ev.campaignId, gross, tokenSplit, meta });
+            continue;
+          }
           const dev = (gross * BigInt(Math.round(revenueShare * 1000))) / 1000n;
           const fee = gross - dev;
           credited += dev;
@@ -933,7 +1039,7 @@ function createRepo(pool: any) {
           await c.query(
             `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
              values ('impression_credit', $1, $2, $3, ($4::jsonb #>> '{}')::jsonb)`,
-            [dev.toString(), deviceId, ev.campaignId, JSON.stringify(source ? { impressions: imp, billed, source } : { impressions: imp, billed })]
+            [dev.toString(), deviceId, ev.campaignId, JSON.stringify(meta)]
           );
           await c.query(
             `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
@@ -943,7 +1049,8 @@ function createRepo(pool: any) {
         }
         // If this device's user was attributed to an affiliate, accrue the
         // affiliate's cut (platform-funded, on top) on the batch's net credit.
-        if (credited > 0n) {
+        // Retired in token mode — the referrer's 10% is inside the split.
+        if (credited > 0n && !tokenSplit) {
           const dev = await c.query("select user_id from devices where id = $1", [deviceId]);
           await creditAffiliate(c, dev.rows[0]?.user_id, credited);
         }
@@ -956,7 +1063,7 @@ function createRepo(pool: any) {
       // minted) — they move the spendable balance but not lifetime "earned".
       const { rows } = await pool.query(
         `select
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
            coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
            coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
@@ -1141,7 +1248,7 @@ function createRepo(pool: any) {
     // the affiliate, records the platform fee — identical math to ingestBatch for
     // a single billed impression. A redeem before minDwellMs does NOT consume the
     // token, so an honest client can retry once the 2s dwell completes.
-    async redeemImpression({ token, deviceId, revenueShare, minDwellMs, source }: any) {
+    async redeemImpression({ token, deviceId, revenueShare, minDwellMs, source, tokenSplit }: any) {
       return tx(async (c: any) => {
         const t = await c.query(
           `select campaign_id,
@@ -1177,13 +1284,19 @@ function createRepo(pool: any) {
           [row.campaign_id]
         );
         const gross = BigInt(camp.rows[0].price_per_block_cents); // billed = 1
+        const meta = source ? { impressions: 1, billed: 1, via: "token", source } : { impressions: 1, billed: 1, via: "token" };
+        // Token mode (AIAD deployment): three-way points split of the reserve
+        // tranche; the legacy platform-funded affiliate bonus does not apply.
+        if (tokenSplit) {
+          const viewer = await creditTokenSplit(c, { deviceId, campaignId: row.campaign_id, gross, tokenSplit, meta });
+          return { ok: true, creditedMillicents: Number(viewer), campaignId: row.campaign_id };
+        }
         const dev = (gross * BigInt(Math.round(revenueShare * 1000))) / 1000n;
         const fee = gross - dev;
         await c.query(
           `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
            values ('impression_credit', $1, $2, $3, ($4::jsonb #>> '{}')::jsonb)`,
-          [dev.toString(), deviceId, row.campaign_id,
-           JSON.stringify(source ? { impressions: 1, billed: 1, via: "token", source } : { impressions: 1, billed: 1, via: "token" })]
+          [dev.toString(), deviceId, row.campaign_id, JSON.stringify(meta)]
         );
         await c.query(
           `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
@@ -1308,7 +1421,7 @@ function createRepo(pool: any) {
       // earningsForDevice) without rewriting lifetime "earned".
       const { rows } = await pool.query(
         `select
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
            coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
            coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
@@ -1324,9 +1437,9 @@ function createRepo(pool: any) {
     async earningsForUser(userId: string) {
       const { rows } = await pool.query(
         `select
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit')), 0)::bigint as earned,
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit') and created_at >= date_trunc('day', now())), 0)::bigint as today,
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit') and created_at >= date_trunc('month', now())), 0)::bigint as month,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit') and created_at >= date_trunc('day', now())), 0)::bigint as today,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit') and created_at >= date_trunc('month', now())), 0)::bigint as month,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
            coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
            coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
@@ -1352,7 +1465,7 @@ function createRepo(pool: any) {
                 count(*)::int as count
          from ledger
          where (user_id = $1 or device_id in (select id from devices where user_id = $1))
-           and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit')
+           and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')
            and created_at >= $3
          group by 1 order by 1 asc`,
         [userId, unit, since]
@@ -1366,7 +1479,7 @@ function createRepo(pool: any) {
            from ledger l
            left join campaigns c on c.id = l.campaign_id
           where (l.user_id = $1 or l.device_id in (select id from devices where user_id = $1))
-            and l.entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit')
+            and l.entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')
           order by l.created_at desc limit $2`,
         [userId, n]
       );
@@ -1383,20 +1496,77 @@ function createRepo(pool: any) {
         `select distinct meta->>'source' as source
            from ledger
           where (user_id = $1 or device_id in (select id from devices where user_id = $1))
-            and entry_type in ('impression_credit','click_credit')
+            and entry_type in ('impression_credit','click_credit','points_credit')
             and meta->>'source' is not null`,
         [userId]
       );
       const seen = new Set(rows.map((r: any) => r.source));
       return { chrome: seen.has("chrome"), claude_code: seen.has("claude_code"), desktop: seen.has("desktop") };
     },
+
+    // ---------- AIAD token mode: reserve attestation ----------
+    // Public /v1/reserve numbers (aiad/docs/04 §D): what the ledger says has
+    // been earmarked + accrued, next to what the keeper says is escrowed. The
+    // three points legs and the allocation are ledger-derived (never stored);
+    // escrowed USDC comes from usdc_reserve_entries (keeper-written).
+    // Mirrors server/src/repo.js.
+    async reserveStatus() {
+      const led = await pool.query(
+        `select
+           coalesce(sum(amount_millicents) filter (where entry_type = 'reserve_allocation'), 0)::bigint as allocated,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'points_credit'), 0)::bigint as viewer,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'referral_points_credit'), 0)::bigint as referrer,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'protocol_points_credit'), 0)::bigint as protocol,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'token_claim_debit'), 0)::bigint as claimed
+         from ledger`
+      );
+      const usdc = await pool.query(
+        `select coalesce(sum(case when direction = 'escrow' then amount_micro_usdc
+                                  else -amount_micro_usdc end), 0)::bigint as escrowed
+           from usdc_reserve_entries`
+      );
+      const l = led.rows[0];
+      const accrued = Number(l.viewer) + Number(l.referrer) + Number(l.protocol);
+      return {
+        allocatedMillicents: Number(l.allocated),
+        accruedPointsMillicents: accrued,
+        viewerPointsMillicents: Number(l.viewer),
+        referrerPointsMillicents: Number(l.referrer),
+        protocolPointsMillicents: Number(l.protocol),
+        outstandingPointsMillicents: accrued + Number(l.claimed), // claim debits are negative
+        escrowedMicroUsdc: Number(usdc.rows[0].escrowed),
+      };
+    },
+
+    // Live mode: funded campaign pools + locked rates, from the indexer's
+    // mirror of CampaignFunded events (aiad/docs/04 §D — GET /v1/token/pools).
+    async tokenCampaignPools(limit: any = 100) {
+      const { rows } = await pool.query(
+        `select campaign_id, usdc_in_micro, aiad_out_wei, to_distributor_wei,
+                to_treasury_wei, burned_wei, locked_rate_wei, tx_hash, funded_at
+           from token_campaign_pools order by funded_at desc limit $1`,
+        [Math.max(1, Math.min(500, parseInt(limit, 10) || 100))]
+      );
+      return rows.map((r: any) => ({
+        campaignId: r.campaign_id,
+        usdcInMicro: Number(r.usdc_in_micro),
+        aiadOutWei: r.aiad_out_wei,
+        toDistributorWei: r.to_distributor_wei,
+        toTreasuryWei: r.to_treasury_wei,
+        burnedWei: r.burned_wei,
+        lockedRateWei: r.locked_rate_wei,
+        txHash: r.tx_hash,
+        fundedAt: r.funded_at,
+      }));
+    },
+
     async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, recipientEmail, referralRewardMillicents, referralCap }: any) {
       return tx(async (c: any) => {
         await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, `user:${userId}`]);
         const bal = await c.query(
           `select coalesce(sum(amount_millicents), 0)::bigint as balance from ledger
             where (user_id = $1 or device_id in (select id from devices where user_id = $1))
-              and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','payout_debit','gift_redemption_debit','admin_credit','admin_debit')`,
+              and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','payout_debit','gift_redemption_debit','admin_credit','admin_debit')`,
           [userId]
         );
         const costMillicents = BigInt(amountCents) * 1000n;
@@ -1643,17 +1813,17 @@ function createRepo(pool: any) {
     // credits they've generated, and the affiliate's 10% cut earned from them.
     async affiliateCrew(affiliateId: string, affiliateUserId: string) {
       const credited = await pool.query(
-        "select coalesce(sum(amount_millicents), 0)::bigint as c from ledger where entry_type = 'affiliate_credit' and user_id = $1",
+        "select coalesce(sum(amount_millicents), 0)::bigint as c from ledger where entry_type in ('affiliate_credit','referral_points_credit') and user_id = $1",
         [affiliateUserId]
       );
       const { rows } = await pool.query(
         `select u.email,
           coalesce((select sum(amount_millicents) from ledger l
-                     where l.entry_type in ('impression_credit','click_credit')
+                     where l.entry_type in ('impression_credit','click_credit','points_credit')
                        and (l.user_id = aa.affiliated_user_id
                             or l.device_id in (select id from devices where user_id = aa.affiliated_user_id))), 0)::bigint as generated,
           coalesce((select sum(amount_millicents) from ledger l
-                     where l.entry_type = 'affiliate_credit' and l.user_id = $2
+                     where l.entry_type in ('affiliate_credit','referral_points_credit') and l.user_id = $2
                        and l.meta->>'affiliatedUserId' = aa.affiliated_user_id::text), 0)::bigint as your_cut
          from affiliate_attributions aa
          join users u on u.id = aa.affiliated_user_id
@@ -1830,14 +2000,14 @@ function createRepo(pool: any) {
            coalesce(sum(amount_millicents) filter (where entry_type='campaign_credit'),0)::bigint as campaign_credit,
            coalesce(sum(amount_millicents) filter (where entry_type='campaign_refund'),0)::bigint as campaign_refund,
            coalesce(sum(amount_millicents) filter (where entry_type='platform_fee'),0)::bigint as platform_fee,
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit')),0)::bigint as dev_credit,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','points_credit')),0)::bigint as dev_credit,
            coalesce(sum(amount_millicents) filter (where entry_type='referral_credit'),0)::bigint as referral_credit,
            coalesce(sum(amount_millicents) filter (where entry_type='affiliate_credit'),0)::bigint as affiliate_credit,
            coalesce(sum(amount_millicents) filter (where entry_type='payout_debit'),0)::bigint as payout_debit,
            coalesce(sum(amount_millicents) filter (where entry_type='gift_redemption_debit'),0)::bigint as redemption_debit,
            coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')),0)::bigint as admin_adjust,
            coalesce(sum(amount_millicents) filter (where entry_type in
-             ('impression_credit','click_credit','referral_credit','affiliate_credit','admin_credit','admin_debit','payout_debit','gift_redemption_debit')),0)::bigint as liability
+             ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','admin_credit','admin_debit','payout_debit','gift_redemption_debit')),0)::bigint as liability
          from ledger`
       )).rows[0];
       const counts = (await pool.query(
@@ -1874,7 +2044,7 @@ function createRepo(pool: any) {
         `select date_trunc('day', created_at) as d,
                 coalesce(sum(amount_millicents) filter (where entry_type='campaign_credit'),0)::bigint as bought,
                 coalesce(sum(amount_millicents) filter (where entry_type='platform_fee'),0)::bigint as fee,
-                coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit')),0)::bigint as dev
+                coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','points_credit')),0)::bigint as dev
            from ledger where created_at >= now() - ($1 || ' days')::interval group by 1`, [d]
       )).rows;
       const users = (await pool.query(
@@ -1908,11 +2078,11 @@ function createRepo(pool: any) {
                 c.show_on_leaderboard, c.review_note, c.completion_email_sent_at, c.created_at, c.paid_at, c.activated_at,
                 a.email as advertiser_email,
                 coalesce((select sum(amount_millicents) from ledger
-                          where campaign_id = c.id and entry_type in ('impression_credit','click_credit','platform_fee')),0)::bigint as recognized_millicents,
+                          where campaign_id = c.id and entry_type in ('impression_credit','click_credit','platform_fee','points_credit','referral_points_credit','protocol_points_credit')),0)::bigint as recognized_millicents,
                 coalesce((select count(*) from ledger
                           where campaign_id = c.id and entry_type in ('click_credit','click_event')),0)::int as clicks,
                 coalesce((select sum((meta->>'billed')::int) from ledger
-                          where campaign_id = c.id and entry_type = 'impression_credit'),0)::bigint as impressions_shown
+                          where campaign_id = c.id and entry_type in ('impression_credit','points_credit')),0)::bigint as impressions_shown
            from campaigns c left join advertisers a on a.id = c.advertiser_id
            ${where}
           order by c.created_at desc limit ${lim} offset ${ofs}`,
@@ -1931,11 +2101,11 @@ function createRepo(pool: any) {
                 c.created_at, c.activated_at,
                 a.email as advertiser_email,
                 coalesce((select sum(amount_millicents) from ledger
-                          where campaign_id = c.id and entry_type in ('impression_credit','click_credit','platform_fee')),0)::bigint as recognized_millicents,
+                          where campaign_id = c.id and entry_type in ('impression_credit','click_credit','platform_fee','points_credit','referral_points_credit','protocol_points_credit')),0)::bigint as recognized_millicents,
                 coalesce((select count(*) from ledger
                           where campaign_id = c.id and entry_type in ('click_credit','click_event')),0)::int as clicks,
                 coalesce((select sum((meta->>'billed')::int) from ledger
-                          where campaign_id = c.id and entry_type = 'impression_credit'),0)::bigint as impressions_shown
+                          where campaign_id = c.id and entry_type in ('impression_credit','points_credit')),0)::bigint as impressions_shown
            from campaigns c left join advertisers a on a.id = c.advertiser_id
           where c.id = $1`,
         [campaignId]
@@ -1967,8 +2137,8 @@ function createRepo(pool: any) {
         `select a.id, a.email, a.created_at,
                 count(distinct c.id)::int as campaigns,
                 count(distinct c.id) filter (where c.status = 'active')::int as active_campaigns,
-                coalesce(sum(l.amount_millicents) filter (where l.entry_type in ('impression_credit','click_credit','platform_fee')),0)::bigint as spend_millicents,
-                coalesce(sum((l.meta->>'billed')::int) filter (where l.entry_type = 'impression_credit'),0)::bigint as impressions_shown,
+                coalesce(sum(l.amount_millicents) filter (where l.entry_type in ('impression_credit','click_credit','platform_fee','points_credit','referral_points_credit','protocol_points_credit')),0)::bigint as spend_millicents,
+                coalesce(sum((l.meta->>'billed')::int) filter (where l.entry_type in ('impression_credit','points_credit')),0)::bigint as impressions_shown,
                 count(*) filter (where l.entry_type in ('click_credit','click_event'))::int as clicks
            from advertisers a
            left join campaigns c on c.advertiser_id = a.id
@@ -2074,7 +2244,7 @@ function createRepo(pool: any) {
                           where l.user_id = u.id or l.device_id in (select id from devices where user_id = u.id)),0)::bigint as balance_millicents,
                 coalesce((select sum(amount_millicents) from ledger l
                           where (l.user_id = u.id or l.device_id in (select id from devices where user_id = u.id))
-                            and l.entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit')),0)::bigint as earned_millicents
+                            and l.entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')),0)::bigint as earned_millicents
            from users u ${where}
           order by u.created_at desc limit ${lim} offset ${ofs}`,
         params
@@ -2397,7 +2567,7 @@ function parseAffiliateSocials(body: any): { socials?: any; error?: string } {
 
 // ── health & catalog ──
 route("GET", "/healthz", async () => json(200, { ok: true }));
-route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: config.revenueShare, leaderboardPublic, liveTopCpm }); });
+route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: config.revenueShare, leaderboardPublic, liveTopCpm, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) }); });
 
 // Advertiser pricing for the lander (min / suggested / top). Kept off /v1/config
 // so the extension's frequent config polls stay query-free. top = max(anchor,
@@ -2456,6 +2626,7 @@ route("POST", "/v1/events", async (ctx: any) => {
       source: ["chrome", "claude_code", "desktop"].includes(body.source) ? body.source : null,
       revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
       ipHash: hashIp(ctx), ipDailyCap: config.ipDailyImpressionCap,
+      tokenSplit,
     });
     return json(200, { ok: true, ...result });
   } catch (err: any) {
@@ -2509,12 +2680,75 @@ route("POST", "/v1/impressions/redeem", async (ctx: any) => {
     token: ctx.body.token, deviceId: device.id, revenueShare: config.revenueShare,
     minDwellMs: config.impressionMinDwellMs,
     source: ["chrome", "claude_code", "desktop"].includes(ctx.body.source) ? ctx.body.source : null,
+    tokenSplit,
   });
   if (!result.ok) {
     const status = result.reason === "not_found" ? 404 : 409; // used / expired / too_soon
     return json(status, { ok: false, reason: result.reason });
   }
   return json(200, { ok: true, creditedMillicents: result.creditedMillicents });
+});
+
+// ── AIAD token mode (aiad/docs/04 §D) ──
+// Every route here 404s when TOKEN_MODE is unset, so the FreeAI deployment
+// exposes no token surface at all. Wallet linking and claims are live-mode
+// only; in points mode they answer 409 so clients can show "at launch".
+// Mirrors server/src/app.js.
+const tokenModeOff = () => json(404, { error: "not found" });
+const liveOnly = () =>
+  config.tokenMode === "live"
+    ? json(501, { error: "not implemented — ships with the TGE tooling" })
+    : json(409, { error: "live mode only — points phase is accrual-only" });
+
+// Public reserve attestation: escrowed USDC vs. outstanding points.
+route("GET", "/v1/reserve", async () => {
+  if (!config.tokenMode) return tokenModeOff();
+  const r = await repo.reserveStatus();
+  return json(200, { mode: config.tokenMode, ...r, updatedAt: new Date().toISOString() });
+});
+
+// Public: funded campaign pools + locked rates (live mode fills this via the
+// indexer; empty during the points phase).
+route("GET", "/v1/token/pools", async (ctx: any) => {
+  if (!config.tokenMode) return tokenModeOff();
+  return json(200, { pools: await repo.tokenCampaignPools(ctx.query.get("limit")) });
+});
+
+// Points balance for the signed-in user — the portal balance card. The
+// millicent balance IS the points number (1,000 points = $1.00).
+route("GET", "/v1/web/points/summary", async (ctx: any) => {
+  if (!config.tokenMode) return tokenModeOff();
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  const e = await repo.earningsForUser(user.id);
+  return json(200, {
+    mode: config.tokenMode,
+    points: e.balanceMillicents,
+    usdEquivalent: e.balanceMillicents / 100000,
+    todayPoints: e.todayMillicents,
+    monthPoints: e.monthMillicents,
+    lifetimePoints: e.lifetimeMillicents,
+  });
+});
+
+// Live-mode surfaces, staged: linking a wallet, fetching a claim proof, and
+// triggering the root publisher all arrive with the TGE keeper tooling.
+route("POST", "/v1/web/wallet", async (ctx: any) => {
+  if (!config.tokenMode) return tokenModeOff();
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  return liveOnly();
+});
+route("GET", "/v1/web/token/claim-proof", async (ctx: any) => {
+  if (!config.tokenMode) return tokenModeOff();
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  return liveOnly();
+});
+route("POST", "/v1/admin/epochs/publish-root", async (ctx: any) => {
+  if (!config.tokenMode) return tokenModeOff();
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  return liveOnly();
 });
 
 // ── advertiser checkout ──
@@ -2538,7 +2772,9 @@ route("POST", "/v1/checkout", async (ctx: any) => {
     mode: "payment", customer_email: email,
     // receipt_email isn't a Checkout Session param; it lives on the PaymentIntent.
     payment_intent_data: { receipt_email: email },
-    line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: budgetCents, product_data: { name: "FreeAI ad campaign", description: `${brand ? brand + " — " : ""}"${adLine}" → ${url} · ${impressions.toLocaleString("en-US")} impressions @ $${(cpmCents / 100).toFixed(2)} CPM`, images: ["https://freeai.fyi/og.png"] } } }],
+    // Brand-configurable so the AIAD deployment bills under its own Stripe
+    // product line, even before its keys move to their own account.
+    line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: budgetCents, product_data: { name: config.stripeProductName || "FreeAI ad campaign", description: `${brand ? brand + " — " : ""}"${adLine}" → ${url} · ${impressions.toLocaleString("en-US")} impressions @ $${(cpmCents / 100).toFixed(2)} CPM`, images: [config.stripeProductImage || "https://freeai.fyi/og.png"] } } }],
     metadata: { campaign_id: campaignId },
     success_url: `${config.siteUrl}/?checkout=success`,
     cancel_url: `${config.siteUrl}/?checkout=cancelled`,
@@ -2585,7 +2821,7 @@ route("POST", "/v1/webhooks/stripe", async (ctx: any) => {
     case "checkout.session.completed": {
       const obj = event.data?.object || {};
       if (obj.metadata?.campaign_id) {
-        const paid = await repo.markCampaignPaid(obj.metadata.campaign_id, obj.payment_intent);
+        const paid = await repo.markCampaignPaid(obj.metadata.campaign_id, obj.payment_intent, { tokenSplit });
         // Only on the transitioning call. Wrapped so a mail outage never rolls
         // back the funded state — the webhook event is already claimed.
         if (paid) {

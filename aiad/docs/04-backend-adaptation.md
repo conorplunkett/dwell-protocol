@@ -1,18 +1,21 @@
 # Backend adaptation guide
 
-How the parent-repo backend becomes the AIAD backend. This is a
-**specification, not applied code** — nothing in the main repo is modified by
-the `aiad/` folder until this lands. Per the decision in
-[06-launch-checklist.md](06-launch-checklist.md), the changes below land in
-the **shared** backend code, gated by config: with the defaults, the FreeAI
-deployment is behavior-identical to today (two-way split, no token
-machinery); the AIAD deployment enables points mode via env. One codebase,
-two deployments against **separate databases** — runtime separation is
-absolute even though the code is common. As always, every change must land in
-**both** backends in the same commit (AGENTS.md rule): the reference Node
-server (`server/src/`, tested in CI) and the production Supabase Edge
-Function (`supabase/functions/api/index.ts`), with `server/db/schema.sql`
-staying the schema authority.
+How the parent-repo backend becomes the AIAD backend. **Status: §A–§D are
+implemented** (2026-07-06) in the shared backend code — `server/db/schema.sql`
++ `server/db/20260706_aiad_token_mode.sql`, `server/src/`, and the edge
+function, with the 54-check server suite covering both splits and the reserve
+invariant. Everything is gated by config per the decision in
+[06-launch-checklist.md](06-launch-checklist.md): with the defaults, the
+FreeAI deployment is behavior-identical to before (two-way split, no token
+machinery, token routes 404); the AIAD deployment enables points mode via
+env. The live-mode §D surfaces (wallet linking, claim proofs, root
+publishing) are staged stubs — 409 in points mode, 501 in live — until the
+TGE keeper tooling ships. One codebase, two deployments against **separate
+databases** — runtime separation is absolute even though the code is common.
+As always, every change must land in **both** backends in the same commit
+(AGENTS.md rule): the reference Node server (`server/src/`, tested in CI) and
+the production Supabase Edge Function (`supabase/functions/api/index.ts`),
+with `server/db/schema.sql` staying the schema authority.
 
 The good news: the money core is already right. Balances are derived from an
 append-only millicent ledger, never stored; earning is server-authoritative
@@ -137,6 +140,12 @@ Ledger writes: `points_credit` (viewer, +device), `referral_points_credit`
 The same change applies to the legacy batch path (`ingestBatch()`,
 `repo.js:659-661`).
 
+**Implementation note (closure):** the business's 10% (`gross − pool`) is
+written as a `platform_fee` row in the same transaction, so each billed
+impression's ledger rows still sum to exactly its gross — the same closure
+invariant as the legacy path. Campaign spend metrics and the advertiser
+receipts stay exact without special-casing token mode.
+
 **Retired in AIAD**: the `creditAffiliate()` platform-funded 10% bonus
 (`repo.js:188-214`, called at `repo.js:957` and from `ingestBatch`). The
 referral 10% replaces it *inside* the split. The affiliate attribution
@@ -147,10 +156,11 @@ reward computation moves.
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `TOKEN_MODE` | `points` | `points` or `live` — the phase switch. In `points`, wallets/claims are disabled; everything else runs. |
+| `TOKEN_MODE` | *(unset)* | The deployment switch: unset = legacy FreeAI behavior (token routes 404); `points` = accrual phase; `live` = post-TGE. The AIAD deployment sets `points` at launch. |
 | `VIEWER_SHARE_BPS` | `6000` | Viewer's share of the pool |
 | `REFERRER_SHARE_BPS` | `1000` | Referrer's share (skipped when unreferred) |
 | `RESERVE_TRANCHE_BPS` | `9000` | Tranche of gross routed to the token side |
+| `BRAND_NAME` / `STRIPE_PRODUCT_NAME` / `STRIPE_PRODUCT_IMAGE` | FreeAI values | Brand knobs: the AIAD deployment bills its Stripe checkouts under its own product name/image (its own Stripe *account* is the Separation-list plan; these work either way) |
 | `BURN_BPS` | `0` | Slice of the treasury leg burned by CampaignFunder |
 | `MAX_SLIPPAGE_BPS` | `100` | Keeper aborts a swap when the 0x quote implies worse |
 | `AIAD_TOKEN_ADDRESS` / `REWARDS_DISTRIBUTOR_ADDRESS` / `CAMPAIGN_FUNDER_ADDRESS` | — | Base contract addresses (live) |
