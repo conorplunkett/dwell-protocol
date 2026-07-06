@@ -10,8 +10,8 @@ const { runPayouts } = require("./payouts");
 const { escapeHtml, isCleanAdLine, normalizeHexColor } = require("./util");
 
 // Crew = the affiliate "earn with your friends" panel in the extension popup.
-// Five slots: each is a joined friend, a pending invite, or an open invite form.
-const CREW_SIZE = 5;
+// Ten slots: each is a joined friend, a pending invite, or an open invite form.
+const CREW_SIZE = 10;
 
 // Validate + normalize an affiliate application's socials. At least one of
 // Instagram / LinkedIn / Twitter is required, and every handle provided must

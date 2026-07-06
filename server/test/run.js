@@ -953,7 +953,7 @@ const fakeMailer = {
     const aff = await api("GET", `/v1/me/affiliate?deviceId=${dev.deviceId}&deviceKey=${dev.deviceKey}`);
     assert.strictEqual(aff.body.linked, true);
     assert.ok(/^[A-Z0-9]{8}$/.test(aff.body.code), "linked device is auto-enrolled with an affiliate code");
-    assert.strictEqual(aff.body.crewSize, 5, "crew exposes its 5-slot size");
+    assert.strictEqual(aff.body.crewSize, 10, "crew exposes its 10-slot size");
     assert.deepStrictEqual(aff.body.invited, [], "no pending invites yet");
   });
 

@@ -274,11 +274,15 @@ function makeChrome(stateRef, sentRef) {
   };
   // Fake prod backend — records every call so the wiring can be asserted.
   const fetches = [];
+  // Whether the device is linked to an account. Earning is gated on this: an
+  // anonymous device counts impressions but accrues nothing until it links.
+  let affiliateLinked = false;
   bg.fetch = async (url, options = {}) => {
     const u = String(url);
     fetches.push({ url: u, options });
     const ok = (body) => ({ ok: true, status: 200, json: async () => body });
     if (u.endsWith("/v1/devices/register")) return ok({ deviceId: "dev-1", deviceKey: "key-1" });
+    if (u.endsWith("/v1/me/affiliate")) return ok({ linked: affiliateLinked, email: "me@example.com", crewSize: 10, rewardPct: 10, friends: [], invited: [] });
     if (u.endsWith("/v1/config")) return ok({ serving: true, revenueShare: 0.5 });
     if (u.endsWith("/v1/ads")) return ok({ revenueShare: 0.5, ads: [] });
     // earned > balance so the reconciliation test proves the SPENDABLE number wins
@@ -298,10 +302,19 @@ function makeChrome(stateRef, sentRef) {
   // Drain the fire-and-forget network side effects (register/flush/click report).
   const settle = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 1)); };
 
-  await check("real impression earns 50% of the per-impression gross", async () => {
+  await check("unlinked device counts the impression but earns nothing (connect to start earning)", async () => {
     const s = await msg({ type: "BB_IMPRESSION", mock: false });
     assert.strictEqual(s.impressions, 1);
-    assert.ok(Math.abs(s.earnings - (12 / 1000) * 0.5) < 1e-9, "earnings != 50% share");
+    assert.strictEqual(s.earnings, 0, "an unlinked device must not accrue earnings");
+  });
+
+  await check("once linked, a real impression earns 50% of the per-impression gross", async () => {
+    affiliateLinked = true;
+    await settle(); // let the prior tick register the device so the link check can resolve
+    const before = (await msg({ type: "BB_GET_STATE" })).earnings;
+    const s = await msg({ type: "BB_IMPRESSION", mock: false });
+    assert.strictEqual(s.impressions, 2);
+    assert.ok(Math.abs(s.earnings - (before + (12 / 1000) * 0.5)) < 1e-9, "earnings != 50% share");
   });
 
   await check("real click is recorded but pays nothing (50x billing removed)", async () => {

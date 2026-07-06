@@ -36,9 +36,16 @@ function setRing(pct) {
   arc.setAttribute("stroke-dashoffset", (RING_C * (1 - clamped)).toFixed(1));
 }
 
-async function refresh() {
-  const s = (await send({ type: "BB_GET_STATE" })) || {};
-  const earnings = s.earnings || 0;
+// Latest state + link status, shared by refresh() and applyCrew() so the hero
+// can reflect both without re-fetching. Earning is gated on being linked to an
+// account (background.js), so while anonymous the hero shows $0 and a connect
+// CTA — never phantom credits the account-scoped web portal can't display.
+let lastState = {};
+let lastLinked = false;
+
+function paintHero() {
+  const s = lastState;
+  const earnings = lastLinked ? (s.earnings || 0) : 0;
 
   // Hero ring — credits earned, and progress toward the next free month.
   setText("earnings", money(earnings));
@@ -47,10 +54,14 @@ async function refresh() {
   setRing(pct);
   const progress = $("progress");
   if (progress) {
-    const whole = Math.min(100, Math.round(pct * 100));
-    progress.innerHTML = whole >= 100
-      ? "<b>Ready</b> — redeem a free month of Claude"
-      : `<b>${whole}%</b> toward a free month of Claude`;
+    if (!lastLinked) {
+      progress.innerHTML = "<b>Connect your account</b> to start earning";
+    } else {
+      const whole = Math.min(100, Math.round(pct * 100));
+      progress.innerHTML = whole >= 100
+        ? "<b>Ready</b> — redeem a free month of Claude"
+        : `<b>${whole}%</b> toward a free month of Claude`;
+    }
   }
 
   // Stats
@@ -58,9 +69,15 @@ async function refresh() {
   // `impressions`. One ad shown across a long reply is many impressions but one
   // ad watched — surfacing impressions here read as "24 ads" for a single ad.
   setText("adviews", (s.adViews || 0).toLocaleString());
-  $("enabled").checked = s.enabled !== false;
   const days = Math.max(1, Math.round((Date.now() - (s.installedAt || Date.now())) / 86400000));
   setText("perday", money(earnings / days));
+}
+
+async function refresh() {
+  const s = (await send({ type: "BB_GET_STATE" })) || {};
+  lastState = s;
+  paintHero();
+  $("enabled").checked = s.enabled !== false;
 
   // Test mode (developer tools)
   const on = !!s.testMode;
@@ -75,10 +92,10 @@ async function refresh() {
 // CREW — the affiliate "earn with your friends" panel. The extension stays
 // anonymous: until the device is linked to an account it shows the sign-in CTA
 // (which opens the freeai.fyi login page); once linked (device-scoped
-// /v1/me/affiliate via the background) it shows up to 5 slots — each a joined
+// /v1/me/affiliate via the background) it shows up to 10 slots — each a joined
 // friend (with their generated credits + your 10% cut, forever), a pending
 // invite, or an open invite form to add the next friend.
-const CREW_SIZE = 5;
+const CREW_SIZE = 10;
 
 // A joined friend: what they've generated and the 10% it earned you.
 function friendSlot(f) {
@@ -162,6 +179,15 @@ function bindInviteForm() {
   });
 }
 
+// Bottom-of-popup line naming the freeai.fyi account this device is linked to,
+// so it's always clear whose earnings the extension is crediting. Anonymous
+// until the device links, matching the hero's "connect to start earning" CTA.
+function setAccountStatus(linked, email) {
+  const wrap = $("account-status");
+  if (wrap) wrap.classList.toggle("connected", !!linked);
+  setText("acct-text", linked && email ? `Connected as ${email}` : "No account connected");
+}
+
 // Paint a crew object onto the panel. Re-renders the slots only when the crew
 // actually changes, so an 8s poll never wipes an email the user is mid-type.
 let crewSig = null;
@@ -174,6 +200,13 @@ function applyCrew(crew) {
 
   if (signedout) signedout.hidden = linked;
   if (linkedWrap) linkedWrap.hidden = !linked;
+
+  // Bottom-of-popup account status + hero gating: reflect which account (if any)
+  // this device is connected to, and repaint the hero so earnings only show once
+  // connected.
+  setAccountStatus(linked, crew.email);
+  lastLinked = linked;
+  paintHero();
 
   if (!linked) {
     setText("crew-label", "Your crew");
