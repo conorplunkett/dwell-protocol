@@ -798,6 +798,18 @@ async function renderSettings(view) {
       },
     }),
     switchRow({
+      title: "Earnings", on: d.earningsEnabled, offLabel: "Disabled", onLabel: "Enabled",
+      confirmOn: "Re-enable viewer earnings everywhere?",
+      confirmOff: "Turn OFF all viewer point earning everywhere, immediately? No new points will be credited from ads, impressions, or events until this is switched back on.",
+      desc: (on) => on
+        ? "Viewers can earn points normally (ad views, impressions, legacy event batches)."
+        : "Earnings are OFF — no points are being credited anywhere (ads are also hidden while this is off).",
+      action: async (next) => {
+        await api("/v1/admin/earnings-killswitch", { method: "POST", body: { enabled: next } });
+        toast(next ? "Earnings re-enabled" : "Earnings disabled everywhere");
+      },
+    }),
+    switchRow({
       title: "Live bid market", on: !!(lb && lb.public), offLabel: "Hidden", onLabel: "Public",
       desc: (on) => on
         ? "The “Live bid market” leaderboard is visible on the public landing page."

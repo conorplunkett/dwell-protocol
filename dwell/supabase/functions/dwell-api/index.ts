@@ -2449,6 +2449,13 @@ async function runPayouts() {
 // admin dashboard propagates across isolates. syncServing() refreshes at most
 // once per 15s to keep the /v1/ads hot path cheap.
 let serving = !config.killswitch;
+// Master earnings killswitch — separate from (and stronger than) `serving`.
+// `serving` only stops *new* ads from being shown/tokenized; the legacy
+// /v1/events batch path and an already-served impression token can still
+// mint points while `serving` is off. `earningsEnabled` additionally blocks
+// the actual crediting in ingestBatch/redeemImpression, so flipping it off
+// stops every way a viewer can earn points, immediately.
+let earningsEnabled = true;
 // Whether the public "Live bid market" leaderboard is shown on the lander.
 // Off by default; flipped from the admin dashboard and surfaced via /v1/config.
 let leaderboardPublic = false;
@@ -2463,6 +2470,10 @@ async function syncServing() {
     const v = await repo.getSetting("serving");
     if (typeof v === "boolean") serving = v;
   } catch { /* settings table absent / unreachable — keep current value */ }
+  try {
+    const v = await repo.getSetting("earnings_enabled");
+    if (typeof v === "boolean") earningsEnabled = v;
+  } catch { /* settings absent — keep current value (default: on) */ }
   try {
     leaderboardPublic = (await repo.getSetting("leaderboard_public")) === true;
   } catch { /* settings absent — keep default (hidden) */ }
@@ -2601,7 +2612,7 @@ route("GET", "/v1/pricing", async () => {
 });
 route("GET", "/v1/ads", async () => {
   await syncServing();
-  const ads = serving ? await repo.activeAds() : [];
+  const ads = (serving && earningsEnabled) ? await repo.activeAds() : [];
   return json(200, { revenueShare: displayRevenueShare, ads: ads.map((a: any) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined })) });
 });
 route("GET", "/v1/leaderboard", async () => {
@@ -2635,6 +2646,8 @@ route("POST", "/v1/events", async (ctx: any) => {
     return json(409, { error: "migrated client must use /v1/impressions/serve+redeem" });
   }
   if (!body.batchKey || !Array.isArray(body.events)) return json(400, { error: "batchKey and events[] required" });
+  await syncServing();
+  if (!earningsEnabled) return json(200, { ok: true, duplicate: false, creditedMillicents: 0, earningsDisabled: true });
   try {
     const result = await repo.ingestBatch({
       deviceId: device.id, batchKey: body.batchKey, events: body.events,
@@ -2675,7 +2688,7 @@ route("POST", "/v1/impressions/serve", async (ctx: any) => {
   const device = await authDeviceFrom(ctx);
   if (!device) return json(401, { error: "bad device credentials" });
   await syncServing();
-  if (!serving) return json(200, { ad: null, serving: false });
+  if (!serving || !earningsEnabled) return json(200, { ad: null, serving: false });
   const result = await repo.serveImpression({
     deviceId: device.id, ipHash: hashIp(ctx), ttlMs: config.impressionTokenTtlMs,
     dailyCap: config.dailyImpressionCap, ipDailyCap: config.ipDailyImpressionCap,
@@ -2693,6 +2706,8 @@ route("POST", "/v1/impressions/redeem", async (ctx: any) => {
   const device = await authDeviceFrom(ctx);
   if (!device) return json(401, { error: "bad device credentials" });
   if (!ctx.body?.token) return json(400, { error: "token required" });
+  await syncServing();
+  if (!earningsEnabled) return json(503, { ok: false, reason: "earnings_disabled" });
   const result = await repo.redeemImpression({
     token: ctx.body.token, deviceId: device.id, revenueShare: config.revenueShare,
     minDwellMs: config.impressionMinDwellMs,
@@ -3478,6 +3493,15 @@ route("POST", "/v1/admin/killswitch", async (ctx: any) => {
   catch (err: any) { console.error("[dwell] killswitch persist failed:", err?.message); }
   return json(200, { ok: true, serving });
 });
+route("POST", "/v1/admin/earnings-killswitch", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  if (typeof ctx.body?.enabled !== "boolean") return json(400, { error: "enabled (boolean) required" });
+  earningsEnabled = ctx.body.enabled;
+  servingSyncedAt = Date.now();
+  try { await repo.setSetting("earnings_enabled", earningsEnabled); } // persist across isolates
+  catch (err: any) { console.error("[dwell] earnings killswitch persist failed:", err?.message); }
+  return json(200, { ok: true, earningsEnabled });
+});
 route("POST", "/v1/admin/payouts", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   return json(200, await runPayouts());
@@ -3560,6 +3584,7 @@ route("GET", "/v1/admin/overview", async (ctx: any) => {
     campaignsByStatus: o.campaignsByStatus,
     pendingRedemptionsUsd: cUsd(o.counts.redemptions_pending_cents),
     serving,
+    earningsEnabled,
   });
 });
 
