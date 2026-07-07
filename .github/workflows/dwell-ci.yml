@@ -1,16 +1,25 @@
-name: CI
+name: DWELL CI
 
+# CI for the DWELL protocol product living under dwell/ (remerged from the
+# standalone conorplunkett/dwell-protocol repo). Ported from that repo's
+# .github/workflows/ci.yml with paths scoped to dwell/**.
 on:
   push:
     branches: [main]
+    paths:
+      - "dwell/**"
+      - ".github/workflows/dwell-ci.yml"
   pull_request:
+    paths:
+      - "dwell/**"
+      - ".github/workflows/dwell-ci.yml"
 
 jobs:
   server:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: server
+        working-directory: dwell/server
     services:
       postgres:
         image: postgres:16-alpine
@@ -40,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: chrome-extension
+        working-directory: dwell/chrome-extension
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -55,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: terminal
+        working-directory: dwell/terminal
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -68,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: desktop/core
+        working-directory: dwell/desktop/core
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -82,7 +91,7 @@ jobs:
     runs-on: macos-14
     defaults:
       run:
-        working-directory: desktop/macos/SponsorOverlay
+        working-directory: dwell/desktop/macos/SponsorOverlay
     steps:
       - uses: actions/checkout@v4
       - name: Build (debug + release)
@@ -94,7 +103,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: contracts
+        working-directory: dwell/contracts
     steps:
       - uses: actions/checkout@v4
         with:
@@ -109,6 +118,9 @@ jobs:
 
   site:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dwell
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -118,11 +130,11 @@ jobs:
         run: |
           node -c web/script.js
           node -c web/portal.js
-      - name: Copy rules (banned language, docs/05-legal-structure.md)
+      - name: Copy rules (banned language, dwell/docs/05-legal-structure.md)
         run: |
           ! grep -rin -E 'moon|price will|appreciat|going up|invest' web
       - name: Brand separation (no references to the sibling product)
         run: |
-          ! grep -rIil freeai --exclude-dir=.git --exclude=ci.yml .
+          ! grep -rIil freeai .
       - name: Theme mirror (popup theme.css is a byte-copy of web/theme.css)
         run: cmp web/theme.css chrome-extension/popup/theme.css

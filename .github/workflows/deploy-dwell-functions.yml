@@ -1,16 +1,17 @@
-name: Deploy Edge Functions
+name: Deploy DWELL Edge Functions
 
-# Deploys the dwell-api Supabase Edge Function (the production DWELL API).
-# Runs after a merge to main that touches supabase/functions/** (and on
-# demand). Requires two repo secrets:
-#   SUPABASE_ACCESS_TOKEN  — a personal access token
-#   SUPABASE_PROJECT_REF   — the project ref (defaults to the shared project)
+# Deploys the dwell-api Supabase Edge Function (the production DWELL API)
+# from dwell/supabase/functions. Runs after a merge to main that touches
+# those files (and on demand). Uses the same shared Supabase project and
+# repo secrets as deploy-functions.yml; never touches the FreeAI `api`
+# function. Replaces both the old deploy-dwell-bridge.yml and the
+# standalone dwell-protocol repo's deploy-functions.yml.
 on:
   push:
     branches: [main]
     paths:
-      - "supabase/functions/**"
-      - ".github/workflows/deploy-functions.yml"
+      - "dwell/supabase/functions/**"
+      - ".github/workflows/deploy-dwell-functions.yml"
   workflow_dispatch:
 
 jobs:
@@ -31,4 +32,5 @@ jobs:
             exit 1
           fi
       - name: Deploy dwell-api
+        working-directory: dwell
         run: supabase functions deploy dwell-api --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
