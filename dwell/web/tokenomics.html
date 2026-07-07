@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DWELL — Tokenomics</title>
+  <meta name="description" content="How the DWELL token economy works: advertisers pay fixed dollar CPMs, 90% of every ad dollar is escrowed or market-bought into DWELL, and the pool splits 60/10/30 between viewer, referrer, and protocol." />
+  <link rel="canonical" href="https://dwell.fyi/tokenomics" />
+  <meta name="theme-color" content="#ff0000" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="DWELL" />
+  <meta property="og:url" content="https://dwell.fyi/tokenomics" />
+  <meta property="og:title" content="DWELL — Tokenomics" />
+  <meta property="og:description" content="Advertisers pay fixed dollar CPMs. 90% of every ad dollar is escrowed or market-bought into DWELL. The pool splits 60/10/30 — viewer, referrer, protocol." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="assets/favicon.svg" />
+  <!-- Page-scoped styles: the doc layout (prose measure, data tables, flow
+       diagram, phase cards). Everything colors through theme.css tokens. -->
+  <style>
+    .tk-wrap { max-width: 880px; margin: 0 auto; padding: 0 28px 40px; }
+    .tk-hero { text-align: center; padding: 48px 0 12px; }
+    .tk-hero .eyebrow {
+      display: block; margin-bottom: 14px;
+      font: 800 12.5px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase;
+      color: var(--accent-d);
+    }
+    .tk-hero h1 { margin: 0 0 16px; font-size: clamp(34px, 5.4vw, 52px); font-weight: 800; letter-spacing: -.03em; line-height: 1.05; }
+    .tk-lead { max-width: 640px; margin: 0 auto; font-size: 17px; line-height: 1.6; color: var(--gray); }
+    .tk-lead strong { color: var(--ink); }
+
+    .tk-section { margin: 56px 0 0; }
+    .tk-section > h2 { margin: 0 0 6px; font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+    .tk-section > .tk-sub { margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: var(--gray); max-width: 640px; }
+    .tk-section > .tk-sub strong { color: var(--ink); }
+
+    /* data tables */
+    .tk-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+    .tk-tablewrap { border-radius: var(--radius-lg); overflow-x: auto; box-shadow: var(--shadow-sm); }
+    .tk-table th {
+      text-align: left; padding: 11px 16px;
+      font: 700 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+      color: var(--gray); background: var(--surface-inset); border-bottom: 1px solid var(--line);
+    }
+    .tk-table td { padding: 12px 16px; font-size: 14.5px; line-height: 1.5; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .tk-table tr:last-child td { border-bottom: none; }
+    .tk-table td.num, .tk-table th.num { font-family: var(--mono); white-space: nowrap; }
+    .tk-table td strong { font-weight: 700; }
+    .tk-table .tk-hl td { background: rgba(var(--accent-rgb), .04); }
+
+    /* the advertiser-dollar flow */
+    .tk-flow { display: grid; gap: 10px; }
+    .tk-flow-row {
+      display: flex; align-items: baseline; gap: 14px;
+      background: #fff; border: 1px solid var(--line); border-radius: var(--radius-md);
+      padding: 13px 18px;
+    }
+    .tk-flow-amt { flex: none; width: 84px; font: 700 15px/1.2 var(--mono); text-align: right; }
+    .tk-flow-row p { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+    .tk-flow-row p em { font-style: normal; color: var(--gray-2); }
+    .tk-flow-row.major { border-color: rgba(var(--accent-rgb), .35); background: rgba(var(--accent-rgb), .04); }
+    .tk-flow-row.major .tk-flow-amt { color: var(--accent-d); font-size: 17px; }
+
+    /* the 60/10/30 split bar */
+    .tk-split { margin: 22px 0 10px; }
+    .tk-splitbar { display: flex; height: 44px; border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-sm); }
+    .tk-splitbar > div {
+      display: grid; place-items: center;
+      font: 800 14px/1 var(--mono); color: #fff; letter-spacing: .02em;
+    }
+    .tk-seg-viewer { flex: 60; background: var(--accent); }
+    .tk-seg-ref { flex: 10; background: var(--accent-d); }
+    .tk-seg-proto { flex: 30; background: var(--ink); }
+    .tk-splitkey { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px; }
+    .tk-splitkey span { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--ink-2); }
+    .tk-splitkey i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+    /* worked example */
+    .tk-example {
+      background: var(--card-dark-2, #f3f3f4); border: 1px solid var(--line);
+      border-radius: var(--radius-lg); padding: 20px 22px; margin-top: 18px;
+    }
+    .tk-example h3 { margin: 0 0 10px; font-size: 15px; font-weight: 800; }
+    .tk-example pre {
+      margin: 0 0 14px; padding: 12px 14px; overflow-x: auto;
+      background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm);
+      font: 500 13px/1.6 var(--mono); color: var(--ink);
+    }
+    .tk-example p { margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+
+    /* phase cards */
+    .tk-phases { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .tk-phase { background: #fff; border: 1px solid var(--line); border-radius: var(--radius-xl); padding: 22px 22px 18px; box-shadow: var(--shadow-sm); }
+    .tk-phase .tk-phase-tag {
+      display: inline-block; margin-bottom: 12px; padding: 5px 10px;
+      font: 800 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+      color: var(--accent-d); background: rgba(var(--accent-rgb), .09); border-radius: var(--radius-pill);
+    }
+    .tk-phase .tk-phase-tag.now { color: #fff; background: var(--accent); }
+    .tk-phase h3 { margin: 0 0 10px; font-size: 18px; font-weight: 800; letter-spacing: -.01em; }
+    .tk-phase ul { margin: 0; padding-left: 18px; }
+    .tk-phase li { font-size: 14px; line-height: 1.6; color: var(--ink-2); margin-bottom: 8px; }
+    .tk-phase li strong { color: var(--ink); }
+
+    /* risks + notes */
+    .tk-risks { display: grid; gap: 10px; }
+    .tk-risk { background: #fff; border: 1px solid var(--line); border-radius: var(--radius-md); padding: 14px 18px; }
+    .tk-risk h4 { margin: 0 0 4px; font-size: 14px; font-weight: 800; }
+    .tk-risk p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--gray); }
+
+    .tk-note {
+      margin: 18px 0 0; padding: 14px 18px;
+      background: var(--bg-tint); border: 1px solid var(--line); border-radius: var(--radius-md);
+      font-size: 13px; line-height: 1.6; color: var(--gray);
+    }
+
+    @media (max-width: 720px) {
+      .tk-phases { grid-template-columns: 1fr; }
+      .tk-flow-amt { width: 64px; font-size: 13.5px; }
+      .tk-splitbar > div { font-size: 11.5px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- NAV — same segmented control as the lander, pointing back home. -->
+  <header class="nav">
+    <a class="brand" href="/">
+      <span class="logo"><img src="assets/logo.svg" alt="" /></span>
+      <span class="brand-name">$DWELL</span>
+    </a>
+    <nav class="nav-btns" aria-label="Primary">
+      <a href="/tokenomics" class="navbtn is-active" aria-current="page">Tokenomics</a>
+      <a href="/#wl" class="navbtn"><span class="nav-txt-opt">Join the </span>Waitlist</a>
+      <a href="/#advertisers" class="navbtn navbtn-cta">Advertise</a>
+    </nav>
+  </header>
+
+  <main class="tk-wrap">
+    <!-- HERO -->
+    <section class="tk-hero">
+      <span class="eyebrow">Tokenomics</span>
+      <h1>Every token a user earns,<br />an advertiser already paid for.</h1>
+      <p class="tk-lead">
+        Advertisers buy ad impressions for <strong>fixed dollar prices</strong>.
+        <strong>90%</strong> of every ad dollar is converted into DWELL on the open
+        market and split between the person who watched the ad, the person who
+        referred them, and the protocol. Users are only ever paid tokens that ad
+        revenue already bought — <strong>no minting, no emissions schedule, no oracle</strong>.
+      </p>
+    </section>
+
+    <!-- TOKEN FACTS -->
+    <section class="tk-section" id="token">
+      <h2>Token facts</h2>
+      <div class="tk-tablewrap">
+        <table class="tk-table">
+          <tbody>
+            <tr><td><strong>Name / symbol</strong></td><td class="num">DWELL</td></tr>
+            <tr><td><strong>Chain</strong></td><td>Solana (SPL token, minted by star.fun)</td></tr>
+            <tr><td><strong>Supply</strong></td><td>1,000,000,000 — fixed. No mint authority after launch.</td></tr>
+            <tr><td><strong>Launch</strong></td><td>star.fun curated raise: <strong>$50K target at a $1M company valuation</strong>. 5-day deposit window; full refund if the target isn't met.</td></tr>
+            <tr><td><strong>Equity</strong></td><td>The 1B tokens collectively represent <strong>8.3% of the company</strong>.</td></tr>
+            <tr><td><strong>Liquidity</strong></td><td>Meteora DWELL/USDC pool seeded with <strong>60% of supply</strong> plus the raised USDC — implied launch price ≈ $0.000083/DWELL.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ALLOCATION -->
+    <section class="tk-section" id="allocation">
+      <h2>Allocation</h2>
+      <div class="tk-tablewrap">
+        <table class="tk-table">
+          <thead>
+            <tr><th>Bucket</th><th class="num">%</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Initial liquidity</strong></td><td class="num">60%</td><td>Seeds the Meteora pool alongside the raised USDC</td></tr>
+            <tr><td><strong>Ad-rewards airdrop</strong></td><td class="num">10%</td><td>Points conversion at launch, plus launch boosts</td></tr>
+            <tr><td><strong>Structured sell orders</strong></td><td class="num">10%</td><td>Single-sided sells that execute as market cap reaches preset levels</td></tr>
+            <tr><td><strong>Team</strong></td><td class="num">20%</td><td>3-month cliff, 9-month linear vest</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- THE ADVERTISER DOLLAR -->
+    <section class="tk-section" id="dollar">
+      <h2>The advertiser dollar</h2>
+      <p class="tk-sub">Advertisers pay a <strong>fixed dollar CPM</strong> by card.
+        Per $100 of ad spend:</p>
+      <div class="tk-flow">
+        <div class="tk-flow-row"><span class="tk-flow-amt">~$2.50</span><p>Card processing <em>· Stripe</em></p></div>
+        <div class="tk-flow-row"><span class="tk-flow-amt">~$2.50</span><p>Provider fees <em>· USD→USDC conversion, swap, gas</em></p></div>
+        <div class="tk-flow-row"><span class="tk-flow-amt">$5.00</span><p>Business margin <em>· fiat, the operating company</em></p></div>
+        <div class="tk-flow-row major"><span class="tk-flow-amt">$90.00</span><p><strong>The token side.</strong> Points phase: escrowed in the USDC reserve. Live phase: market-buys DWELL immediately.</p></div>
+      </div>
+      <p class="tk-note">An advertiser paying in USDC directly (optional, later) skips the
+        card leg, pushing ~$97.50 to the token side.</p>
+    </section>
+
+    <!-- THE SPLIT -->
+    <section class="tk-section" id="split">
+      <h2>The pool split — 60 / 10 / 30</h2>
+      <p class="tk-sub">The $90 tranche (points phase: its dollar value; live phase: the
+        tokens it bought) splits three ways:</p>
+      <div class="tk-split">
+        <div class="tk-splitbar" role="img" aria-label="Pool split: viewer 60%, referrer 10%, protocol 30%">
+          <div class="tk-seg-viewer">60%</div>
+          <div class="tk-seg-ref">10</div>
+          <div class="tk-seg-proto">30%</div>
+        </div>
+        <div class="tk-splitkey">
+          <span><i style="background:var(--accent)"></i> Viewer — the person who watched the ad</span>
+          <span><i style="background:var(--accent-d)"></i> Viewer's referrer</span>
+          <span><i style="background:var(--ink)"></i> Protocol treasury — held, never sold</span>
+        </div>
+      </div>
+      <p class="tk-sub" style="margin-top:14px">
+        The referrer share is carved <strong>out of the pool</strong>, not paid on top.
+        When the viewer has no referrer, the unclaimed leg joins the protocol share
+        (30% → 40%). The protocol share accrues to the treasury and is
+        <strong>held, never sold</strong>.
+      </p>
+    </section>
+
+    <!-- CAMPAIGN-LOCKED RATE -->
+    <section class="tk-section" id="rate">
+      <h2>Campaign-locked rate — the core mechanism</h2>
+      <p class="tk-sub">There is no "earn rate" to set. When a campaign's payment clears
+        (live phase), the $90 is market-bought into DWELL immediately, and:</p>
+      <div class="tk-example">
+        <pre>locked rate = tokens the buy received ÷ impressions the campaign bought</pre>
+        <h3>Worked example</h3>
+        <p>A $100 campaign at a $10 CPM buys 10,000 impressions. The $90 buy executes at
+          $0.002/DWELL → 45,000 DWELL. Locked rate = <strong>4.5 DWELL per qualified view</strong>, split per view:</p>
+        <div class="tk-tablewrap">
+          <table class="tk-table">
+            <thead><tr><th></th><th class="num">DWELL per view</th><th class="num">of the 45,000 pool</th></tr></thead>
+            <tbody>
+              <tr class="tk-hl"><td><strong>Viewer</strong></td><td class="num">2.70</td><td class="num">27,000</td></tr>
+              <tr><td><strong>Referrer</strong></td><td class="num">0.45</td><td class="num">4,500</td></tr>
+              <tr><td><strong>Protocol</strong></td><td class="num">1.35</td><td class="num">13,500</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="tk-sub" style="margin-top:16px">
+        The buy's execution price <strong>is</strong> the price discovery — no oracle.
+        Users can never be owed more value than revenue already bought. Old campaigns keep
+        their locked rate while new campaigns re-price at current market. Earnings accrue
+        instantly per qualified view, with the same 2-second dwell requirement and
+        anti-fraud caps as the ad platform itself.
+      </p>
+    </section>
+
+    <!-- PHASES -->
+    <section class="tk-section" id="phases">
+      <h2>Two phases</h2>
+      <div class="tk-phases">
+        <div class="tk-phase">
+          <span class="tk-phase-tag now">Phase 1 · Points · live now</span>
+          <h3>Dollar-backed points</h3>
+          <ul>
+            <li>Users earn <strong>DWELL points</strong> from day one — ad inventory is live from launch.</li>
+            <li><strong>1,000 points = $1.00</strong> of earned ad value.</li>
+            <li>Same 60/10/30 split, applied to dollar value.</li>
+            <li>The $90 tranche per campaign is <strong>escrowed in a USDC reserve</strong> — points are visibly 1:1 dollar-backed, with a public reserve page showing escrowed total vs. outstanding points.</li>
+            <li>Points are non-transferable and cannot be withdrawn during this phase.</li>
+          </ul>
+        </div>
+        <div class="tk-phase">
+          <span class="tk-phase-tag">Phase 2 · The raise</span>
+          <h3>Conversion at the raise</h3>
+          <ul>
+            <li>The points ledger is snapshotted when the raise opens.</li>
+            <li>Points convert <strong>at the launch price</strong>: at the implied ≈$0.000083/DWELL, <strong>1,000 points = $1.00 ≈ 12,000 DWELL</strong> — the same price the pool opens at.</li>
+            <li>Converted tokens come from the <strong>10% ad-rewards airdrop</strong>, so conversion is instant at token launch.</li>
+            <li>Claims go onchain via a Merkle distributor, gated on wallet-linked accounts.</li>
+            <li>The escrowed USDC reserve moves into the liquidity pool. New campaigns switch to campaign-locked rates in DWELL units.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- RISKS -->
+    <section class="tk-section" id="risks">
+      <h2>Risks</h2>
+      <div class="tk-risks">
+        <div class="tk-risk">
+          <h4>Price volatility</h4>
+          <p>Earnings are awarded at a locked per-campaign rate; their value floats afterward. The portal shows both token amounts and current USD estimates, and the cash-out path (DWELL→USDC via licensed partners) is the user's stability valve.</p>
+        </div>
+        <div class="tk-risk">
+          <h4>Thin liquidity</h4>
+          <p>Mitigated by the 60%-of-supply liquidity seed plus the escrowed reserve added at conversion; a $90 instant buy against a $25K pool moves price ~0.7%, against $5K it whipsaws.</p>
+        </div>
+        <div class="tk-risk">
+          <h4>Wash-impression farming</h4>
+          <p>A liquid reward raises fraud stakes. Defenses: server-authoritative impression tokens, a 2-second dwell backstop, per-device and per-IP daily caps — plus payout requires a logged-in, wallet-linked account.</p>
+        </div>
+        <div class="tk-risk">
+          <h4>Windfall on old campaigns</h4>
+          <p>A campaign locked at a low price keeps paying "many" tokens after price moves. Mitigation if wanted: expire unspent campaign inventory after ~30 days and re-buy at current price.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 DWELL · <a href="/tokenomics">Tokenomics</a></p>
+    <p class="fdim">An open marketplace for the time you already spend waiting on AI.</p>
+    <p class="fdim tiny">Not affiliated with Anthropic, OpenAI, or Google. This page documents mechanics only — not financial advice.</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Production API. Points the waitlist, advertiser checkout, and leaderboard
+       at the live backend (or set window.DWELL_API). Append ?dev=1 to the URL
+       for the self-contained mock-data mode (sticky; ?dev=0 to exit) — handled
+       in script.js. -->
+  <meta name="dwell-api" content="https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/dwell-api" />
+  <title>DWELL — Get paid for your attention</title>
+  <meta name="description" content="One sponsored line shows while ChatGPT, Claude, or Gemini is thinking — and the person watching gets paid. Launching soon: join the waitlist. Advertisers can book campaigns today." />
+  <link rel="canonical" href="https://dwell.fyi/" />
+  <meta name="theme-color" content="#ff0000" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="DWELL" />
+  <meta property="og:url" content="https://dwell.fyi/" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:title" content="DWELL — Get paid for your attention" />
+  <meta property="og:description" content="We turned every AI waiting spinner into an ad marketplace — and the person watching gets paid. Join the waitlist." />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="DWELL — Get paid for your attention" />
+  <meta name="twitter:description" content="We turned every AI waiting spinner into an ad marketplace — and the person watching gets paid. Join the waitlist." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="assets/favicon.svg" />
+</head>
+<body>
+  <!-- NAV — eight-dot brand mark, tokenomics + waitlist links, red Advertise CTA. -->
+  <header class="nav nav-autohide">
+    <a class="brand" href="#top">
+      <span class="logo"><img src="assets/logo.svg" alt="" /></span>
+      <span class="brand-name">$DWELL</span>
+    </a>
+    <nav class="nav-btns" aria-label="Primary">
+      <a href="/tokenomics" class="navbtn">Tokenomics</a>
+      <a href="#wl" class="navbtn"><span class="nav-txt-opt">Join the </span>Waitlist</a>
+      <a href="#advertisers" class="navbtn navbtn-cta">Advertise</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- PROTOCOL HERO — the brand lockup over an animated geometric mesh
+         (nodes + connecting lines drifting slowly; drawn on canvas in
+         script.js, static under prefers-reduced-motion). Mirrors the
+         DWELL PROTOCOL brand card: mesh weighted to the right, lockup left. -->
+    <section class="proto-hero">
+      <canvas class="proto-mesh" id="proto-mesh" aria-hidden="true"></canvas>
+      <div class="proto-lockup">
+        <svg class="proto-logo" viewBox="0 0 200 200" aria-hidden="true">
+          <!-- Inline copy of assets/logo.svg so each dot's opacity can animate:
+               the highlight fades smoothly around the ring (CSS below); the
+               static fill-opacity values are the reduced-motion appearance. -->
+          <circle cx="100" cy="35" r="15" fill="#ff0000" fill-opacity="1"/>
+          <circle cx="145.96" cy="54.04" r="15" fill="#ff0000" fill-opacity=".08"/>
+          <circle cx="165" cy="100" r="15" fill="#ff0000" fill-opacity=".22"/>
+          <circle cx="145.96" cy="145.96" r="15" fill="#ff0000" fill-opacity=".38"/>
+          <circle cx="100" cy="165" r="15" fill="#ff0000" fill-opacity=".55"/>
+          <circle cx="54.04" cy="145.96" r="15" fill="#ff0000" fill-opacity=".72"/>
+          <circle cx="35" cy="100" r="15" fill="#ff0000" fill-opacity=".88"/>
+          <circle cx="54.04" cy="54.04" r="15" fill="#ff0000" fill-opacity=".95"/>
+        </svg>
+        <div class="proto-words">
+          <span class="proto-name">DWELL PROTOCOL</span>
+          <span class="proto-tag">Earn crypto everywhere your AI thinks</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HERO -->
+    <section class="hero">
+      <!-- LEGACY HERO — hidden (not deleted) while the protocol lockup
+           above is the opening frame; drop the `hidden` to restore. -->
+      <div class="hero-legacy" hidden>
+        <h1>Earn tokens while you use AI.</h1>
+        <p class="sub">
+          We turned every waiting spinner into an ad marketplace that earns you crypto.<br />
+          <strong>90%</strong> of every ad dollar is escrowed for the people watching.
+        </p>
+
+        <!-- BEFORE / AFTER DEMO -->
+        <div class="demo">
+          <div class="demo-card">
+            <span class="demo-label">Stock spinner</span>
+            <div class="demo-line"><span class="ast">✳</span> <span id="word-stock">Thinking</span>…</div>
+          </div>
+          <div class="demo-chevs">»</div>
+          <div class="demo-card">
+            <span class="demo-label">With DWELL</span>
+            <!-- Static first frame mirrors ADS[0] in script.js so the line is never
+                 blank, even before/without JS; the rotator then cycles sponsors.
+                 NB: classed/id'd "brand-*", NOT "ad-*", so ad blockers don't hide
+                 our own sponsored-line demo. -->
+            <div class="demo-line">
+              <span class="brandchip">R</span>
+              <span class="brand-line" id="brand-line">Ramp · Spend smarter</span>
+            </div>
+          </div>
+        </div>
+
+        <p class="hero-note">
+          Works inside <strong>ChatGPT</strong>, <strong>Claude</strong> &amp; <strong>Gemini</strong>.
+        </p>
+      </div>
+
+      <!-- WAITLIST — the one earn-side CTA while nothing is installable yet.
+           POSTs a bare email to /v1/waitlist (dwell Supabase); wired in
+           script.js. The advertiser link jumps to the live ad form below. -->
+      <div class="wl" id="wl">
+        <span class="wl-eyebrow">Join the waitlist to earn — July 14th</span>
+        <div class="wl-row">
+          <form class="wl-form" id="wl-form" novalidate>
+            <input class="wl-input" id="wl-email" type="email" name="email" autocomplete="email" inputmode="email" placeholder="you@example.com" aria-label="Email for the DWELL waitlist" required />
+            <button class="wl-btn" type="submit">Join the waitlist</button>
+          </form>
+        </div>
+        <div class="wl-adv-row">
+          <a class="wl-adv" href="#advertisers">Want to advertise?</a>
+        </div>
+        <p class="wl-note" id="wl-note"></p>
+      </div>
+    </section>
+
+    <!-- ── SURFACES — "Native everywhere it appears." The one auction re-skinned
+         as native chrome on each surface. Screenshots are the product previews;
+         every CTA routes to the hero waitlist until launch.
+         The per-surface download/install CTAs are HIDDEN (not deleted) until
+         the products ship — remove the `hidden` attributes to reveal them. -->
+    <section class="surfaces" id="surfaces">
+        <div class="wrap">
+          <div class="secthead">
+            <h2>DWELL serves ads everywhere people use AI.</h2>
+          </div>
+
+          <!-- Surface 01 — browser, 3 provider tabs -->
+          <div class="surface">
+            <div class="stage">
+              <div class="win light">
+                <div class="chrome">
+                  <i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+                  <div class="tabs" role="tablist">
+                    <button class="tab active" data-shot="claude">Claude</button>
+                    <button class="tab" data-shot="chatgpt">ChatGPT</button>
+                    <button class="tab" data-shot="gemini">Gemini</button>
+                  </div>
+                </div>
+                <div class="shotwrap">
+                  <img class="shot active" data-shot="claude" src="assets/surfaces/claude.png" alt="DWELL sponsor line inside Claude" />
+                  <img class="shot" data-shot="chatgpt" src="assets/surfaces/chatgpt.png" alt="DWELL sponsor line inside ChatGPT" />
+                  <img class="shot" data-shot="gemini" src="assets/surfaces/gemini.png" alt="DWELL sponsor line inside Gemini" />
+                </div>
+              </div>
+            </div>
+            <div class="scopy">
+              <span class="idx">Surface 01 — Browser</span>
+              <h3>Dwell Chrome extension</h3>
+              <p>Inserts an ad pill under the thinking spinner of Claude, ChatGPT, or Gemini, and more&hellip;</p>
+            </div>
+            <!-- Chrome CTA, folded full-width under the browser surface — joins
+                 the waitlist until the extension ships. -->
+            <a href="#wl" class="install-card surface-cta" hidden>
+              <span class="install-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22">
+                  <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+                  <circle cx="12" cy="12" r="3.4" fill="none" stroke="currentColor" stroke-width="2"/>
+                  <path d="M12 8.6h8.4M9 13.5 4.8 6.3M15 13.5l-4.2 7.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </span>
+              <span class="install-text">
+                <span class="install-title">Dwell Chrome extension<span class="soon-tag">Coming soon</span></span>
+              </span>
+              <span class="install-pill">
+                <span class="install-pill-label">Earn up to</span>
+                <span class="install-pill-amt earn-amt" id="earn-pill">$76.71<span class="per">/mo</span></span>
+              </span>
+              <span class="install-arrow">→</span>
+            </a>
+          </div>
+
+          <!-- Surface 02 — terminal -->
+          <div class="surface flip">
+            <div class="stage">
+              <div class="win term">
+                <div class="chrome">
+                  <i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+                  <span class="label">claude code — ~/dwell</span>
+                </div>
+                <div class="termpad">
+                  <div class="status">· Linear — Plan your next sprint faster… <span class="muted">(2s · thinking)</span></div>
+                  <hr class="divider" />
+                  <div class="prompt"><span class="chev">›</span> <span class="cursor"></span></div>
+                  <div class="adline"><span class="ad">ad·</span> <a href="#">Linear — Plan your next sprint faster</a></div>
+                </div>
+              </div>
+            </div>
+            <div class="scopy">
+              <span class="idx">Surface 02 — CLI</span>
+              <h3>Dwell Terminal</h3>
+              <p>As Claude thinks, ads earn you tokens.</p>
+            </div>
+            <!-- Terminal CTA, folded full-width under the terminal surface —
+                 waitlist until the CLI ships. -->
+            <a href="#wl" class="install-card surface-cta" hidden>
+              <span class="install-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22">
+                  <path d="M5 7.5 9 12l-4 4.5M12.5 16.5h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <span class="install-text">
+                <span class="install-title">Dwell Terminal<span class="soon-tag">Coming soon</span></span>
+              </span>
+              <span class="install-pill">
+                <span class="install-pill-label">Earn up to</span>
+                <span class="install-pill-amt earn-amt">$76.71<span class="per">/mo</span></span>
+              </span>
+              <span class="install-arrow">→</span>
+            </a>
+          </div>
+
+          <!-- Surface 03 — desktop apps -->
+          <div class="surface">
+            <div class="stage">
+              <div class="win light">
+                <div class="chrome">
+                  <i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+                  <div class="tabs" role="tablist">
+                    <button class="tab active" data-shot="desktop-claude">Claude</button>
+                    <button class="tab" data-shot="desktop-chatgpt">ChatGPT</button>
+                  </div>
+                </div>
+                <div class="shotwrap desk">
+                  <img class="shot active" data-shot="desktop-claude" src="assets/surfaces/desktop-claude.png" alt="DWELL sponsor line in the Claude desktop app" />
+                  <img class="shot" data-shot="desktop-chatgpt" src="assets/surfaces/desktop-chatgpt.png" alt="DWELL sponsor line in the ChatGPT desktop app" />
+                </div>
+              </div>
+            </div>
+            <div class="scopy">
+              <span class="idx">Surface 03 — Desktop apps</span>
+              <h3>Dwell Desktop</h3>
+              <p>In the native Claude and ChatGPT desktop apps the pill docks right above the composer.<br />Only appears when AI is thinking.</p>
+              <!-- Waitlist link, full width of the copy column -->
+              <a href="#wl" class="scopy-dl" hidden>
+                <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+                  <rect x="3" y="4.5" width="18" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="2"/>
+                  <path d="M8.5 20h7M12 16.5V20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Coming soon — join the waitlist
+              </a>
+            </div>
+          </div>
+        </div>
+    </section>
+
+    <!-- ADVERTISERS — the one LIVE flow on the page: creates a campaign via
+         POST /v1/checkout and redirects to Stripe. -->
+    <section id="advertisers" class="advertisers">
+      <div class="adv-card">
+        <span class="eyebrow">Advertisers</span>
+        <h2>Get your product in front of users who are AI and crypto native.</h2>
+
+        <form class="adform" onsubmit="return false;">
+          <!-- YOUR CAMPAIGN — leads the form. The big number is the editable
+               budget; the CPM slider lives inside the box, then the top-CPM
+               note, then the live CPM + impressions readout. -->
+          <div class="estimate">
+            <span class="est-head">Your budget</span>
+            <label class="est-budget">
+              <span class="est-budget-prefix">$</span>
+              <input type="number" id="budget" min="100" max="100000" step="1" placeholder="2500" inputmode="numeric" aria-label="Budget" />
+            </label>
+            <span class="est-sub" id="budget-hint">min $100 · max $100,000</span>
+
+            <!-- CPM slider, folded into the budget box -->
+            <div class="field cpmfield est-cpmfield">
+              <span class="flabel">CPM <em>· cost per 1,000 impressions</em></span>
+              <div class="cpm-slider-wrap">
+                <output class="cpm-bubble" id="cpm-bubble">$15</output>
+                <!-- Ghost marker: the current top bid on the marketplace (read-only).
+                     Hardcoded to $50 until the admin turns on "live top CPM". -->
+                <div class="cpm-ghost" id="cpm-ghost" aria-hidden="true">
+                  <span class="cpm-ghost-lbl" id="cpm-ghost-lbl">top $50</span>
+                </div>
+                <input type="range" id="cpm" min="5" max="100" step="1" value="15" />
+                <div class="cpm-ticks">
+                  <span>min <strong id="cpm-min-lbl">$5</strong></span>
+                  <span>max <strong id="cpm-max-lbl">$100</strong></span>
+                </div>
+              </div>
+            </div>
+
+            <p class="est-note">
+              Top CPM is <strong id="note-top">$50.00</strong> — outbid it to take #1,
+              or bid from <strong id="note-min">$5.00</strong> to join the queue.
+            </p>
+            <div class="est-rows">
+              <div class="est-line"><strong id="est-cpm">$15.00</strong> <span>CPM</span></div>
+              <div class="est-line"><strong id="est-imp">166,666</strong> <span>impressions</span></div>
+            </div>
+          </div>
+
+          <label class="field">
+            <span class="flabel">Advertiser email <em>(required)</em></span>
+            <input type="email" name="email" autocomplete="email" placeholder="you@example.com" required />
+          </label>
+
+          <label class="field">
+            <span class="flabel">Ad line · 3–60 char <em class="count" id="adline-count">0 / 60</em></span>
+            <input type="text" id="adline" maxlength="60" placeholder="Try Linear — issue tracking built for speed" />
+          </label>
+
+          <label class="field">
+            <span class="flabel">Destination URL <em>(https:// optional) — the link customers go to when they click the ad</em></span>
+            <input type="url" name="url" autocomplete="url" placeholder="https://linear.app/" />
+          </label>
+
+          <label class="field">
+            <span class="flabel">Brand name <em>(optional, shown on leaderboard)</em></span>
+            <input type="text" name="organization" autocomplete="organization" placeholder="Linear" />
+          </label>
+
+          <label class="field">
+            <span class="flabel">Ad color <em>(optional, #hex — your colour in the terminal &amp; spinner)</em></span>
+            <div class="colorfield">
+              <input type="color" id="adcolor-swatch" value="#ff0000" aria-label="Pick ad color" />
+              <input type="text" id="adcolor" maxlength="7" placeholder="#ff0000" pattern="#?[0-9a-fA-F]{6}" />
+            </div>
+          </label>
+
+          <label class="field">
+            <span class="flabel">Brand icon <em>(optional, PNG/JPG/WebP ≤ 64 KB)</em></span>
+            <!-- Real click-to-browse (native label→input forwarding) + drag-and-drop,
+                 wired in script.js. tabindex/keydown cover keyboard users, since the
+                 file input itself is visually hidden and not tabbable. -->
+            <div class="dropzone" id="icon-dropzone" role="button" tabindex="0">
+              <input type="file" id="icon-input" accept="image/png,image/jpeg,image/webp" hidden />
+              <span class="dropzone-msg" id="dropzone-msg">Drop an image here or click to browse</span>
+              <div class="dropzone-preview" id="dropzone-preview" hidden>
+                <img id="dropzone-thumb" alt="" />
+                <span class="dropzone-name" id="dropzone-name"></span>
+                <button type="button" class="dropzone-remove" id="dropzone-remove" aria-label="Remove image">✕</button>
+              </div>
+            </div>
+          </label>
+
+          <label class="checkrow">
+            <input type="checkbox" checked />
+            <span>Show me on the public leaderboard</span>
+          </label>
+
+          <!-- LIVE PREVIEW — mirrors the dark spinner overlay viewers see -->
+          <div class="field adpreview">
+            <span class="flabel">Live preview <em>· what every viewer sees</em></span>
+            <div class="adpreview-bar" id="adpreview-bar">
+              <span class="adpreview-chip" id="prev-chip">Y</span>
+              <span class="adpreview-line" id="prev-line">Your ad here</span>
+              <span class="adpreview-dots" id="prev-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            </div>
+          </div>
+
+          <!-- One-line campaign summary, just above the pay button -->
+          <div class="adsummary" id="ad-summary">
+            <span class="adsummary-item"><strong id="sum-budget">$2,500</strong> budget</span>
+            <span class="adsummary-sep" aria-hidden="true">·</span>
+            <span class="adsummary-item"><strong id="sum-cpm">$15.00</strong> CPM</span>
+            <span class="adsummary-sep" aria-hidden="true">·</span>
+            <span class="adsummary-item"><strong id="sum-imp">166,666</strong> impressions</span>
+          </div>
+
+          <button class="stripe-btn" type="submit">
+            <span class="stripe-btn-label">Pay with</span>
+            <svg class="stripe-logo" viewBox="54 36 360.02 149.84" role="img" aria-label="Stripe" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+              <path d="M414,113.4c0-25.6-12.4-45.8-36.1-45.8c-23.8,0-38.2,20.2-38.2,45.6c0,30.1,17,45.3,41.4,45.3c11.9,0,20.9-2.7,27.7-6.5v-20c-6.8,3.4-14.6,5.5-24.5,5.5c-9.7,0-18.3-3.4-19.4-15.2h48.9C413.8,121,414,115.8,414,113.4z M364.6,103.9c0-11.3,6.9-16,13.2-16c6.1,0,12.6,4.7,12.6,16H364.6z" />
+              <path d="M301.1,67.6c-9.8,0-16.1,4.6-19.6,7.8l-1.3-6.2h-22v116.6l25-5.3l0.1-28.3c3.6,2.6,8.9,6.3,17.7,6.3c17.9,0,34.2-14.4,34.2-46.1C335.1,83.4,318.6,67.6,301.1,67.6z M295.1,136.5c-5.9,0-9.4-2.1-11.8-4.7l-0.1-37.1c2.6-2.9,6.2-4.9,11.9-4.9c9.1,0,15.4,10.2,15.4,23.3C310.5,126.5,304.3,136.5,295.1,136.5z" />
+              <polygon points="223.8,61.7 248.9,56.3 248.9,36 223.8,41.3" />
+              <rect x="223.8" y="69.3" width="25.1" height="87.5" />
+              <path d="M196.9,76.7l-1.6-7.4h-21.6v87.5h25V97.5c5.9-7.7,15.9-6.3,19-5.2v-23C214.5,68.1,202.8,65.9,196.9,76.7z" />
+              <path d="M146.9,47.6l-24.4,5.2l-0.1,80.1c0,14.8,11.1,25.7,25.9,25.7c8.2,0,14.2-1.5,17.5-3.3V135c-3.2,1.3-19,5.9-19-8.9V90.6h19V69.3h-19L146.9,47.6z" />
+              <path d="M79.3,94.7c0-3.9,3.2-5.4,8.5-5.4c7.6,0,17.2,2.3,24.8,6.4V72.2c-8.3-3.3-16.5-4.6-24.8-4.6C67.5,67.6,54,78.2,54,95.9c0,27.6,38,23.2,38,35.1c0,4.6-4,6.1-9.6,6.1c-8.3,0-18.9-3.4-27.3-8v23.8c9.3,4,18.7,5.7,27.3,5.7c20.8,0,35.1-10.3,35.1-28.2C117.4,100.6,79.3,105.9,79.3,94.7z" />
+            </svg>
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD — hidden by default; revealed only when the admin flips the
+         "Live bid market" switch on (exposed via /v1/config → leaderboardPublic). -->
+    <section id="leaderboard" class="leaderboard" hidden>
+      <span class="bidmarket">Live bid market</span>
+      <ol class="board" id="board"></ol>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 DWELL · <a href="/tokenomics">Tokenomics</a></p>
+    <p class="fdim">An open marketplace for the time you already spend waiting on AI.</p>
+    <p class="fdim tiny">Not affiliated with Anthropic, OpenAI, or Google.</p>
+  </footer>
+
+  <!-- This is the live public page. The waitlist + bid form + leaderboard hit
+       the production API (set above via <meta name="dwell-api">). Keep the
+       user-facing copy production-only — no test/demo wording. The one developer
+       affordance is an opt-in mock-data mode at ?dev=1 (sticky; ?dev=0 to exit),
+       handled in script.js, which never shows unless explicitly requested. -->
+  <script src="script.js"></script>
+</body>
+</html>

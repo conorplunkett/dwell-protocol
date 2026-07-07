@@ -1,0 +1,254 @@
+import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
+import { createInterface } from "node:readline/promises";
+import { installShellBlock, restoreShellBlock, shellFromEnv, defaultRcPath } from "./shell.js";
+import { locateRealClaude, readTerminalConfig, writeTerminalConfig } from "./claude.js";
+import { runClaude } from "./run.js";
+import { runStatusLine } from "./statusline.js";
+import { terminalConfigPath, resolveApiBase } from "./paths.js";
+import { defaultBackend, ensureDevice, linkAccountEmail, readDevice, waitForLink, EMAIL_RE } from "./backend.js";
+
+export async function main(argv) {
+  const [product, command, ...rest] = argv;
+  if (product !== "claude") return usage(1);
+  if (command === "setup") return await setup(rest);
+  if (command === "link") return await link(rest);
+  if (command === "restore") return restore(rest);
+  if (command === "doctor") return await doctor(rest);
+  if (command === "run") {
+    process.exitCode = await runClaude(rest);
+    return;
+  }
+  if (command === "statusline") {
+    const flags = parseFlags(rest);
+    await runStatusLine({ statePath: flags.state, prevPath: flags.prev });
+    return;
+  }
+  return usage(1);
+}
+
+async function setup(argv) {
+  const flags = parseFlags(argv);
+  const home = homedir();
+  const shell = flags.shell || shellFromEnv();
+  const rcPath = flags.rc || defaultRcPath(shell);
+  const realClaudePath = locateRealClaude({
+    explicit: flags["real-claude"],
+    home,
+  });
+  if (!realClaudePath) throw new Error("could not find `claude` on PATH; pass --real-claude /path/to/claude");
+  writeTerminalConfig(home, {
+    ...readTerminalConfig(home),
+    realClaudePath,
+    setupAt: new Date().toISOString(),
+    shell,
+    rcPath,
+  });
+  const result = installShellBlock({ shell, rcPath, force: flags.force === true });
+  console.log(`DWELL Claude setup complete`);
+  console.log(`We never read or write the contents of your prompts or Claude's replies.`);
+  console.log(`real claude: ${realClaudePath}`);
+  console.log(`shell rc: ${result.rcPath}`);
+  console.log(`restart your shell or source ${result.rcPath}`);
+
+  // Link this machine's device to a DWELL account so Claude Code credits land
+  // in the user's portal balance. Required — without it, credits accrue to an
+  // anonymous device and can't be claimed. The only opt-out is the explicit
+  // --no-link flag (for automation/CI); the interactive prompt has no "skip".
+  if (flags["no-link"] === true) {
+    console.log("Skipped account link (--no-link). Credits won't be claimable until you run `dwell claude link`.");
+    return;
+  }
+  const res = await linkStep({ home, emailArg: flags.email, allowPrompt: true, wait: flags["no-wait"] !== true });
+  if (res.error) process.exitCode = 1;
+}
+
+async function link(argv) {
+  const flags = parseFlags(argv);
+  const emailArg = typeof flags.email === "string" ? flags.email : flags._[0];
+  const res = await linkStep({ home: homedir(), emailArg, allowPrompt: true, wait: flags["no-wait"] !== true });
+  if (res.skipped || res.error) process.exitCode = 1;
+}
+
+// Shared by `setup` and `link`. Resolves an email (flag/arg, else an interactive
+// prompt on a TTY), emails the magic link, and — on a TTY — waits for the user
+// to click it so we confirm the link instead of just hoping. Never throws: a
+// failed link must not break setup.
+async function linkStep({ home, emailArg, allowPrompt, wait = true }) {
+  let email = String(emailArg || "").trim();
+  if (!email) {
+    if (allowPrompt && process.stdin.isTTY) {
+      email = await promptEmailRequired();   // loops until a valid email; no skip
+    } else {
+      // Non-interactive with no --email: don't silently skip. Force an explicit
+      // choice (pass --email to link, or --no-link to opt out).
+      console.error("An email is required to link your account. Re-run with --email you@example.com, or --no-link to opt out.");
+      return { error: "email required" };
+    }
+  } else if (!EMAIL_RE.test(email)) {
+    console.error(`"${email}" isn't a valid email address.`);
+    return { error: "invalid email" };
+  }
+  let backend;
+  try {
+    backend = defaultBackend({ home, env: process.env });
+    const res = await linkAccountEmail(home, backend, email);
+    writeTerminalConfig(home, {
+      ...readTerminalConfig(home),
+      linkEmail: res.email,
+      linkRequestedAt: new Date().toISOString(),
+    });
+    console.log(`Magic link sent to ${res.email}. Open it to finish linking your DWELL account.`);
+    console.log(`You won't receive credits until you link your account.`);
+  } catch (err) {
+    console.error(`Could not send the link: ${String(err?.message || err)} (run \`dwell claude link\` to retry).`);
+    return { error: String(err?.message || err) };
+  }
+
+  // Confirm the click while the user is still watching (interactive only).
+  if (wait && process.stdout.isTTY) {
+    const device = readDevice(home);
+    if (device) {
+      console.log("Waiting for you to open the link… (Ctrl-C to skip — linking still finishes when you click it)");
+      const status = await waitForLink(backend, device, { timeoutMs: 60000 });
+      if (status.linked) {
+        writeTerminalConfig(home, { ...readTerminalConfig(home), linkedAt: new Date().toISOString() });
+        console.log(`✓ Linked to ${status.email || email}. Claude Code credits now land in your DWELL balance.`);
+        return { linked: true, email: status.email || email };
+      }
+      console.log("Didn't see a click yet — that's fine, the link still works. Run `dwell claude doctor` to check, or `dwell claude link` to resend.");
+    }
+  }
+  return { sent: true, email };
+}
+
+async function promptLine(question) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return (await rl.question(question)).trim();
+  } finally {
+    rl.close();
+  }
+}
+
+// Linking is mandatory on the interactive path: re-prompt until a valid email is
+// given. There is no "skip" — the only opt-out is the explicit --no-link flag.
+// (Ctrl-C still aborts setup entirely rather than completing it unlinked.)
+async function promptEmailRequired() {
+  for (;;) {
+    const answer = await promptLine("Email to link your DWELL account (required): ");
+    if (EMAIL_RE.test(answer)) return answer;
+    console.error(answer
+      ? "That doesn't look like a valid email — please try again."
+      : "An email is required so your Claude Code credits are saved to your account.");
+  }
+}
+
+function restore(argv) {
+  const flags = parseFlags(argv);
+  const cfg = readTerminalConfig(homedir());
+  const shell = flags.shell || cfg.shell || shellFromEnv();
+  const rcPath = flags.rc || cfg.rcPath || defaultRcPath(shell);
+  const result = restoreShellBlock({ shell, rcPath });
+  console.log(result.changed
+    ? `Removed DWELL Claude shell block from ${result.rcPath}`
+    : `No DWELL Claude shell block found in ${result.rcPath}`);
+}
+
+async function doctor(argv) {
+  const flags = parseFlags(argv);
+  const home = homedir();
+  const cfg = readTerminalConfig(home);
+  const shell = flags.shell || cfg.shell || shellFromEnv();
+  const rcPath = flags.rc || cfg.rcPath || defaultRcPath(shell);
+  const realClaudePath = locateRealClaude({ storedPath: cfg.realClaudePath, home });
+  const report = {
+    ok: !!realClaudePath,
+    realClaudePath: realClaudePath || null,
+    configPath: terminalConfigPath(home),
+    shell,
+    rcPath,
+    cliPath: fileURLToPath(new URL("../bin/dwell.js", import.meta.url)),
+    linkEmail: cfg.linkEmail || null,
+  };
+  console.log(JSON.stringify(report, null, 2));
+
+  // The local report above can be green while no ad ever serves, because the ad
+  // path depends on the backend. Probe it end-to-end unless asked to skip.
+  if (flags["no-backend"] === true) return;
+  console.log(JSON.stringify(await probeBackend(home), null, 2));
+}
+
+// Run the same pipeline `dwell claude run` uses to prepare an ad, reporting the
+// outcome and latency of each step so a failure (network, cold start, no
+// inventory) is visible instead of silently degrading to plain `claude`.
+async function probeBackend(home) {
+  const backend = defaultBackend({ home, env: process.env });
+  const result = { backend: resolveApiBase({ home, env: process.env }), steps: {} };
+  const step = async (name, fn) => {
+    const t0 = Date.now();
+    try {
+      const summary = await fn();
+      result.steps[name] = { ok: true, ms: Date.now() - t0, ...(summary || {}) };
+      return true;
+    } catch (err) {
+      result.steps[name] = { ok: false, ms: Date.now() - t0, error: String(err?.message || err) };
+      return false;
+    }
+  };
+
+  let ads = [];
+  let device = null;
+  await step("config", async () => ({ serving: (await backend.config()).serving }));
+  await step("ads", async () => { ads = await backend.ads(); return { count: ads.length, first: ads[0]?.line || null }; });
+  await step("device", async () => { device = await ensureDevice(home, backend); return { deviceId: `${device.deviceId.slice(0, 8)}…` }; });
+  if (device) {
+    // Whether credits attribute to a DWELL account or an anonymous device.
+    await step("account", async () => await backend.linkStatus(device));
+  }
+  if (device && ads[0]) {
+    await step("clickIntent", async () => ({ trackingUrl: await backend.createClickIntent(device, ads[0].id) }));
+  }
+
+  const s = result.steps;
+  result.adsWillServe = !!(s.config?.ok && s.config.serving && s.ads?.ok && s.ads.count > 0
+    && s.device?.ok && s.clickIntent?.ok);
+  return result;
+}
+
+function usage(code) {
+  console.error(`Usage:
+  dwell claude setup [--shell zsh|bash|fish] [--rc PATH] [--real-claude PATH] [--force] [--email YOU@EXAMPLE.COM] [--no-link] [--no-wait]
+  dwell claude link [--email YOU@EXAMPLE.COM] [--no-wait]
+  dwell claude run [...claude args]
+  dwell claude restore [--shell zsh|bash|fish] [--rc PATH]
+  dwell claude doctor [--no-backend]
+`);
+  process.exitCode = code;
+}
+
+function parseFlags(argv) {
+  const out = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--force") { out.force = true; continue; }
+    if (arg.startsWith("--") && arg.includes("=")) {
+      const [k, ...rest] = arg.slice(2).split("=");
+      out[k] = rest.join("=");
+      continue;
+    }
+    if (arg.startsWith("--")) {
+      const key = arg.slice(2);
+      const next = argv[i + 1];
+      if (next && !next.startsWith("--")) {
+        out[key] = next;
+        i++;
+      } else {
+        out[key] = true;
+      }
+      continue;
+    }
+    out._.push(arg);
+  }
+  return out;
+}

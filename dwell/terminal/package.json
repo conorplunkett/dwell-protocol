@@ -1,0 +1,32 @@
+{
+  "name": "@dwell-protocol/terminal",
+  "version": "0.2.0",
+  "description": "DWELL terminal integration for Claude Code.",
+  "type": "module",
+  "bin": {
+    "dwell": "bin/dwell.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "scripts",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "engines": {
+    "node": ">=20.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/conorplunkett/dwell-protocol.git",
+    "directory": "terminal"
+  },
+  "homepage": "https://dwell-protocol.vercel.app/products",
+  "license": "UNLICENSED"
+}

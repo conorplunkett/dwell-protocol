@@ -1,0 +1,30 @@
+// swift-tools-version: 5.9
+// macOS shell for the DWELL sponsor overlay. Build on a Mac:
+//   swift build && swift run SponsorOverlay
+// Ship builds need code signing + Accessibility entitlement prompts (see ../../README.md).
+import PackageDescription
+
+let package = Package(
+    name: "SponsorOverlay",
+    platforms: [.macOS(.v13)],
+    dependencies: [
+        // Auto-update. SPM pulls Sparkle as a prebuilt xcframework; bundle.sh
+        // embeds + signs it into the .app (see packaging/bundle.sh).
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
+    ],
+    targets: [
+        .executableTarget(
+            name: "SponsorOverlay",
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
+            path: "Sources/SponsorOverlay",
+            // The onboarding window (Setup) renders this bundled HTML/CSS/JS in a
+            // WKWebView. `swift run` finds it via Bundle.module; packaging/bundle.sh
+            // copies the generated resource bundle into the .app (see that script).
+            resources: [
+                .copy("Resources/onboarding"),
+            ]
+        )
+    ]
+)
