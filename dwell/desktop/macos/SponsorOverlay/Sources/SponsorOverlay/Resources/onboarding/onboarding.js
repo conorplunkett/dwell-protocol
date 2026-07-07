@@ -1,4 +1,4 @@
-/* DWELL.fyi — macOS desktop onboarding.
+/* Dwell Protocol — macOS desktop onboarding.
  *
  * A faithful vanilla-JS port of the Claude Design handoff (onboarding/Onboarding.jsx).
  * Same 5 steps, same DOM/classes, same animations (spinner, ad cross-fade, earnings

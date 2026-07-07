@@ -1,5 +1,10 @@
 # DWELL Desktop — Sponsor Overlay for Claude & ChatGPT Desktop (macOS)
 
+> **Deferred for the initial Dwell Protocol launch.** This tree hasn't been
+> re-verified since the rebrand (it needs a Mac to build and validate — bundle
+> IDs, app name, notarization identity). Treat the root `desktop/` tree as the
+> tested reference until this is brought current.
+
 Rough-out of the PRD: a menu bar companion app that floats a small sponsor
 card over a supported AI desktop app — **Claude Desktop** or the **ChatGPT
 (OpenAI) desktop app** — while it's generating, and credits the user for
@@ -191,14 +196,14 @@ through `/v1/go/:token`, which records the click (clicks are tracked, not paid).
 **CI** builds the Swift app on a `macos-14` runner on every push/PR, packages
 it with `packaging/bundle.sh`, and uploads `SponsorOverlay.zip` + `.dmg` as the
 `SponsorOverlay-macos` artifact. Download it from the Actions run, open the dmg
-(or unzip), clear quarantine (`xattr -dr com.apple.quarantine dwell-protocol.vercel.app.app`),
+(or unzip), clear quarantine (`xattr -dr com.apple.quarantine dwellprotocol.com.app`),
 and open. The CI build is **ad-hoc signed**, so it only runs on the machine that
 built it (or after clearing quarantine) — a notarized build needs a Developer ID cert.
 
 ## Packaging & distribution
 
-`packaging/bundle.sh` wraps the SwiftPM executable into `dwell-protocol.vercel.app.app` (the
-user-facing name, so Finder + Login Items read "dwell-protocol.vercel.app"; the executable and
+`packaging/bundle.sh` wraps the SwiftPM executable into `dwellprotocol.com.app` (the
+user-facing name, so Finder + Login Items read "dwellprotocol.com"; the executable and
 the zip/dmg keep the internal `SponsorOverlay` name), menu-bar-only via
 `LSUIElement`, code-signs it, and produces both a `.zip` and a
 drag-to-Applications `.dmg`:
@@ -206,7 +211,7 @@ drag-to-Applications `.dmg`:
 ```sh
 cd desktop/macos/SponsorOverlay
 ./packaging/bundle.sh                  # ad-hoc signed, for local use
-# -> build/dwell-protocol.vercel.app.app, build/SponsorOverlay.zip, build/SponsorOverlay.dmg
+# -> build/dwellprotocol.com.app, build/SponsorOverlay.zip, build/SponsorOverlay.dmg
 ```
 
 The app carries an icon (`AppIcon.icns`, built from `packaging/assets/AppIcon-1024.png`
@@ -252,7 +257,7 @@ spctl -a -t open --context context:primary-signature -v build/SponsorOverlay.dmg
 cp build/SponsorOverlay.dmg build/DWELL.dmg
 gh release create desktop-v0.1.0 build/DWELL.dmg \
   --title "DWELL Desktop 0.1.0" \
-  --notes "macOS DWELL.fyi overlay tool for Claude & ChatGPT Desktop."
+  --notes "macOS DWELL overlay tool for Claude & ChatGPT Desktop."
 # Re-releasing the same tag? Don't `create` — upload over the existing asset:
 #   gh release upload desktop-v0.1.0 build/DWELL.dmg --clobber
 ```
@@ -284,7 +289,7 @@ in `Info.plist` until a real feed exists. To go live:
 1. `generate_keys` (from Sparkle) once — keep the private key in your Keychain,
    put the printed public key in `Info.plist` as `SUPublicEDKey` (replacing the
    placeholder), and set `SUEnableAutomaticChecks` to `true`.
-2. Host `appcast.xml` at the `SUFeedURL` (`https://dwell-protocol.vercel.app/appcast.xml`).
+2. Host `appcast.xml` at the `SUFeedURL` (`https://dwellprotocol.com/appcast.xml`).
 3. For each release, sign the zip/dmg with `sign_update` and add the resulting
    `<enclosure …>` entry to the appcast.
 
@@ -301,7 +306,7 @@ them, but verify with `codesign --verify --deep --strict` before notarizing.
 2. Keychain for device credentials (UserDefaults in the rough-out).
 3. cbindgen FFI so the shell links `overlay-core` instead of the Swift port.
 4. In-app magic-link sign-in. The onboarding's "Save credits" step currently
-   opens DWELL's web sign-in (`dwell-protocol.vercel.app/redeem`) in the browser; email verify
+   opens DWELL's web sign-in (`dwellprotocol.com/redeem`) in the browser; email verify
    exists server-side, so a native magic-link flow could replace the hop. Local
    frequency caps in the shell are also still TODO. App bundling + ad-hoc signing
    is done (`packaging/bundle.sh`); Developer ID signing + notarization still

@@ -569,7 +569,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openRedeem() {
-        NSWorkspace.shared.open(URL(string: "https://dwell-protocol.vercel.app/redeem")!)
+        NSWorkspace.shared.open(URL(string: "https://dwellprotocol.com/redeem")!)
     }
 
     // MARK: sponsor-card height offset (per-app user setting)
@@ -877,7 +877,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// by redeem.js on arrival) so the page can POST /v1/devices/link once the
     /// user is signed in — the same link the extension performs.
     private func openWebSignin(email: String?, google: Bool) {
-        var comps = URLComponents(string: "https://dwell-protocol.vercel.app/redeem")!
+        var comps = URLComponents(string: "https://dwellprotocol.com/redeem")!
         var items: [URLQueryItem] = []
         if let email, !email.isEmpty { items.append(URLQueryItem(name: "email", value: email)) }
         if google { items.append(URLQueryItem(name: "provider", value: "google")) }
@@ -1002,7 +1002,7 @@ extension Ad {
     // app never trusts that assumption for something as sensitive as open().
     var destinationURLOrFallback: URL {
         if let u = URL(string: url), u.scheme?.lowercased() == "https" { return u }
-        return URL(string: "https://dwell-protocol.vercel.app")!
+        return URL(string: "https://dwellprotocol.com")!
     }
 }
 

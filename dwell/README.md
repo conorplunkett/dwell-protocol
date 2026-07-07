@@ -1,13 +1,14 @@
-# DWELL protocol
+# Dwell Protocol
 
 **Get paid for your attention.** DWELL shows one sponsored line while an AI
 assistant is thinking, and pays the person watching. Earnings accrue as
 **DWELL points** today and convert to the **$DWELL token** at launch.
+Canonical domain: **[dwellprotocol.com](https://dwellprotocol.com)**.
 
 The mechanics, stated as facts (see the copy rules in
 [docs/05-legal-structure.md](docs/05-legal-structure.md)): advertisers pay
 fixed dollar CPMs by card; **90% of every ad dollar** goes to the token side —
-escrowed in a USDC reserve during the points phase, market-bought into $DWELL
+earmarked on the protocol ledger during the points phase, market-bought into $DWELL
 after launch — and each campaign's pool splits **60% to the viewer, 10% to
 their referrer, and 30% to the protocol treasury, which holds and never sells**
 (the referrer leg joins the treasury when a viewer has no referrer). Users are
@@ -48,7 +49,12 @@ database server.
 
 ## Status
 
-Points-phase test deployment. The contracts are machine-verified (forge
-1.7.1 / solc 0.8.26, 25/25) but unaudited; advertiser checkout is disabled
-until Stripe keys exist. Nothing here is investment advice, and nothing here
-promises anything about any token's price.
+Points-phase deployment. The site is live at
+[dwellprotocol.com](https://dwellprotocol.com) (Vercel, root directory
+`dwell/web`); the API is the `dwell-api` Supabase Edge Function, deployed by
+`.github/workflows/deploy-dwell-api.yml` at the repo root — note that **all CI
+for this tree runs from the root `.github/workflows/ci.yml`** (`dwell-*` jobs).
+The contracts are machine-verified (forge 1.7.1 / solc 0.8.26, 25/25) but
+unaudited; advertiser checkout is disabled until Stripe keys exist. Nothing
+here is investment advice, and nothing here promises anything about any
+token's price.

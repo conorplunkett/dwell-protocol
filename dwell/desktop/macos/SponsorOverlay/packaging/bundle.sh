@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wrap the SwiftPM executable into dwell-protocol.vercel.app.app, code-sign it, and produce
+# Wrap the SwiftPM executable into dwellprotocol.com.app, code-sign it, and produce
 # a drag-to-Applications .dmg (and a .zip) for distribution.
 #
 # Local use (no Apple Developer account needed) — ad-hoc signature, runs on the
@@ -22,7 +22,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."        # -> SponsorOverlay package root
 
 APP_NAME="SponsorOverlay"             # SwiftPM product: executable, zip + dmg names
-PRODUCT_NAME="dwell-protocol.vercel.app"             # user-facing .app bundle name (Finder + Login Items)
+PRODUCT_NAME="dwellprotocol.com"             # user-facing .app bundle name (Finder + Login Items)
 VOL_NAME="DWELL Sponsor Overlay"
 VERSION="${VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
@@ -32,8 +32,8 @@ SIGN_IDENTITY="${SIGN_IDENTITY:--}"   # default "-" = ad-hoc
 UNIVERSAL="${UNIVERSAL:-1}"
 
 BUILD_DIR="build"
-# The bundle on disk is "dwell-protocol.vercel.app.app" so Finder + System Settings ▸ Login
-# Items show "dwell-protocol.vercel.app", not the internal executable name. The executable
+# The bundle on disk is "dwellprotocol.com.app" so Finder + System Settings ▸ Login
+# Items show "dwellprotocol.com", not the internal executable name. The executable
 # inside stays "$APP_NAME" (matches CFBundleExecutable); the zip/dmg keep the
 # "$APP_NAME" name so CI artifact paths are unchanged.
 APP="$BUILD_DIR/$PRODUCT_NAME.app"

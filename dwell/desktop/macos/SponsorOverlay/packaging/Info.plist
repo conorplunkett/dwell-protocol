@@ -6,9 +6,9 @@
   <key>CFBundleIdentifier</key>          <string>fyi.dwell.SponsorOverlay</string>
   <!-- Name shown to the user (menu-bar About, and the System Settings ▸ Login
        Items row). LaunchServices shows CFBundleDisplayName/CFBundleName here, so
-       both read "dwell-protocol.vercel.app" rather than the internal "SponsorOverlay". -->
-  <key>CFBundleName</key>                <string>dwell-protocol.vercel.app</string>
-  <key>CFBundleDisplayName</key>         <string>dwell-protocol.vercel.app</string>
+       both read "dwellprotocol.com" rather than the internal "SponsorOverlay". -->
+  <key>CFBundleName</key>                <string>dwellprotocol.com</string>
+  <key>CFBundleDisplayName</key>         <string>dwellprotocol.com</string>
   <key>CFBundlePackageType</key>         <string>APPL</string>
   <key>CFBundleIconFile</key>            <string>AppIcon</string>
   <key>CFBundleShortVersionString</key>  <string>__VERSION__</string>
@@ -29,7 +29,7 @@
        `generate_keys` (Sparkle) before shipping, and host the appcast at the
        SUFeedURL. Automatic checks stay off until then; "Check for Updates…"
        works manually. -->
-  <key>SUFeedURL</key>                   <string>https://dwell-protocol.vercel.app/appcast.xml</string>
+  <key>SUFeedURL</key>                   <string>https://dwellprotocol.com/appcast.xml</string>
   <key>SUPublicEDKey</key>               <string>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</string>
   <key>SUEnableAutomaticChecks</key>     <false/>
   <key>SUAutomaticallyUpdate</key>       <false/>

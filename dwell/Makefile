@@ -1,4 +1,4 @@
-# DWELL.fyi — convenience commands for local dev.
+# Dwell Protocol — convenience commands for local dev.
 #
 # Run `make` or `make help` to list everything below with descriptions.
 # Each target is a thin wrapper over the per-component README steps; the
@@ -17,7 +17,7 @@ export DATABASE_URL
 
 ## help: List every command with a one-line description.
 help:
-	@echo "DWELL.fyi — make commands:"
+	@echo "Dwell Protocol — make commands:"
 	@echo ""
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/^## /  /'
 	@echo ""
