@@ -1,6 +1,6 @@
 {
   "name": "dwell-chrome",
-  "version": "0.6.2",
+  "version": "0.8.0",
   "private": true,
   "description": "Dwell Protocol Chrome extension — earn while you use ChatGPT, Claude, and Gemini.",
   "scripts": {

@@ -24,7 +24,7 @@
     { t: "Welcome",      s: "what DWELL is" },
     { t: "How it works", s: "the 10-second tour" },
     { t: "Grant access", s: "access + login" },
-    { t: "Save credits", s: "connect account" },
+    { t: "Save dwells",  s: "connect account" },
     { t: "All set",      s: "start earning" },
   ];
 
@@ -89,13 +89,13 @@
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M12 2v9" /><path d="M6.4 6.4a9 9 0 1 0 11.2 0" /></svg>';
   // The actual menu-bar mark, as a wireframe: a hollow rounded chip with the
-  // mono "F$" inside — mirrors makeStatusIcon() in main.swift. Inherits the
+  // mono "D$" inside — mirrors makeStatusIcon() in main.swift. Inherits the
   // surrounding text colour via currentColor.
   var MENUBAR_WIRE_SVG =
     '<svg class="mb-wire" viewBox="0 0 28 18" fill="none" xmlns="http://www.w3.org/2000/svg">' +
     '<rect x="1.1" y="1.1" width="25.8" height="15.8" rx="4.6" stroke="currentColor" stroke-width="1.3" />' +
     '<text x="14" y="12.7" text-anchor="middle" font-family="\'JetBrains Mono\', ui-monospace, monospace" ' +
-    'font-size="9" font-weight="700" fill="currentColor">F$</text></svg>';
+    'font-size="9" font-weight="700" fill="currentColor">D$</text></svg>';
   var GOOGLE_SVG =
     '<svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/>' +
     '<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/>' +
@@ -108,15 +108,15 @@
     return '' +
       '<div class="fade welcome">' +
         '<div class="markwrap">' +
-          '<div class="bigmark">F$</div>' +
+          '<div class="bigmark">D$</div>' +
           '<div class="mark-meta">' +
-            '<div class="nm">DWELL<span style="color:var(--gray-2);font-weight:600">.fyi</span></div>' +
+            '<div class="nm">Dwell<span style="color:var(--gray-2);font-weight:600"> Protocol</span></div>' +
             '<div class="vr">v1.0 · macOS</div>' +
           '</div>' +
         '</div>' +
-        '<span class="eyebrow">Get Claude for free</span>' +
-        '<h1 class="h-title">Earn Claude credits while you work.</h1>' +
-        '<p class="h-sub">DWELL shows <b>one</b> sponsored line while your AI assistant is thinking — and gives you back <b>50%</b> of what it earns, as Claude credits.</p>' +
+        '<span class="eyebrow">Get paid for the wait</span>' +
+        '<h1 class="h-title">Earn dwells while you work.</h1>' +
+        '<p class="h-sub">DWELL shows <b>one</b> sponsored line while your AI assistant is thinking — and you receive <b>60%</b> of each campaign\'s pool (90% of every ad dollar), paid in dwells. <b>1,000 dwells = $1.00</b> of earned ad value.</p>' +
         '<ul class="bullets">' +
           '<li><span class="tick">✓</span><div>Lives quietly in your menu bar. <b>No new app to open.</b></div></li>' +
           '<li><span class="tick">✓</span><div>Works with <b>ChatGPT, Claude &amp; Claude Code</b> out of the box.</div></li>' +
@@ -141,11 +141,11 @@
           '<div class="how-col">' +
             '<ul class="how-list">' +
               '<li><span class="how-num">1</span><div><div class="ht">Keep DWELL running</div>' +
-                '<div class="hs">Lives in your menu bar as the <b>F$</b> icon, watching for the "thinking" moment.</div></div></li>' +
+                '<div class="hs">Lives in your menu bar as the <b>D$</b> icon, watching for the "thinking" moment.</div></div></li>' +
               '<li><span class="how-num">2</span><div><div class="ht">Your assistant thinks</div>' +
                 '<div class="hs">One calm line, labeled <span style="font-family:var(--mono);font-size:11px;color:var(--accent-d)">ad·</span>, slips in beside the spinner.</div></div></li>' +
-              '<li><span class="how-num">3</span><div><div class="ht">You earn, split 50/50</div>' +
-                '<div class="hs">Half the revenue becomes Claude credits — redeem for gift cards.</div></div></li>' +
+              '<li><span class="how-num">3</span><div><div class="ht">You earn dwells</div>' +
+                '<div class="hs">You receive 60% of each campaign\'s pool (90% of every ad dollar). Redeem for $DWELL at launch, Claude gift cards, or cash via Stripe (10% protocol fee on gift cards and cash).</div></div></li>' +
             '</ul>' +
           '</div>' +
         '</div>' +
@@ -201,22 +201,22 @@
 
   function paneSignin() {
     var head = '' +
-      '<span class="eyebrow">Save your credits</span>' +
-      '<h1 class="h-title">Where should we send the money?</h1>' +
-      '<p class="h-sub">Connect an account so your Claude credits accrue to you. We only use it to track your balance and send gift cards.</p>';
+      '<span class="eyebrow">Save your dwells</span>' +
+      '<h1 class="h-title">Where should we send your dwells?</h1>' +
+      '<p class="h-sub">Connect an account so your dwells accrue to you. We only use it to track your balance and pay out redemptions.</p>';
     // Once the app detects the device is linked, show the confirmation.
     if (linked === "ok") {
       return '<div class="fade signin">' + head +
         '<div class="sent"><span class="chk">✓</span><div>Linked' +
           (linkedEmail ? ' as <b>' + esc(linkedEmail) + '</b>' : '') +
-          '. Your credits now collect to your account.</div></div></div>';
+          '. Your dwells now collect to your account.</div></div></div>';
     }
-    // Soft warning: not linked yet → credits strand on this device. The user can
+    // Soft warning: not linked yet → dwells strand on this device. The user can
     // still continue (email magic-links finish later in the browser).
     var warn = '<div style="margin-top:14px;padding:10px 12px;border-radius:10px;' +
       'background:rgba(217,119,87,.10);border:1px solid rgba(217,119,87,.30);' +
       'color:var(--ink-2,#3d3b37);font-size:12.5px;line-height:1.45">⚠ Not linked yet — ' +
-      'until you connect an account, credits stay on this device and can\'t be redeemed.</div>';
+      'until you connect an account, dwells stay on this device and can\'t be redeemed.</div>';
     if (sent) {
       var msg = sentVia === "google"
         ? 'Continue with Google in your browser to finish — you can keep setting up here.'
@@ -251,7 +251,7 @@
             '<ul class="done-list">' +
               '<li><span class="tick">✓</span>Running in your menu bar</li>' +
               '<li><span class="tick">✓</span>Accessibility granted · launches at login</li>' +
-              '<li><span class="tick">✓</span>Credits will accrue to your account</li>' +
+              '<li><span class="tick">✓</span>Dwells will accrue to your account</li>' +
             '</ul>' +
           '</div>' +
         '</div>' +
@@ -275,7 +275,7 @@
             'stroke-width="' + RING_STROKE + '" stroke-linecap="round" stroke-dasharray="' + RING_C + '" stroke-dashoffset="' + RING_C + '" ' +
             'transform="rotate(-90 ' + RING_SIZE / 2 + ' ' + RING_SIZE / 2 + ')" />' +
         '</svg>' +
-        '<div class="ring-center"><div class="amt">$0.00</div><div class="goal">of $200</div></div>' +
+        '<div class="ring-center"><div class="amt">0</div><div class="goal">of 200,000 dwells</div></div>' +
       '</div>';
   }
 
@@ -305,9 +305,9 @@
     }).join("");
     return '' +
       '<div class="rail">' +
-        '<div class="rail-brand"><span class="logo">F$</span><span class="wm">DWELL<span class="dim">.fyi</span></span></div>' +
+        '<div class="rail-brand"><span class="logo">D$</span><span class="wm">Dwell<span class="dim"> Protocol</span></span></div>' +
         '<ul class="steps">' + items + '</ul>' +
-        '<div class="rail-foot"><div class="split"><b>50%</b> of every ad comes back to you.</div></div>' +
+        '<div class="rail-foot"><div class="split">You receive <b>60%</b> of each campaign\'s pool — 90% of every ad dollar.</div></div>' +
       '</div>';
   }
 

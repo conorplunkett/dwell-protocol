@@ -70,6 +70,7 @@ const fakeMailer = {
 
   const config = {
     revenueShare: 0.9, dailyImpressionCap: 5000, ipDailyImpressionCap: 0, dailyClickCap: 5, payoutThresholdCents: 1000,
+    payoutFeeBps: 1000, redemptionFeeBps: 1000, // the protocol's 10% cut on cash payouts and gift redemptions
     referralRewardCents: 2000, referralCap: 10,
     affiliateRewardBps: 1000, affiliateCapPeople: 1000,
     stripeWebhookSecret: WEBHOOK_SECRET, siteUrl: "https://dwellprotocol.com",
@@ -398,8 +399,9 @@ const fakeMailer = {
     await payWebhook(camp.body.campaignId);
     await approve(camp.body.campaignId);
 
-    // earn $24.75 — enough for exactly one $20 Pro month, not two — then link
-    // the device to an email and open a web session (redemption is web-only).
+    // earn $24.75 — enough for exactly one $22 Pro month ($20 face + 10% fee),
+    // not two — then link the device to an email and open a web session
+    // (redemption is web-only).
     const raceDev = (await api("POST", "/v1/devices/register")).body;
     await api("POST", "/v1/events", { ...raceDev, batchKey: "brace", events: [{ campaignId: camp.body.campaignId, impressions: 250, clicks: 0 }] });
     await api("POST", "/v1/auth/request-link", { ...raceDev, email: "race@example.com" });
@@ -422,7 +424,7 @@ const fakeMailer = {
     assert.strictEqual(ok.length, 1, "exactly one redemption should succeed");
     assert.ok([403, 409].includes(failed[0].status), "the loser is rejected for insufficient credits");
     const after = (await api("GET", "/v1/web/me", undefined, auth)).body;
-    assert.strictEqual(after.balanceUsd, 4.75, "only one $20 gift was charged");
+    assert.strictEqual(after.balanceUsd, 2.75, "only one $20 gift (+ $2 fee) was charged");
     assert.ok(after.balanceUsd >= 0, "balance never goes negative");
   });
 
@@ -472,7 +474,7 @@ const fakeMailer = {
     assert.strictEqual(acct.params.type, "express");
   });
 
-  await check("account.updated enables payouts; sweep transfers whole cents", async () => {
+  await check("account.updated enables payouts; sweep debits gross, transfers net of the 10% fee", async () => {
     const accountId = (await poolNs.query("select stripe_account_id from users where email = 'dev@example.com'")).rows[0].stripe_account_id;
     const payload = JSON.stringify({ id: "evt_acct_1", type: "account.updated", data: { object: { id: accountId, charges_enabled: true, payouts_enabled: true } } });
     await api("POST", "/v1/webhooks/stripe", payload, { "stripe-signature": signWebhookPayload(payload, WEBHOOK_SECRET) });
@@ -480,14 +482,21 @@ const fakeMailer = {
     // top device up well over $10: 1000 imps on the $110 campaign = $99
     await api("POST", "/v1/events", { ...device, batchKey: "bbig", events: [{ campaignId: campFluid, impressions: 1000, clicks: 0 }] });
     const before = (await api("GET", `/v1/me/earnings?deviceId=${device.deviceId}&deviceKey=${device.deviceKey}`)).body;
-    const expectedCents = Math.floor((before.balanceUsd * 100000) / 1000);
+    const grossCents = Math.floor((before.balanceUsd * 100000) / 1000);
+    const feeCents = Math.ceil((grossCents * config.payoutFeeBps) / 10000);
+    const netCents = grossCents - feeCents;
 
     const r = await api("POST", "/v1/admin/payouts", { adminKey: "test-admin" });
     assert.strictEqual(r.body.paid, 1);
     const transfer = stripeCalls.find((c) => c.path === "/v1/transfers");
-    assert.strictEqual(transfer.params.amount, String(expectedCents));
+    assert.strictEqual(transfer.params.amount, String(netCents), "Stripe receives the net after the protocol fee");
+    // the user's balance is debited the GROSS; the fee lands platform-side
     const after = (await api("GET", `/v1/me/earnings?deviceId=${device.deviceId}&deviceKey=${device.deviceKey}`)).body;
-    assert.strictEqual(Math.round(after.paidOutUsd * 100), expectedCents);
+    assert.strictEqual(Math.round(after.paidOutUsd * 100), grossCents);
+    const feeRow = await poolNs.query(
+      "select amount_millicents from ledger where entry_type = 'platform_fee' and meta->>'source' = 'payout_fee'");
+    assert.strictEqual(feeRow.rows.length, 1, "one payout fee row");
+    assert.strictEqual(Number(feeRow.rows[0].amount_millicents), feeCents * 1000);
     assert.strictEqual((await api("POST", "/v1/admin/payouts", { adminKey: "nope" })).status, 401);
   });
 
@@ -521,6 +530,7 @@ const fakeMailer = {
     const catalog = await api("GET", "/v1/giftcards");
     assert.strictEqual(catalog.body.plans.find((p) => p.id === "pro").monthlyUsd, 20);
     assert.deepStrictEqual(catalog.body.months, [1, 3, 6, 12]);
+    assert.strictEqual(catalog.body.redemptionFeeBps, 1000, "catalog advertises the protocol fee");
 
     // Redemption is a website-only, logged-in flow. The old device-credential
     // path is retired: even a valid deviceKey with a redeemable balance must not
@@ -532,7 +542,7 @@ const fakeMailer = {
 
     const r = await api("POST", "/v1/redemptions", { ...giftDevice, plan: "pro", months: 1, recipientEmail: "dev@example.com" });
     assert.strictEqual(r.status, 410, "device-credential redemption is retired");
-    assert.match(r.body.redeemUrl, /\/redeem\.html$/);
+    assert.match(r.body.redeemUrl, /\/portal\.html$/);
 
     const after = (await api("GET", `/v1/me/earnings?deviceId=${giftDevice.deviceId}&deviceKey=${giftDevice.deviceKey}`)).body;
     assert.strictEqual(after.balanceUsd, 24.75, "balance untouched — no debit");
@@ -570,15 +580,25 @@ const fakeMailer = {
     assert.strictEqual(me.body.email, "web@example.com");
     assert.strictEqual(me.body.balanceUsd, 99);
 
-    // redeem Claude Pro, 3 months = $60, leaving $39. A client-supplied
-    // recipientEmail is IGNORED — the gift always goes to the account email,
-    // so a stolen session can't redirect a cash-out to an attacker inbox.
+    // redeem Claude Pro, 3 months = $60 face + $6 protocol fee = $66, leaving
+    // $33. A client-supplied recipientEmail is IGNORED — the gift always goes
+    // to the account email, so a stolen session can't redirect a cash-out to
+    // an attacker inbox.
     const r = await api("POST", "/v1/web/redemptions",
       { plan: "pro", months: 3, recipientEmail: "attacker@evil.com" },
       { Authorization: `Bearer ${session}` });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.body.amountUsd, 60);
-    assert.strictEqual(r.body.balanceUsd, 39);
+    assert.strictEqual(r.body.feeUsd, 6);
+    assert.strictEqual(r.body.totalUsd, 66);
+    assert.strictEqual(r.body.balanceUsd, 33);
+
+    // the fee is booked platform-side, closing the ledger
+    const feeRow = await poolNs.query(
+      "select amount_millicents from ledger where entry_type = 'platform_fee' and meta->>'source' = 'redemption_fee' and meta->>'redemptionId' = $1",
+      [r.body.redemptionId]);
+    assert.strictEqual(feeRow.rows.length, 1, "one redemption fee row");
+    assert.strictEqual(Number(feeRow.rows[0].amount_millicents), 600 * 1000, "$6 fee in millicents");
 
     // The fulfillment inbox is notified; the redeeming user now also gets their
     // own confirmation, so find the fulfillment mail rather than the last one.
@@ -591,12 +611,14 @@ const fakeMailer = {
       "the redeeming user also gets a confirmation email");
 
     const after = await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${session}` });
-    assert.strictEqual(after.body.balanceUsd, 39);
+    assert.strictEqual(after.body.balanceUsd, 33);
 
-    // can't redeem beyond balance, and no session = 401
+    // can't redeem beyond balance (the 403 spells out face vs fee), and no session = 401
     const broke = await api("POST", "/v1/web/redemptions",
       { plan: "max5x", months: 1 }, { Authorization: `Bearer ${session}` });
     assert.strictEqual(broke.status, 403);
+    assert.strictEqual(broke.body.requiredUsd, 110, "$100 face + $10 fee");
+    assert.strictEqual(broke.body.feeUsd, 10);
     assert.strictEqual((await api("POST", "/v1/web/redemptions", { plan: "pro", months: 1 })).status, 401);
 
     // validation on the logged-in path: bad plan / months
@@ -607,6 +629,96 @@ const fakeMailer = {
     const logout = await api("POST", "/v1/web/logout", {}, { Authorization: `Bearer ${session}` });
     assert.strictEqual(logout.status, 200);
     assert.strictEqual((await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${session}` })).status, 401);
+  });
+
+  // Earn → link → login helper for the money-out tests below. Returns a web
+  // session header for a fresh user whose linked device earned `impressions`
+  // on a fresh $110-block campaign (9.9¢ per impression at the 90% share).
+  const linkedSession = async (email, impressions) => {
+    const camp = await api("POST", "/v1/checkout", {
+      email: `adv+${crypto.randomBytes(3).toString("hex")}@payout.co`, adLine: "payout fixture campaign line",
+      url: "https://payout.example/", brand: "PayFix", pricePerBlock: 110, blocks: 5,
+    });
+    await payWebhook(camp.body.campaignId);
+    await approve(camp.body.campaignId);
+    const dev = (await api("POST", "/v1/devices/register")).body;
+    await api("POST", "/v1/events", { ...dev, batchKey: "bk" + crypto.randomBytes(3).toString("hex"), events: [{ campaignId: camp.body.campaignId, impressions, clicks: 0 }] });
+    await api("POST", "/v1/auth/request-link", { ...dev, email });
+    await api("GET", mailbox.at(-1).link.replace(base, ""));
+    await api("POST", "/v1/web/login", { email });
+    const session = (await api("GET", mailbox.at(-1).link.replace(base, ""))).headers.get("location").match(/session=([^&]+)/)[1];
+    return { auth: { Authorization: `Bearer ${session}` }, email };
+  };
+
+  await check("a balance covering face value but not face + fee is refused", async () => {
+    // 210 imps × 9.9¢ = $20.79 — at least the $20 Pro face, under the $22 total
+    const { auth } = await linkedSession("betwixt@example.com", 210);
+    const r = await api("POST", "/v1/web/redemptions", { plan: "pro", months: 1 }, auth);
+    assert.strictEqual(r.status, 403, "fee is not optional");
+    assert.strictEqual(r.body.requiredUsd, 22);
+    assert.strictEqual(r.body.amountUsd, 20);
+    assert.strictEqual(r.body.feeUsd, 2);
+    assert.strictEqual(r.body.balanceUsd, 20.79);
+  });
+
+  await check("web payout: session onboarding, gross debit, net transfer, 10% fee row, history", async () => {
+    // $99 balance (1000 imps), linked + logged in
+    const { auth, email } = await linkedSession("payout-web@example.com", 1000);
+
+    // no session → 401; with session → Stripe Express onboarding link
+    assert.strictEqual((await api("POST", "/v1/web/connect/onboard", {})).status, 401);
+    const ob = await api("POST", "/v1/web/connect/onboard", {}, auth);
+    assert.strictEqual(ob.status, 200);
+    assert.ok(ob.body.onboardingUrl.includes("connect.stripe.com"));
+
+    // payouts not yet enabled (webhook hasn't fired) → status shows it, request refused
+    const st = await api("GET", "/v1/web/payouts", undefined, auth);
+    assert.strictEqual(st.status, 200);
+    assert.strictEqual(st.body.hasStripeAccount, true);
+    assert.strictEqual(st.body.payoutsEnabled, false);
+    assert.strictEqual(st.body.payoutFeeBps, 1000);
+    assert.strictEqual(st.body.thresholdUsd, 10);
+    assert.strictEqual((await api("POST", "/v1/web/payouts/request", {}, auth)).status, 403);
+
+    // Stripe finishes onboarding → account.updated flips payouts_enabled
+    const accountId = (await poolNs.query("select stripe_account_id from users where email = $1", [email])).rows[0].stripe_account_id;
+    const payload = JSON.stringify({ id: "evt_acct_web", type: "account.updated", data: { object: { id: accountId, charges_enabled: true, payouts_enabled: true } } });
+    await api("POST", "/v1/webhooks/stripe", payload, { "stripe-signature": signWebhookPayload(payload, WEBHOOK_SECRET) });
+
+    // two simultaneous requests: exactly one pays (the other is stopped by the
+    // per-user throttle or the in-transaction balance recheck)
+    const [a, b] = await Promise.all([
+      api("POST", "/v1/web/payouts/request", {}, auth),
+      api("POST", "/v1/web/payouts/request", {}, auth),
+    ]);
+    const ok = [a, b].filter((r) => r.status === 200);
+    assert.strictEqual(ok.length, 1, "exactly one payout settles");
+    assert.ok([409, 429].includes([a, b].find((r) => r.status !== 200).status));
+
+    // $99 gross → $9.90 fee → $89.10 transferred; balance fully drained
+    const paid = ok[0].body;
+    assert.strictEqual(paid.grossUsd, 99);
+    assert.strictEqual(paid.feeUsd, 9.9);
+    assert.strictEqual(paid.netUsd, 89.1);
+    assert.strictEqual(paid.balanceUsd, 0);
+    const transfer = [...stripeCalls].reverse().find((c) => c.path === "/v1/transfers");
+    assert.strictEqual(transfer.params.amount, "8910", "Stripe receives the net");
+
+    // fee row platform-side; payouts history shows the net as 'paid'
+    const feeRow = await poolNs.query(
+      "select amount_millicents from ledger where entry_type = 'platform_fee' and meta->>'source' = 'payout_fee' and meta->>'userId' is not null and meta->>'payoutId' is not null");
+    assert.strictEqual(feeRow.rows.length, 1);
+    assert.strictEqual(Number(feeRow.rows[0].amount_millicents), 990 * 1000);
+    const hist = await api("GET", "/v1/web/payouts", undefined, auth);
+    assert.strictEqual(hist.body.payouts[0].amountUsd, 89.1);
+    assert.strictEqual(hist.body.payouts[0].status, "paid");
+    assert.strictEqual(hist.body.balanceUsd, 0);
+
+    // drained: another request is refused for being under the threshold
+    // (wait out the 1/min per-user throttle by resetting it via a fresh app? no —
+    // 429 vs 403 both prove no second payment; accept either)
+    const again = await api("POST", "/v1/web/payouts/request", {}, auth);
+    assert.ok([403, 429].includes(again.status), "no second payment from an empty balance");
   });
 
   await check("magic-link sends are rate-limited per email (anti-bomb / anti-enumeration)", async () => {
@@ -782,7 +894,7 @@ const fakeMailer = {
 
     // and redeeming never advances the invite to 'rewarded' nor pays the inviter
     const inviteeId = await userId("invitee@example.com");
-    await poolNs.query("insert into ledger (entry_type, amount_millicents, user_id) values ('impression_credit', 2000000, $1)", [inviteeId]);
+    await poolNs.query("insert into ledger (entry_type, amount_millicents, user_id) values ('impression_credit', 2200000, $1)", [inviteeId]); // $22: $20 face + 10% fee
     const inviteeSess = await loginVia("invitee@example.com");
     assert.strictEqual(
       (await api("POST", "/v1/web/redemptions", { plan: "pro", months: 1, recipientEmail: "invitee@example.com" },
@@ -812,7 +924,7 @@ const fakeMailer = {
     assert.strictEqual(dash.body.enrolled, true);
     const code = dash.body.code;
     assert.ok(/^[A-Z0-9]{8}$/.test(code), "affiliate code is 8 chars");
-    assert.strictEqual(dash.body.link, `https://dwellprotocol.com/redeem.html?ref=${code}`);
+    assert.strictEqual(dash.body.link, `https://dwellprotocol.com/portal.html?ref=${code}`);
     assert.strictEqual(dash.body.rewardPct, 10);
     assert.strictEqual(dash.body.upgraded, false);
     assert.strictEqual(dash.body.upgradeRequested, false);

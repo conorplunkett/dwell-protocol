@@ -5,7 +5,7 @@ Run from anywhere; writes alongside this file:
   dmg-background.png  - 600x400 install-window backdrop with a drag arrow
 
 The app-icon master (AppIcon-1024.png, downsampled to the .iconset by bundle.sh)
-is the shared DWELL "F$" coral wordmark — regenerate it with `make icons`
+is the shared DWELL "D$" coral wordmark — regenerate it with `make icons`
 (tools/gen-icons.py), which renders the same mark for every surface. The
 committed PNGs are the source of truth.
 """

@@ -998,6 +998,97 @@ html.auth-pending #portal-loading { display: flex; }
   .earn-surface { flex-direction: row; justify-content: space-between; text-align: left; }
 }
 
+/* ════════════════════════════════════════════════════════════════
+   REDEEM TAB — gift-card grid + cash-payout card. Shares the
+   launch-preview card language: inset surface, strong borders.
+   ════════════════════════════════════════════════════════════════ */
+.redeem-block {
+  margin-top: 18px;
+  padding: 20px 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--surface-inset);
+}
+.rb-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.rb-title {
+  font-size: 15px; font-weight: 800; letter-spacing: -.02em;
+  color: var(--ink); margin: 0;
+}
+.rb-badge {
+  font: 700 10.5px/1.4 var(--mono);
+  letter-spacing: .07em; text-transform: uppercase;
+  color: var(--gray); background: var(--bg-tint);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill); padding: 4px 10px; white-space: nowrap;
+}
+
+/* Gift grid: one row per plan, a cell per term. */
+.gift-menu { display: flex; flex-direction: column; gap: 12px; margin: 14px 0 4px; }
+.gift-row {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 12px 14px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); background: var(--bg-cream);
+}
+.gift-plan { min-width: 180px; display: flex; flex-direction: column; gap: 2px; }
+.gp-name { font-weight: 800; font-size: 14.5px; color: var(--ink); letter-spacing: -.01em; }
+.gp-tag { font: 500 12px/1.4 var(--mono); color: var(--gray); }
+.gift-cells { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.gift-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 12px; min-width: 92px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  background: var(--surface-inset); cursor: pointer;
+  transition: transform .12s, border-color .12s, background .12s;
+}
+.gift-cell:hover:not([disabled]) { transform: translateY(-1px); border-color: var(--accent); }
+.gift-cell.sel {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), .07);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.gift-cell[disabled] { opacity: .4; cursor: not-allowed; }
+.gc-term { font: 700 10.5px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--gray); }
+.gc-price { font: 700 13px/1.2 var(--mono); color: var(--ink); }
+
+.redeem-foot {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-strong);
+}
+.redeem-delivery { display: flex; align-items: center; gap: 8px; }
+.rd-text { display: flex; flex-direction: column; gap: 1px; }
+.rd-label { font: 700 10.5px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--gray); }
+.rd-email { font: 600 13px/1.3 var(--mono); color: var(--ink); }
+.redeem-summary { margin-left: auto; font-size: 13.5px; color: var(--ink-2); }
+.redeem-summary .sum-after { color: var(--gray); }
+.redeem-result { margin: 12px 0 0; font-size: 13.5px; line-height: 1.5; }
+.redeem-result.ok { color: var(--ok-fg, #0a7a3d); }
+.redeem-result.err { color: var(--accent); }
+
+/* Payout card states */
+.payout-state { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.payout-state p { margin: 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.55; max-width: 520px; }
+.payout-state .btn-accent { margin-left: auto; }
+.payout-history { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-strong); }
+.payout-history h4 {
+  margin: 0 0 8px; font: 700 10.5px/1.3 var(--mono);
+  letter-spacing: .06em; text-transform: uppercase; color: var(--gray);
+}
+.payout-history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.payout-history li {
+  display: flex; align-items: center; gap: 10px;
+  font: 500 12.5px/1.4 var(--mono); color: var(--ink-2);
+}
+.po-status {
+  font: 700 10px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  border-radius: var(--radius-pill); padding: 2px 8px;
+  border: 1px solid var(--border-strong); background: var(--bg-tint); color: var(--gray);
+}
+.po-status.paid { color: var(--ok-fg, #0a7a3d); }
+.po-status.failed { color: var(--accent); }
+
 @media (max-width: 430px) {
   .nav .brand-name { display: none; }
 }

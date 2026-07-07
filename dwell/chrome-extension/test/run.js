@@ -2,7 +2,8 @@
 // Loads the REAL content.js and background.js against a hand-rolled minimal DOM
 // + chrome API mock, so the whole loop can be checked headlessly:
 //   detection on ChatGPT / Claude / Gemini · Test Mode shows the mock ad ·
-//   mock events never touch real earnings · the 50% math.
+//   mock events never touch real earnings · the revenue-share math (the share
+//   itself is server-provided via /v1/config; the mock backend serves 0.5).
 //
 // Usage: node test/run.js   (or: npm test)
 
@@ -308,7 +309,7 @@ function makeChrome(stateRef, sentRef) {
     assert.strictEqual(s.earnings, 0, "an unlinked device must not accrue earnings");
   });
 
-  await check("once linked, a real impression earns 50% of the per-impression gross", async () => {
+  await check("once linked, a real impression earns the server-configured share (0.5 in the mock) of the per-impression gross", async () => {
     affiliateLinked = true;
     await settle(); // let the prior tick register the device so the link check can resolve
     const before = (await msg({ type: "BB_GET_STATE" })).earnings;
@@ -464,7 +465,7 @@ function makeChrome(stateRef, sentRef) {
     assert.ok(!fetches.some((f) => f.url.includes("tracker.example.com")), "fetched an UNDECLARED tracking host");
   });
 
-  console.log(`\nall ${pass} checks passed — detection, test mode, the 50% split, and prod wiring verified.`);
+  console.log(`\nall ${pass} checks passed — detection, test mode, the revenue-share math, and prod wiring verified.`);
 })().catch((err) => {
   console.error("\n✗ FAILED:", err.stack || err.message);
   process.exit(1);

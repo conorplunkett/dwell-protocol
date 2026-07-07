@@ -53,6 +53,8 @@ function loadConfig() {
     dailyClickCap: parseInt(env("DAILY_CLICK_CAP", "100"), 10),
     leadDailyCap: parseInt(env("LEAD_IP_DAILY_CAP", "100"), 10), // bare-email waitlist captures per source IP per UTC day; 0 disables
     payoutThresholdCents: parseInt(env("PAYOUT_THRESHOLD_CENTS", "1000"), 10),
+    payoutFeeBps: parseInt(env("PAYOUT_FEE_BPS", "1000"), 10), // protocol's cut of a cash payout, basis points (1000 = 10%)
+    redemptionFeeBps: parseInt(env("REDEMPTION_FEE_BPS", "1000"), 10), // protocol's cut on gift-card redemptions, charged on top of face value
     referralRewardCents: parseInt(env("REFERRAL_REWARD_CENTS", "2000"), 10),
     referralCap: parseInt(env("REFERRAL_CAP", "10"), 10),
     affiliateRewardBps: parseInt(env("AFFILIATE_REWARD_BPS", "1000"), 10), // affiliate's cut, basis points (1000 = 10%)
@@ -1423,7 +1425,8 @@ function createRepo(pool: any) {
     async userForSession(sessionToken: string | null) {
       if (!sessionToken) return null;
       const { rows } = await pool.query(
-        `select u.id, u.email from web_sessions s join users u on u.id = s.user_id
+        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled
+           from web_sessions s join users u on u.id = s.user_id
           where s.token = $1 and s.expires_at > now()`,
         [sessionToken]
       );
@@ -1577,7 +1580,7 @@ function createRepo(pool: any) {
       }));
     },
 
-    async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, recipientEmail, referralRewardMillicents, referralCap }: any) {
+    async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, feeCents = 0, recipientEmail, referralRewardMillicents, referralCap }: any) {
       return tx(async (c: any) => {
         await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, `user:${userId}`]);
         const bal = await c.query(
@@ -1586,7 +1589,9 @@ function createRepo(pool: any) {
               and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','payout_debit','gift_redemption_debit','admin_credit','admin_debit')`,
           [userId]
         );
-        const costMillicents = BigInt(amountCents) * 1000n;
+        // The user is debited face + fee; the fee lands platform-side so the
+        // two rows sum to the face value leaving the system (ledger stays closed).
+        const costMillicents = (BigInt(amountCents) + BigInt(feeCents)) * 1000n;
         if (BigInt(bal.rows[0].balance) < costMillicents) return null;
         const { rows } = await c.query(
           `insert into gift_redemptions (id, user_id, plan, months, amount_cents, recipient_email)
@@ -1596,8 +1601,15 @@ function createRepo(pool: any) {
         await c.query(
           `insert into ledger (entry_type, amount_millicents, user_id, meta)
            values ('gift_redemption_debit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
-          [(-costMillicents).toString(), userId, JSON.stringify({ redemptionId: rows[0].id, plan, months })]
+          [(-costMillicents).toString(), userId, JSON.stringify({ redemptionId: rows[0].id, plan, months, faceCents: amountCents, feeCents })]
         );
+        if (feeCents > 0) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, meta)
+             values ('platform_fee', $1, ($2::jsonb #>> '{}')::jsonb)`,
+            [(BigInt(feeCents) * 1000n).toString(), JSON.stringify({ source: "redemption_fee", redemptionId: rows[0].id, userId })]
+          );
+        }
         // The $20 referral program is retired — redeeming no longer rewards any
         // referrer. (maybeRewardReferral is kept defined but uncalled.) We still
         // return an object with a null reward so the redemption flow keeps a
@@ -1894,14 +1906,105 @@ function createRepo(pool: any) {
       );
       return { ok: true, affiliate: upd.rows[0] };
     },
-    async recordPayout(userId: string, amountCents: number, transferId: string) {
+    // Post-transfer record used by the admin sweep: debits the gross, books the
+    // protocol's fee platform-side, and stores the net actually transferred.
+    async recordPayout(userId: string, grossCents: number, netCents: number, feeCents: number, transferId: string) {
       return tx(async (c: any) => {
         await c.query(
           `insert into ledger (entry_type, amount_millicents, user_id, meta)
            values ('payout_debit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
-          [(-BigInt(amountCents) * 1000n).toString(), userId, JSON.stringify({ transferId })]
+          [(-BigInt(grossCents) * 1000n).toString(), userId, JSON.stringify({ transferId, grossCents, netCents, feeCents })]
         );
-        await c.query("insert into payouts (user_id, amount_cents, stripe_transfer_id) values ($1,$2,$3)", [userId, amountCents, transferId]);
+        if (feeCents > 0) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, meta)
+             values ('platform_fee', $1, ($2::jsonb #>> '{}')::jsonb)`,
+            [(BigInt(feeCents) * 1000n).toString(), JSON.stringify({ source: "payout_fee", userId, transferId })]
+          );
+        }
+        await c.query("insert into payouts (user_id, amount_cents, stripe_transfer_id) values ($1,$2,$3)", [userId, netCents, transferId]);
+      });
+    },
+
+    // Recent payout history for the portal's cash-out card. amount_cents is the
+    // net the user received (or will receive, for 'pending').
+    async payoutsForUser(userId: string) {
+      const { rows } = await pool.query(
+        `select amount_cents, status, stripe_transfer_id, created_at
+           from payouts where user_id = $1 order by created_at desc limit 20`,
+        [userId]
+      );
+      return rows.map((r: any) => ({
+        amountUsd: r.amount_cents / 100,
+        status: r.status,
+        createdAt: r.created_at,
+      }));
+    },
+
+    // Debit-first half of an on-demand payout: inside one transaction, take the
+    // per-user redemption lock, re-check the balance, debit the gross, book the
+    // fee, and create a 'pending' payouts row. The Stripe transfer happens after
+    // commit; finalizePayout flips the row to paid/failed. Returns
+    // { id, netCents } or null when the balance no longer covers the gross.
+    async recordPayoutRequest({ userId, grossCents, feeCents }: any) {
+      return tx(async (c: any) => {
+        await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, `user:${userId}`]);
+        const bal = await c.query(
+          `select coalesce(sum(amount_millicents), 0)::bigint as balance from ledger
+            where (user_id = $1 or device_id in (select id from devices where user_id = $1))
+              and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','payout_debit','gift_redemption_debit','admin_credit','admin_debit')`,
+          [userId]
+        );
+        const grossMillicents = BigInt(grossCents) * 1000n;
+        if (BigInt(bal.rows[0].balance) < grossMillicents) return null;
+
+        const netCents = grossCents - feeCents;
+        const { rows } = await c.query(
+          `insert into payouts (user_id, amount_cents, status)
+           values ($1, $2, 'pending') returning id`,
+          [userId, netCents]
+        );
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, user_id, meta)
+           values ('payout_debit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+          [(-grossMillicents).toString(), userId, JSON.stringify({ payoutId: rows[0].id, grossCents, netCents, feeCents })]
+        );
+        if (feeCents > 0) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, meta)
+             values ('platform_fee', $1, ($2::jsonb #>> '{}')::jsonb)`,
+            [(BigInt(feeCents) * 1000n).toString(), JSON.stringify({ source: "payout_fee", payoutId: rows[0].id, userId })]
+          );
+        }
+        return { id: rows[0].id, netCents };
+      });
+    },
+
+    // Second half of an on-demand payout. Success stamps the transfer id;
+    // failure reverses both ledger legs (credit the user's gross back, negate
+    // the fee) so the books return to exactly the pre-request state.
+    async finalizePayout(payoutId: string, outcome: any) {
+      return tx(async (c: any) => {
+        if (outcome.failed) {
+          await c.query("update payouts set status = 'failed' where id = $1", [payoutId]);
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, user_id, meta)
+             values ('admin_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+            [(BigInt(outcome.grossCents) * 1000n).toString(), outcome.userId, JSON.stringify({ source: "payout_reversal", payoutId })]
+          );
+          if (outcome.feeCents > 0) {
+            await c.query(
+              `insert into ledger (entry_type, amount_millicents, meta)
+               values ('platform_fee', $1, ($2::jsonb #>> '{}')::jsonb)`,
+              [(-BigInt(outcome.feeCents) * 1000n).toString(), JSON.stringify({ source: "payout_fee_reversal", payoutId })]
+            );
+          }
+        } else {
+          await c.query(
+            "update payouts set status = 'paid', stripe_transfer_id = $2 where id = $1",
+            [payoutId, outcome.transferId]
+          );
+        }
       });
     },
     // Pre-account email capture from the public landers. Normalizes the email,
@@ -2444,21 +2547,29 @@ function createRepo(pool: any) {
 const repo = createRepo(pool);
 
 // ───────────────────────────── payouts.js ──────────────────────────────────
+// Admin-only sweep. The protocol keeps payoutFeeBps of the gross — the user's
+// balance is debited in full and the net is transferred. The portal's
+// on-demand path (/v1/web/payouts/request) is the user-facing route; this
+// sweep would drain balances people may be holding for the $DWELL claim, so
+// never cron it without a deliberate call.
 async function runPayouts() {
   const users = await repo.payableUsers(config.payoutThresholdCents * 1000);
   const results: any[] = [];
   for (const user of users) {
-    const amountCents = Math.floor(user.balance / 1000);
-    if (amountCents < config.payoutThresholdCents) continue;
+    const grossCents = Math.floor(user.balance / 1000);
+    if (grossCents < config.payoutThresholdCents) continue;
+    const feeCents = Math.ceil((grossCents * config.payoutFeeBps) / 10000);
+    const netCents = grossCents - feeCents;
+    if (netCents <= 0) continue;
     try {
       const transfer = await stripe.createTransfer({
-        amount: amountCents, currency: "usd", destination: user.stripe_account_id,
+        amount: netCents, currency: "usd", destination: user.stripe_account_id,
         transfer_group: `payout_${user.id}_${crypto.randomUUID()}`,
       });
-      await repo.recordPayout(user.id, amountCents, transfer.id);
-      results.push({ userId: user.id, amountCents, transferId: transfer.id, ok: true });
+      await repo.recordPayout(user.id, grossCents, netCents, feeCents, transfer.id);
+      results.push({ userId: user.id, grossCents, netCents, feeCents, transferId: transfer.id, ok: true });
     } catch (err: any) {
-      results.push({ userId: user.id, amountCents, ok: false, error: err.message });
+      results.push({ userId: user.id, grossCents, netCents, feeCents, ok: false, error: err.message });
     }
   }
   return { paid: results.filter((r) => r.ok).length, results };
@@ -2977,7 +3088,7 @@ route("GET", "/v1/me/affiliate", async (ctx: any) => {
     linked: true,
     email: user.email,
     code: aff.code,
-    link: `${config.siteUrl}/redeem.html?ref=${aff.code}`,
+    link: `${config.siteUrl}/portal.html?ref=${aff.code}`,
     rewardPct,
     crewSize: CREW_SIZE,
     attributedCount: crew.count,
@@ -3001,7 +3112,7 @@ route("POST", "/v1/me/affiliate/invite", async (ctx: any) => {
     return json(400, { error: "you can't invite your own email" });
   }
   const aff = await repo.getOrCreateAffiliate(user.id);
-  const link = `${config.siteUrl}/redeem.html?ref=${aff.code}`;
+  const link = `${config.siteUrl}/portal.html?ref=${aff.code}`;
   const invite = await repo.createReferralInvite(user.id, email, aff.code);
   await mailer.sendCrewInviteEmail(email, { inviterEmail: user.email, link, rewardPct: config.affiliateRewardBps / 100 });
   return json(200, { ok: true, sent: true, invite: { email: invite.email, status: invite.status, createdAt: invite.sent_at } });
@@ -3010,7 +3121,7 @@ route("POST", "/v1/me/affiliate/invite", async (ctx: any) => {
 // ── gift card catalog & device-scoped redemption ──
 route("GET", "/v1/giftcards", async () => json(200, {
   plans: Object.values(GIFT_PLANS).map((p: any) => ({ id: p.id, name: p.name, tagline: p.tagline, monthlyUsd: p.monthlyCents / 100 })),
-  months: GIFT_MONTHS, deliveryWindowHours: 48,
+  months: GIFT_MONTHS, redemptionFeeBps: config.redemptionFeeBps, deliveryWindowHours: 48,
 }));
 // Redemption is a website-only, logged-in flow (see AGENTS.md): credits are
 // cashed out at /v1/web/redemptions behind a web session. The old
@@ -3020,7 +3131,7 @@ route("GET", "/v1/giftcards", async () => json(200, {
 route("POST", "/v1/redemptions", async () => {
   return json(410, {
     error: "redeem on the website after signing in",
-    redeemUrl: `${config.siteUrl}/redeem.html`,
+    redeemUrl: `${config.siteUrl}/portal.html`,
   });
 });
 
@@ -3073,7 +3184,7 @@ function buildAppleClientSecret() {
 
 // ── Google OAuth ──
 route("GET", "/v1/auth/google", async (ctx: any) => {
-  if (!config.googleClientId) return redirect(`${config.siteUrl}/redeem.html?login=no-google`);
+  if (!config.googleClientId) return redirect(`${config.siteUrl}/portal.html?login=no-google`);
   const params = new URLSearchParams({
     client_id: config.googleClientId, redirect_uri: `${config.apiBaseUrl}/v1/auth/google/callback`,
     response_type: "code", scope: "email profile", state: makeOAuthState(ctx.query.get("ref")),
@@ -3083,9 +3194,9 @@ route("GET", "/v1/auth/google", async (ctx: any) => {
 });
 route("GET", "/v1/auth/google/callback", async (ctx: any) => {
   const query = ctx.query;
-  if (query.get("error") || !query.get("code")) return redirect(`${config.siteUrl}/redeem.html?login=cancelled`);
+  if (query.get("error") || !query.get("code")) return redirect(`${config.siteUrl}/portal.html?login=cancelled`);
   const oauthState = verifyOAuthState(query.get("state"));
-  if (!oauthState) return redirect(`${config.siteUrl}/redeem.html?login=error`);
+  if (!oauthState) return redirect(`${config.siteUrl}/portal.html?login=error`);
   try {
     const tokRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -3100,16 +3211,16 @@ route("GET", "/v1/auth/google/callback", async (ctx: any) => {
       { email: gu.email, googleId: gu.sub, referralCode: oauthState.ref, emailVerified: gu.email_verified === true || gu.email_verified === "true" },
       config.webSessionTtlMs
     );
-    return redirect(`${config.siteUrl}/redeem.html#session=${sessionToken}`);
+    return redirect(`${config.siteUrl}/portal.html#session=${sessionToken}`);
   } catch (err: any) {
     console.error("[dwell] google oauth:", err.message);
-    return redirect(`${config.siteUrl}/redeem.html?login=error`);
+    return redirect(`${config.siteUrl}/portal.html?login=error`);
   }
 });
 
 // ── Apple OAuth ──
 route("GET", "/v1/auth/apple", async (ctx: any) => {
-  if (!config.appleClientId) return redirect(`${config.siteUrl}/redeem.html?login=no-apple`);
+  if (!config.appleClientId) return redirect(`${config.siteUrl}/portal.html?login=no-apple`);
   const params = new URLSearchParams({
     client_id: config.appleClientId, redirect_uri: `${config.apiBaseUrl}/v1/auth/apple/callback`,
     response_type: "code", scope: "email", response_mode: "query", state: makeOAuthState(ctx.query.get("ref")),
@@ -3118,9 +3229,9 @@ route("GET", "/v1/auth/apple", async (ctx: any) => {
 });
 route("GET", "/v1/auth/apple/callback", async (ctx: any) => {
   const query = ctx.query;
-  if (query.get("error") || !query.get("code")) return redirect(`${config.siteUrl}/redeem.html?login=cancelled`);
+  if (query.get("error") || !query.get("code")) return redirect(`${config.siteUrl}/portal.html?login=cancelled`);
   const oauthState = verifyOAuthState(query.get("state"));
-  if (!oauthState) return redirect(`${config.siteUrl}/redeem.html?login=error`);
+  if (!oauthState) return redirect(`${config.siteUrl}/portal.html?login=error`);
   try {
     const secret = buildAppleClientSecret();
     if (!secret) throw new Error("Apple credentials not configured");
@@ -3136,10 +3247,10 @@ route("GET", "/v1/auth/apple/callback", async (ctx: any) => {
       { email: claims.email || null, appleId: claims.sub, referralCode: oauthState.ref, emailVerified: claims.email_verified === true || claims.email_verified === "true" },
       config.webSessionTtlMs
     );
-    return redirect(`${config.siteUrl}/redeem.html#session=${sessionToken}`);
+    return redirect(`${config.siteUrl}/portal.html#session=${sessionToken}`);
   } catch (err: any) {
     console.error("[dwell] apple oauth:", err.message);
-    return redirect(`${config.siteUrl}/redeem.html?login=error`);
+    return redirect(`${config.siteUrl}/portal.html?login=error`);
   }
 });
 
@@ -3159,8 +3270,8 @@ route("POST", "/v1/web/login", async (ctx: any) => {
 });
 route("GET", "/v1/web/session", async (ctx: any) => {
   const result = await repo.createWebSessionFromToken(ctx.query.get("token"), config.webSessionTtlMs);
-  if (!result) return redirect(`${config.siteUrl}/redeem.html?login=expired`);
-  return redirect(`${config.siteUrl}/redeem.html#session=${result.sessionToken}`);
+  if (!result) return redirect(`${config.siteUrl}/portal.html?login=expired`);
+  return redirect(`${config.siteUrl}/portal.html#session=${result.sessionToken}`);
 });
 route("GET", "/v1/web/me", async (ctx: any) => {
   const user = await repo.userForSession(sessionFrom(ctx));
@@ -3223,7 +3334,7 @@ route("GET", "/v1/web/referrals", async (ctx: any) => {
   const code = await repo.getOrCreateReferralCode(user.id);
   const stats = await repo.referralStats(user.id);
   return json(200, {
-    code, link: `${config.siteUrl}/redeem.html?ref=${code}`,
+    code, link: `${config.siteUrl}/portal.html?ref=${code}`,
     rewardUsd: config.referralRewardCents / 100, cap: config.referralCap,
     rewardedCount: stats.rewardedCount, pendingCount: stats.pendingCount,
     invitedCount: stats.invitedCount,
@@ -3259,7 +3370,7 @@ route("POST", "/v1/web/referrals/invite", async (ctx: any) => {
     return json(400, { error: "You can't refer your own email" });
   }
   const code = await repo.getOrCreateReferralCode(user.id);
-  const link = `${config.siteUrl}/redeem.html?ref=${code}`;
+  const link = `${config.siteUrl}/portal.html?ref=${code}`;
   const invite = await repo.createReferralInvite(user.id, email, code);
   // The invite row above is the onboarding gate and the source of truth: a
   // friend never has to act for the inviter to progress. Delivering the email
@@ -3297,7 +3408,7 @@ route("GET", "/v1/web/affiliate", async (ctx: any) => {
   return json(200, {
     enrolled: true,
     code: app.code,
-    link: app.code ? `${config.siteUrl}/redeem.html?ref=${app.code}` : null,
+    link: app.code ? `${config.siteUrl}/portal.html?ref=${app.code}` : null,
     socials: app.socials,
     rewardPct: app.rewardBps / 100,
     capPeople: app.capPeople,
@@ -3322,7 +3433,7 @@ route("POST", "/v1/web/affiliate/invite", async (ctx: any) => {
     return json(400, { error: "you can't invite your own email" });
   }
   const aff = await repo.getOrCreateAffiliate(user.id);
-  const link = `${config.siteUrl}/redeem.html?ref=${aff.code}`;
+  const link = `${config.siteUrl}/portal.html?ref=${aff.code}`;
   const invite = await repo.createReferralInvite(user.id, email, aff.code);
   await mailer.sendCrewInviteEmail(email, { inviterEmail: user.email, link, rewardPct: config.affiliateRewardBps / 100 });
   return json(200, { ok: true, sent: true, invite: { email: invite.email, status: invite.status, createdAt: invite.sent_at } });
@@ -3374,16 +3485,20 @@ route("POST", "/v1/web/redemptions", async (ctx: any) => {
   const months = parseInt(body.months, 10);
   const amountCents = plan ? giftPriceCents(plan.id, months) : null;
   if (!amountCents) return json(400, { error: "plan must be pro/max5x/max20x and months 1/3/6/12" });
+  // The protocol's cut is charged on top of face value: a $60 gift card costs
+  // $66 of balance, and the $6 fee lands platform-side in the ledger.
+  const feeCents = Math.ceil((amountCents * config.redemptionFeeBps) / 10000);
+  const totalCents = amountCents + feeCents;
   // Gift cards go only to the account's own email — never a request-supplied
   // address — so a stolen session can't redirect a cash-out to an attacker inbox.
   const recipientEmail = user.email;
   if (!recipientEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(recipientEmail)) return json(400, { error: "your account needs a verified email to redeem" });
   const balance = await repo.balanceForUser(user.id);
-  if (balance.balanceMillicents < amountCents * 1000) return json(403, { error: "insufficient credits", balanceUsd: balance.balanceMillicents / 100000, requiredUsd: amountCents / 100 });
+  if (balance.balanceMillicents < totalCents * 1000) return json(403, { error: "insufficient credits", balanceUsd: balance.balanceMillicents / 100000, requiredUsd: totalCents / 100, amountUsd: amountCents / 100, feeUsd: feeCents / 100 });
   const redemptionId = crypto.randomUUID();
   await mailer.sendGiftRedemptionEmail(config.giftFulfillmentEmail, { redemptionId, planName: plan.name, months, amountUsd: amountCents / 100, recipientEmail });
   const recorded = await repo.recordGiftRedemptionForUser({
-    id: redemptionId, userId: user.id, plan: plan.id, months, amountCents, recipientEmail,
+    id: redemptionId, userId: user.id, plan: plan.id, months, amountCents, feeCents, recipientEmail,
   });
   if (!recorded) return json(409, { error: "insufficient credits" });
   // User-facing emails are best-effort — a mail hiccup must never fail a
@@ -3393,11 +3508,100 @@ route("POST", "/v1/web/redemptions", async (ctx: any) => {
   } catch (err: any) { console.error("[dwell] redemption confirmation email failed:", err?.message); }
   if (recorded.reward?.referrerEmail) {
     try {
-      await mailer.sendReferralRewardEmail(recorded.reward.referrerEmail, { rewardUsd: recorded.reward.rewardMillicents / 100000, link: `${config.siteUrl}/redeem.html` });
+      await mailer.sendReferralRewardEmail(recorded.reward.referrerEmail, { rewardUsd: recorded.reward.rewardMillicents / 100000, link: `${config.siteUrl}/portal.html` });
     } catch (err: any) { console.error("[dwell] referral reward email failed:", err?.message); }
   }
   const after = await repo.balanceForUser(user.id);
-  return json(200, { ok: true, redemptionId, plan: plan.id, months, amountUsd: amountCents / 100, balanceUsd: after.balanceMillicents / 100000, deliveryWindowHours: 48 });
+  return json(200, { ok: true, redemptionId, plan: plan.id, months, amountUsd: amountCents / 100, feeUsd: feeCents / 100, totalUsd: totalCents / 100, balanceUsd: after.balanceMillicents / 100000, deliveryWindowHours: 48 });
+});
+
+// ── web payouts: on-demand cash out (Stripe Connect) ──
+// Mirrors the redemption trust model: money out only behind a web session.
+// Debit-first — the balance is charged inside a transaction before the Stripe
+// transfer fires, and reversed if the transfer fails, so a crash between the
+// two can never pay twice. The protocol keeps payoutFeeBps of the gross.
+route("POST", "/v1/web/connect/onboard", async (ctx: any) => {
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  if (!user.email_verified) return json(403, { error: "verify your email first" });
+  let accountId = user.stripe_account_id;
+  if (!accountId) {
+    const account = await stripe.createAccount({ type: "express", email: user.email, capabilities: { transfers: { requested: true } }, business_type: "individual" });
+    accountId = account.id;
+    await repo.setStripeAccount(user.id, accountId);
+  }
+  const link = await stripe.createAccountLink({
+    account: accountId, type: "account_onboarding",
+    refresh_url: `${config.siteUrl}/portal.html?onboarding=retry`,
+    return_url: `${config.siteUrl}/portal.html?onboarding=done`,
+  });
+  return json(200, { onboardingUrl: link.url });
+});
+
+route("GET", "/v1/web/payouts", async (ctx: any) => {
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  const balance = await repo.balanceForUser(user.id);
+  return json(200, {
+    payoutsEnabled: !!user.payouts_enabled,
+    hasStripeAccount: !!user.stripe_account_id,
+    thresholdUsd: config.payoutThresholdCents / 100,
+    payoutFeeBps: config.payoutFeeBps,
+    balanceUsd: balance.balanceMillicents / 100000,
+    payouts: await repo.payoutsForUser(user.id),
+  });
+});
+
+// One attempt per user per minute, in-process. Belt-and-braces only (edge
+// isolates don't share this map) — the debit-first transaction in
+// recordPayoutRequest is the real double-spend guard.
+const lastPayoutAttempt = new Map<string, number>();
+route("POST", "/v1/web/payouts/request", async (ctx: any) => {
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  if (!user.stripe_account_id || !user.payouts_enabled) {
+    return json(403, { error: "set up payouts with Stripe first" });
+  }
+  const last = lastPayoutAttempt.get(user.id) || 0;
+  if (Date.now() - last < 60000) return json(429, { error: "try again in a minute" });
+  lastPayoutAttempt.set(user.id, Date.now());
+
+  const balance = await repo.balanceForUser(user.id);
+  const grossCents = Math.floor(balance.balanceMillicents / 1000); // pay whole cents only
+  if (grossCents < config.payoutThresholdCents) {
+    return json(403, {
+      error: "balance below payout threshold",
+      thresholdUsd: config.payoutThresholdCents / 100,
+      balanceUsd: balance.balanceMillicents / 100000,
+    });
+  }
+  const feeCents = Math.ceil((grossCents * config.payoutFeeBps) / 10000);
+  const netCents = grossCents - feeCents;
+  if (netCents <= 0) return json(403, { error: "balance too small to pay out" });
+
+  const requested = await repo.recordPayoutRequest({ userId: user.id, grossCents, feeCents });
+  if (!requested) return json(409, { error: "insufficient credits" });
+
+  try {
+    const transfer = await stripe.createTransfer({
+      amount: netCents, currency: "usd", destination: user.stripe_account_id,
+      transfer_group: `payout_${user.id}_${requested.id}`,
+    });
+    await repo.finalizePayout(requested.id, { transferId: transfer.id });
+  } catch (err: any) {
+    console.error("[dwell] payout transfer failed:", err?.message);
+    await repo.finalizePayout(requested.id, { failed: true, userId: user.id, grossCents, feeCents });
+    return json(502, { error: "transfer failed — your balance was not charged" });
+  }
+
+  const after = await repo.balanceForUser(user.id);
+  return json(200, {
+    ok: true,
+    grossUsd: grossCents / 100,
+    feeUsd: feeCents / 100,
+    netUsd: netCents / 100,
+    balanceUsd: after.balanceMillicents / 100000,
+  });
 });
 
 // ── moderation ──

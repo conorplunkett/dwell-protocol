@@ -25,6 +25,8 @@ function loadConfig(env = process.env) {
     dailyClickCap: parseInt(env.DAILY_CLICK_CAP || "100", 10), // verified clicks per device per UTC day
     leadDailyCap: parseInt(env.LEAD_IP_DAILY_CAP || "100", 10), // bare-email waitlist captures per source IP per UTC day; 0 disables
     payoutThresholdCents: parseInt(env.PAYOUT_THRESHOLD_CENTS || "1000", 10), // $10
+    payoutFeeBps: parseInt(env.PAYOUT_FEE_BPS || "1000", 10), // protocol's cut of a cash payout, basis points (1000 = 10%)
+    redemptionFeeBps: parseInt(env.REDEMPTION_FEE_BPS || "1000", 10), // protocol's cut on gift-card redemptions, charged on top of face value
     referralRewardCents: parseInt(env.REFERRAL_REWARD_CENTS || "2000", 10), // $20 to the referrer
     referralCap: parseInt(env.REFERRAL_CAP || "10", 10), // max rewarded referrals per user
     affiliateRewardBps: parseInt(env.AFFILIATE_REWARD_BPS || "1000", 10), // affiliate's cut of an affiliated user's earnings, basis points (1000 = 10%)

@@ -7,8 +7,8 @@
 
 Rough-out of the PRD: a menu bar companion app that floats a small sponsor
 card over a supported AI desktop app — **Claude Desktop** or the **ChatGPT
-(OpenAI) desktop app** — while it's generating, and credits the user for
-qualified impressions. It never injects code into the app, never modifies its
+(OpenAI) desktop app** — while it's generating, and credits the user in
+**dwells** (1,000 dwells = $1.00 of earned ad value) for qualified impressions. It never injects code into the app, never modifies its
 files, and never reads prompts/responses.
 
 Both apps are Electron/Chromium shells, so the same Accessibility-tree walk
@@ -98,7 +98,7 @@ can't be forged), `GET /v1/me/earnings`. Point the app elsewhere with
 
 The Setup window (shown once on first launch, reopenable from the menu bar
 **Setup** item) is the Claude Design handoff onboarding — a 5-step flow
-(Welcome → How it works → Grant access → Save credits → All set). It's the
+(Welcome → How it works → Grant access → Save dwells → All set). It's the
 design's HTML/CSS/JS rendered in a `WKWebView`, living under
 `Sources/SponsorOverlay/Resources/onboarding/`:
 
@@ -305,11 +305,12 @@ them, but verify with `codesign --verify --deep --strict` before notarizing.
    assumptions. Run probe mode against both, see `AssistantDetector.swift`.
 2. Keychain for device credentials (UserDefaults in the rough-out).
 3. cbindgen FFI so the shell links `overlay-core` instead of the Swift port.
-4. In-app magic-link sign-in. The onboarding's "Save credits" step currently
-   opens DWELL's web sign-in (`dwellprotocol.com/redeem`) in the browser; email verify
+4. In-app magic-link sign-in. The onboarding's "Save dwells" step currently
+   opens DWELL's web sign-in (`dwellprotocol.com/portal`) in the browser; email verify
    exists server-side, so a native magic-link flow could replace the hop. Local
    frequency caps in the shell are also still TODO. App bundling + ad-hoc signing
    is done (`packaging/bundle.sh`); Developer ID signing + notarization still
    needs the paid Apple cert.
-5. Redemption catalog UI (server currently pays out via Stripe Connect;
-   PRD wants gift-card style redemptions too).
+5. In-app redemption UI. Redemption today happens in the web portal
+   (`dwellprotocol.com/portal`): $DWELL tokens at launch, Claude gift cards, or
+   cash via Stripe (10% protocol fee on gift cards and cash).

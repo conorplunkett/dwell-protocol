@@ -1,8 +1,11 @@
 // DWELL — signed-in portal (portal.html). Email magic-link or OAuth sign-in,
-// then the points dashboard: earnings, the activity ledger, the cash-out
-// preview, referrals, and install status. Points are the unit everywhere:
-// 1,000 points convert to 12,000 $DWELL at token launch; value floats with
-// the market (USD figures are earn-basis estimates, not a cash balance).
+// then the dashboard: earnings, the activity ledger, the redeem tab (gift
+// cards + cash payouts live, $DWELL claim previewed), referrals, and install
+// status. Dwells are the unit everywhere: 1,000 dwells convert to 12,000
+// $DWELL at token launch; value floats with the market. USD figures shown
+// next to dwells are earn-basis (what advertisers paid), not a cash balance —
+// the backend still speaks USD (balanceUsd etc.) and the conversion happens
+// at the display edge only.
 //
 // Dev mode — open portal.html?dev=1. The flag sticks in localStorage and the
 // whole portal renders from seeded, deterministic mock data with no backend
@@ -33,14 +36,14 @@ function isDev() {
   try { return localStorage.getItem(DEV_KEY) === "1"; } catch (e) { return false; }
 }
 
-// ---- formatters — mono-forward numbers, points first ----
+// ---- formatters — mono-forward numbers, dwells first ----
 const pts = (n) => Math.round(Number(n) || 0).toLocaleString();
 const usd = (n) => "$" + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const usdFromPoints = (p) => usd((Number(p) || 0) / 1000);
-// Signed points for ledger rows: credits read "+320 pts", debits "−2,000 pts".
+// Signed dwells for ledger rows: credits read "+320 dwells", debits "−2,000 dwells".
 const ptsSigned = (n) => {
   const v = Math.round(Number(n) || 0);
-  return (v < 0 ? "−" : "+") + Math.abs(v).toLocaleString() + " pts";
+  return (v < 0 ? "−" : "+") + Math.abs(v).toLocaleString() + " dwells";
 };
 
 // ---- seeded mock data (dev mode) ----
@@ -122,7 +125,9 @@ function buildMock() {
       earnedPoints: 6270, canApplyCode: false, upgraded: false, upgradeRequested: false,
     },
     sources: { chrome: true, claude_code: false, desktop: false },
-    summary: { balancePoints: 12450, pointsOutstanding: 3912400 },
+    // Balance affords a few gift cells (pro 1/3mo, max5x 1mo) so the dev-mode
+    // Redeem grid shows the enabled/disabled/selected states side by side.
+    summary: { balancePoints: 124500, pointsOutstanding: 3912400 },
   };
 }
 const MOCK = buildMock();
@@ -163,8 +168,58 @@ function mockGet(path) {
   }
   if (p === "/v1/web/sources") return { sources: MOCK.sources };
   if (p === "/v1/web/points/summary") return MOCK.summary;
+  if (p === "/v1/giftcards") {
+    return {
+      plans: [
+        { id: "pro", name: "Claude Pro", tagline: "Everyday Claude", monthlyUsd: 20 },
+        { id: "max5x", name: "Claude Max 5x", tagline: "5x more usage", monthlyUsd: 100 },
+        { id: "max20x", name: "Claude Max 20x", tagline: "20x more usage", monthlyUsd: 200 },
+      ],
+      months: [1, 3, 6, 12],
+      redemptionFeeBps: 1000,
+      deliveryWindowHours: 48,
+    };
+  }
+  if (p === "/v1/web/payouts") {
+    return {
+      payoutsEnabled: true, hasStripeAccount: true,
+      thresholdUsd: 10, payoutFeeBps: 1000,
+      balanceUsd: MOCK.summary.balancePoints / 1000,
+      payouts: [{ amountUsd: 8.1, status: "paid", createdAt: "2026-06-28T15:00:00Z" }],
+    };
+  }
   // Non-empty inventory keeps the out-of-stock notice hidden in dev mode.
   if (p === "/v1/ads") return { ads: [{ id: "mock-ad" }] };
+  return {};
+}
+
+// Dev-mode responses for the POST paths the redeem tab writes. The math
+// mirrors the server exactly (fee = ceil(face × bps/10000), net = gross − fee)
+// so screenshots and manual QA show real numbers.
+function mockPost(path, payload) {
+  const p = path.split("?")[0];
+  if (p === "/v1/web/redemptions") {
+    const monthly = { pro: 20, max5x: 100, max20x: 200 }[payload?.plan] || 20;
+    const faceCents = monthly * 100 * (parseInt(payload?.months, 10) || 1);
+    const feeCents = Math.ceil(faceCents / 10);
+    const spentPoints = (faceCents + feeCents) * 10;
+    MOCK.summary.balancePoints = Math.max(0, MOCK.summary.balancePoints - spentPoints);
+    return {
+      ok: true, redemptionId: "mock-redemption", plan: payload?.plan, months: payload?.months,
+      amountUsd: faceCents / 100, feeUsd: feeCents / 100, totalUsd: (faceCents + feeCents) / 100,
+      balanceUsd: MOCK.summary.balancePoints / 1000, deliveryWindowHours: 48,
+    };
+  }
+  if (p === "/v1/web/payouts/request") {
+    const grossCents = Math.floor(MOCK.summary.balancePoints / 10);
+    const feeCents = Math.ceil(grossCents / 10);
+    MOCK.summary.balancePoints = 0;
+    return {
+      ok: true, grossUsd: grossCents / 100, feeUsd: feeCents / 100,
+      netUsd: (grossCents - feeCents) / 100, balanceUsd: 0,
+    };
+  }
+  if (p === "/v1/web/connect/onboard") return { onboardingUrl: "#stripe-onboarding-mock" };
   return {};
 }
 
@@ -212,6 +267,16 @@ function mockGet(path) {
   showError(msgs[login] || "Sign-in failed. Try again.");
 })();
 
+// Back-from-Stripe-onboarding marker (?onboarding=done|retry). Captured and
+// scrubbed like the OAuth error; consumed by enterDashboard.
+let pendingOnboardingReturn = "";
+(function captureOnboardingReturn() {
+  const p = new URLSearchParams(location.search).get("onboarding");
+  if (!p) return;
+  pendingOnboardingReturn = p;
+  history.replaceState(null, "", location.pathname);
+})();
+
 // Referral code from ?ref= (shared link). Stash it, prefill the field, scrub URL.
 let referralCode = "";
 (function captureRef() {
@@ -244,7 +309,7 @@ async function apiGet(path) {
   }
 }
 async function apiPost(path, payload) {
-  if (isDev()) return { status: 200, body: {} };
+  if (isDev()) return { status: 200, body: mockPost(path, payload) };
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       method: "POST",
@@ -719,18 +784,19 @@ let accountEmail = "";
 // gate still stands once the survey is submitted.
 let onboardNeedsReferral = false;
 
-// Paint the points balance everywhere it appears: the Earnings header block
-// and the Cash out tab's summary tiles. One number, one conversion rule.
+// Paint the dwells balance everywhere it appears: the Earnings header block
+// and the Redeem tab's header. One number, one conversion rule. The gift grid
+// re-renders because affordability depends on the balance.
 function setBalance(points) {
   balancePoints = Math.round(Number(points) || 0);
-  const big = `${pts(balancePoints)} <span class="balance-unit">points</span>`;
+  const big = `${pts(balancePoints)} <span class="balance-unit">dwells</span>`;
   $("balance").innerHTML = big;
   $("co-points").innerHTML = big;
   const conv = `= ${usdFromPoints(balancePoints)} of earned ad value`;
   $("balance-usd").textContent = conv;
   $("co-usd").textContent = conv;
-  $("co-sum-points").textContent = pts(balancePoints);
-  $("co-sum-usd").textContent = usdFromPoints(balancePoints);
+  renderGiftMenu();
+  updateGiftSummary();
 }
 
 // ---- points summary + points strip ----
@@ -741,6 +807,244 @@ async function loadPointsSummary() {
   if (status !== 200 || !body) return;
   if (body.balancePoints != null) setBalance(body.balancePoints);
   if (body.pointsOutstanding != null) $("reserve-points").textContent = pts(body.pointsOutstanding);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// REDEEM TAB — gift cards + cash payouts (the $DWELL claim card is
+// static until token launch). Prices are shown in dwells at face value
+// plus the protocol fee, mirroring exactly what the server charges.
+// ═══════════════════════════════════════════════════════════════════
+
+// ---- Claude gift cards ----
+let giftCatalog = null;
+let giftSelected = null;
+
+// Server math, replicated: fee = ceil(face × bps/10000) in cents; a cent is
+// ten dwells. Keeping the exact integer arithmetic here means the grid can
+// never advertise a price the server would refuse.
+function giftCost(monthlyUsd, months, feeBps) {
+  const faceCents = Math.round(monthlyUsd * 100) * months;
+  const feeCents = Math.ceil((faceCents * feeBps) / 10000);
+  const totalCents = faceCents + feeCents;
+  return { faceCents, feeCents, totalCents, dwells: totalCents * 10 };
+}
+
+async function loadGiftCatalog() {
+  const { status, body } = await apiGet("/v1/giftcards");
+  if (status !== 200 || !Array.isArray(body.plans)) return;
+  giftCatalog = body;
+  const badge = $("gift-fee-badge");
+  if (badge && body.redemptionFeeBps != null) {
+    badge.textContent = `includes ${Math.round(body.redemptionFeeBps / 100)}% protocol fee`;
+  }
+  renderGiftMenu();
+  updateGiftSummary();
+}
+
+function renderGiftMenu() {
+  const menu = $("gift-menu");
+  if (!menu || !giftCatalog) return;
+  const feeBps = giftCatalog.redemptionFeeBps ?? 1000;
+  menu.innerHTML = giftCatalog.plans
+    .map((p) => {
+      const cells = giftCatalog.months
+        .map((m) => {
+          const cost = giftCost(p.monthlyUsd, m, feeBps);
+          const afford = balancePoints >= cost.dwells;
+          const isSel = giftSelected && giftSelected.plan === p.id && giftSelected.months === m;
+          return (
+            `<button class="gift-cell${isSel ? " sel" : ""}" type="button" ` +
+            `data-plan="${p.id}" data-months="${m}" data-dwells="${cost.dwells}" data-name="${p.name}" ` +
+            `${afford ? "" : "disabled"}>` +
+            `<span class="gc-term">${m} mo</span>` +
+            `<span class="gc-price">${pts(cost.dwells)}</span>` +
+            `</button>`
+          );
+        })
+        .join("");
+      return (
+        `<div class="gift-row">` +
+        `<div class="gift-plan"><span class="gp-name">${p.name}</span>` +
+        `<span class="gp-tag">${p.tagline} · $${p.monthlyUsd}/mo face value</span></div>` +
+        `<div class="gift-cells">${cells}</div>` +
+        `</div>`
+      );
+    })
+    .join("");
+  menu.querySelectorAll(".gift-cell:not([disabled])").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      giftSelected = {
+        plan: btn.dataset.plan,
+        months: parseInt(btn.dataset.months, 10),
+        dwells: parseInt(btn.dataset.dwells, 10),
+        planName: btn.dataset.name,
+      };
+      renderGiftMenu();
+      updateGiftSummary();
+    });
+  });
+}
+
+function updateGiftSummary() {
+  const btn = $("redeem-btn");
+  const summary = $("gift-summary");
+  if (!btn || !summary) return;
+  if (!giftSelected) {
+    summary.textContent = "Select a gift above to continue.";
+    btn.disabled = true;
+    return;
+  }
+  const termLabel = `${giftSelected.months} month${giftSelected.months > 1 ? "s" : ""}`;
+  summary.innerHTML =
+    `<strong>${giftSelected.planName}</strong> · ${termLabel} · ${pts(giftSelected.dwells)} dwells ` +
+    `<span class="sum-after">→ ${pts(balancePoints - giftSelected.dwells)} left</span>`;
+  btn.disabled = false;
+}
+
+$("redeem-btn")?.addEventListener("click", async () => {
+  if (!giftSelected) return;
+  const btn = $("redeem-btn");
+  btn.disabled = true;
+  const old = btn.textContent;
+  btn.textContent = "Redeeming…";
+  // recipient is the account email (server-enforced); not sent in the request.
+  const { status, body } = await apiPost("/v1/web/redemptions", {
+    plan: giftSelected.plan, months: giftSelected.months,
+  });
+  btn.textContent = old;
+  const result = $("redeem-result");
+  result.hidden = false;
+  if (status === 200) {
+    result.className = "redeem-result ok";
+    result.innerHTML =
+      `Done. Your <strong>${giftSelected.planName}</strong> gift card ` +
+      `(${giftSelected.months} month${giftSelected.months > 1 ? "s" : ""}) ` +
+      `is on its way to <strong>${accountEmail}</strong> within <strong>48 hours</strong>. ` +
+      `${pts(Math.round((body.totalUsd ?? 0) * 1000))} dwells spent.`;
+    giftSelected = null;
+    setBalance(Math.round((body.balanceUsd || 0) * 1000));
+    if (payoutInfo) payoutInfo.balanceUsd = body.balanceUsd || 0;
+    renderPayoutCard(); // the cash-out button quotes the balance too
+  } else if (status === 401) {
+    sessionExpired();
+  } else {
+    result.className = "redeem-result err";
+    result.textContent = body.error === "insufficient credits"
+      ? `You need ${pts((body.requiredUsd || 0) * 1000)} dwells but have ${pts((body.balanceUsd || 0) * 1000)}.`
+      : (body.error || "Something went wrong. Try again.");
+    btn.disabled = false;
+  }
+});
+
+// ---- cash payouts (Stripe Connect) ----
+let payoutInfo = null;
+
+async function loadPayoutStatus() {
+  const { status, body } = await apiGet("/v1/web/payouts");
+  if (status !== 200 || body.payoutFeeBps == null) return;
+  payoutInfo = body;
+  const badge = $("payout-fee-badge");
+  if (badge) {
+    badge.textContent =
+      `${Math.round(body.payoutFeeBps / 100)}% protocol fee · $${body.thresholdUsd} minimum`;
+  }
+  renderPayoutCard();
+}
+
+function renderPayoutCard() {
+  const el = $("payout-body");
+  if (!el || !payoutInfo) return;
+  const info = payoutInfo;
+  const balDwells = Math.round((info.balanceUsd ?? balancePoints / 1000) * 1000);
+  if (!info.hasStripeAccount) {
+    el.innerHTML =
+      `<div class="payout-state">` +
+      `<p>Connect a Stripe account to cash dwells out to your bank. Setup takes a couple of minutes; Stripe handles identity and bank details — we never see them.</p>` +
+      `<button class="btn-accent" id="payout-setup-btn" type="button">Set up payouts with Stripe</button>` +
+      `</div>`;
+  } else if (!info.payoutsEnabled) {
+    el.innerHTML =
+      `<div class="payout-state">` +
+      `<p>Stripe is reviewing your details. Payouts unlock automatically the moment Stripe confirms your account — usually minutes.</p>` +
+      `<button class="btn-accent" id="payout-setup-btn" type="button">Continue Stripe setup</button>` +
+      `</div>`;
+  } else {
+    const grossCents = Math.floor(balDwells / 10);
+    const feeCents = Math.ceil((grossCents * info.payoutFeeBps) / 10000);
+    const netCents = grossCents - feeCents;
+    const under = grossCents < Math.round((info.thresholdUsd || 10) * 100);
+    el.innerHTML =
+      `<div class="payout-state">` +
+      `<p>${under
+        ? `Payouts open at $${info.thresholdUsd} of dwells (${pts(info.thresholdUsd * 1000)}). Keep earning — your balance is ${pts(balDwells)} dwells.`
+        : `Your full balance cashes out in one transfer. After the ${Math.round(info.payoutFeeBps / 100)}% protocol fee, ${pts(balDwells)} dwells become <strong>${usd(netCents / 100)}</strong> in your bank.`
+      }</p>` +
+      `<button class="btn-accent" id="payout-request-btn" type="button" ${under ? "disabled" : ""}>` +
+      `Cash out → receive ${usd(netCents / 100)}</button>` +
+      `</div>`;
+  }
+  el.querySelector("#payout-setup-btn")?.addEventListener("click", startConnectOnboard);
+  el.querySelector("#payout-request-btn")?.addEventListener("click", requestPayout);
+
+  const hist = $("payout-history");
+  if (hist) {
+    const rows = info.payouts || [];
+    hist.hidden = rows.length === 0;
+    if (rows.length) {
+      hist.innerHTML =
+        `<h4>Past payouts</h4><ul>` +
+        rows.map((p) =>
+          `<li><span class="po-status ${p.status}">${p.status}</span>` +
+          `<span>${usd(p.amountUsd)}</span>` +
+          `<span>${new Date(p.createdAt).toLocaleDateString()}</span></li>`
+        ).join("") +
+        `</ul>`;
+    }
+  }
+}
+
+async function startConnectOnboard() {
+  const { status, body } = await apiPost("/v1/web/connect/onboard", {});
+  if (status === 200 && body.onboardingUrl) { location.href = body.onboardingUrl; return; }
+  if (status === 401) return sessionExpired();
+  const result = $("payout-result");
+  result.hidden = false;
+  result.className = "redeem-result err";
+  result.textContent = body.error || "Could not start Stripe setup. Try again.";
+}
+
+async function requestPayout() {
+  if (!payoutInfo) return;
+  const balDwells = Math.round((payoutInfo.balanceUsd || 0) * 1000);
+  const grossCents = Math.floor(balDwells / 10);
+  const feeCents = Math.ceil((grossCents * payoutInfo.payoutFeeBps) / 10000);
+  const netCents = grossCents - feeCents;
+  if (!confirm(
+    `Cash out ${pts(balDwells)} dwells?\n\nYou'll receive ${usd(netCents / 100)} after the ` +
+    `${Math.round(payoutInfo.payoutFeeBps / 100)}% protocol fee (${usd(feeCents / 100)}).`
+  )) return;
+  const btn = document.getElementById("payout-request-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Transferring…"; }
+  const { status, body } = await apiPost("/v1/web/payouts/request", {});
+  const result = $("payout-result");
+  result.hidden = false;
+  if (status === 200) {
+    result.className = "redeem-result ok";
+    result.innerHTML =
+      `Transfer sent — <strong>${usd(body.netUsd)}</strong> is on its way to your bank. ` +
+      `${pts(Math.round((body.grossUsd || 0) * 1000))} dwells spent ` +
+      `(${usd(body.feeUsd)} protocol fee).`;
+    setBalance(Math.round((body.balanceUsd || 0) * 1000));
+    loadPayoutStatus(); // refresh state + history
+  } else if (status === 401) {
+    sessionExpired();
+  } else {
+    result.className = "redeem-result err";
+    result.textContent =
+      status === 429 ? "One payout per minute — try again shortly."
+      : (body.error || "Transfer failed. Your balance was not charged.");
+    loadPayoutStatus();
+  }
 }
 
 // ---- earnings dashboard ----
@@ -1054,11 +1358,26 @@ async function boot() {
 // user path, the dev-mode path, and the moment a new user clears onboarding.
 function enterDashboard(email) {
   showPortalPage(email);
+  const rcpt = $("recipient-email");
+  if (rcpt) rcpt.textContent = email || "";
   setBalance(balancePoints); // paint whatever we know now; summary refines it
   loadEarnings("7d");
   retrieveActivity();  // auto-load the ledger so it's ready when the tab opens
   loadPointsSummary(); // balance + the points strip
+  loadGiftCatalog();   // redeem tab: gift grid prices
+  loadPayoutStatus();  // redeem tab: Stripe payout state + history
   checkInventory();
+  // Back from Stripe onboarding: land the user on the Redeem tab with a note.
+  if (pendingOnboardingReturn) {
+    showSection("cashout");
+    const note = $("payout-result");
+    if (note && pendingOnboardingReturn === "done") {
+      note.hidden = false;
+      note.className = "redeem-result ok";
+      note.textContent = "Stripe setup complete — payouts unlock as soon as Stripe confirms your account.";
+    }
+    pendingOnboardingReturn = "";
+  }
 }
 
 // The out-of-inventory notice: /v1/ads is public (no session needed) and

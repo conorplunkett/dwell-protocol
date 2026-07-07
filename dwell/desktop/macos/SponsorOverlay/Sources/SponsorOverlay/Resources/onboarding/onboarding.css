@@ -33,7 +33,7 @@
 .menubar .mb-spacer { flex: 1; }
 .menubar .mb-item { font-weight: 500; opacity: .82; font-variant-numeric: tabular-nums; }
 .menubar .mb-glyph { font-size: 13px; opacity: .7; }
-/* the F$ menu-bar mark — highlighted on the final step */
+/* the D$ menu-bar mark — highlighted on the final step */
 .mb-mark {
   width: 18px; height: 18px; border-radius: 5px;
   background: linear-gradient(180deg, var(--accent-grad-a), var(--accent-grad-b));

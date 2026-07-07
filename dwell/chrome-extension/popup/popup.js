@@ -3,11 +3,12 @@ const $ = (id) => document.getElementById(id);
 const setText = (id, val) => { const el = $(id); if (el) el.textContent = val; };
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-// A free month of Claude Pro = $20 (the entry redemption — see giftcards.js). The
-// fuel ring tracks credits earned toward that next free month, so progress stays
-// meaningful at real balances. (The design mock framed the ring around a $200
-// Claude Max month; we use the achievable Pro goal here — see the redesign notes.)
-const MONTH_TARGET = 20;
+// Viewers earn dwells: 1,000 dwells = $1.00 of earned ad value. The backend
+// stays dollar-denominated (balanceUsd etc.); we convert at the display edge
+// only. The fuel ring tracks dwells earned toward a 20,000-dwell monthly goal
+// (≈ $20 — a month of Claude Pro at the gift-card redemption), so progress
+// stays meaningful at real balances.
+const MONTH_TARGET_DWELLS = 20000;
 
 // Ring geometry — must match the <svg> in popup.html (r=69, stroke=14).
 const RING_R = 69;
@@ -27,6 +28,10 @@ function send(msg) {
 }
 
 const money = (n) => "$" + (n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Dwell display: API amounts arrive in USD; dwells = round(usd × 1000).
+const toDwells = (usd) => Math.round((usd || 0) * 1000);
+const dwells = (usd) => toDwells(usd).toLocaleString("en-US");
+const fmtDwells = (n) => (n || 0).toLocaleString("en-US");
 
 function setRing(pct) {
   const arc = $("ring-arc");
@@ -38,8 +43,8 @@ function setRing(pct) {
 
 // Latest state + link status, shared by refresh() and applyCrew() so the hero
 // can reflect both without re-fetching. Earning is gated on being linked to an
-// account (background.js), so while anonymous the hero shows $0 and a connect
-// CTA — never phantom credits the account-scoped web portal can't display.
+// account (background.js), so while anonymous the hero shows 0 dwells and a
+// connect CTA — never phantom dwells the account-scoped web portal can't display.
 let lastState = {};
 let lastLinked = false;
 
@@ -47,10 +52,11 @@ function paintHero() {
   const s = lastState;
   const earnings = lastLinked ? (s.earnings || 0) : 0;
 
-  // Hero ring — credits earned, and progress toward the next free month.
-  setText("earnings", money(earnings));
-  setText("goal", "of $" + MONTH_TARGET);
-  const pct = earnings / MONTH_TARGET;
+  // Hero ring — dwells earned, and progress toward this month's goal. The
+  // subtitle keeps the published legend visible: 1,000 dwells = $1.00.
+  setText("earnings", dwells(earnings));
+  setText("goal", "of " + fmtDwells(MONTH_TARGET_DWELLS) + " dwells");
+  const pct = toDwells(earnings) / MONTH_TARGET_DWELLS;
   setRing(pct);
   const progress = $("progress");
   if (progress) {
@@ -59,8 +65,8 @@ function paintHero() {
     } else {
       const whole = Math.min(100, Math.round(pct * 100));
       progress.innerHTML = whole >= 100
-        ? "<b>Ready</b> — redeem a free month of Claude"
-        : `<b>${whole}%</b> toward a free month of Claude`;
+        ? `<b>Ready</b> — redeem your dwells · ≈ ${money(earnings)}`
+        : `<b>${whole}%</b> of ${fmtDwells(MONTH_TARGET_DWELLS)} dwells this month · ≈ ${money(earnings)}`;
     }
   }
 
@@ -70,7 +76,7 @@ function paintHero() {
   // ad watched — surfacing impressions here read as "24 ads" for a single ad.
   setText("adviews", (s.adViews || 0).toLocaleString());
   const days = Math.max(1, Math.round((Date.now() - (s.installedAt || Date.now())) / 86400000));
-  setText("perday", money(earnings / days));
+  setText("perday", dwells(earnings / days));
 }
 
 async function refresh() {
@@ -97,14 +103,14 @@ async function refresh() {
 // invite, or an open invite form to add the next friend.
 const CREW_SIZE = 10;
 
-// A joined friend: what they've generated and the 10% it earned you.
+// A joined friend: the dwells they've generated and the 10% cut it earned you.
 function friendSlot(f) {
-  const cut = `<div class="cut"><div class="v">+${esc(money(f.youUsd || 0))}</div><div class="k">your 10%</div></div>`;
+  const cut = `<div class="cut"><div class="v">+${esc(dwells(f.youUsd || 0))}</div><div class="k">dwells · your 10%</div></div>`;
   return (
     `<div class="friend">` +
     `<div class="meta">` +
     `<div class="nm">${esc(f.name || "a friend")}</div>` +
-    `<div class="sub">generated <b>${esc(money(f.generatedUsd || 0))}</b> in credits</div>` +
+    `<div class="sub">generated <b>${esc(dwells(f.generatedUsd || 0))} dwells</b></div>` +
     `</div>${cut}</div>`
   );
 }
@@ -224,7 +230,7 @@ function applyCrew(crew) {
   setText("crew-label", `Your crew · ${filled} of ${size}`);
   if (sum) {
     if (crew.creditedUsd > 0) {
-      sum.textContent = `+${money(crew.creditedUsd)} to you`;
+      sum.textContent = `+${dwells(crew.creditedUsd)} dwells to you`;
       sum.hidden = false;
     } else {
       sum.hidden = true;
@@ -256,7 +262,7 @@ async function primeCrewFromCache() {
 // panel flips to linked on the next poll.
 if ($("signin-btn")) {
   $("signin-btn").addEventListener("click", () => {
-    chrome.tabs.create({ url: "https://dwellprotocol.com/redeem.html" });
+    chrome.tabs.create({ url: "https://dwellprotocol.com/portal" });
   });
 }
 

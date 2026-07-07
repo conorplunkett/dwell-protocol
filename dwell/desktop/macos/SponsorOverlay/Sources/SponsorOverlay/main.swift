@@ -207,7 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             linkItem.action = nil // info only (auto-disabled/greyed)
             linkItem.target = nil
         case .some(false):
-            linkItem.title = "⚠ Link your account to keep credits…"
+            linkItem.title = "⚠ Link your account to keep your dwells…"
             linkItem.action = #selector(linkAccount)
             linkItem.target = self
         case .none:
@@ -240,12 +240,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// "Balance: $X.XX" with the dollar amount in bold.
+    /// "Balance: 12,345 dwells" with the dwell amount in bold. The API stays
+    /// USD-denominated (balanceUsd); dwells = round(usd × 1000), thousands-
+    /// separated (1,000 dwells = $1.00 of earned ad value).
     private static func balanceTitle(amountUsd: Double) -> NSAttributedString {
         let base = NSFont.menuFont(ofSize: 0)
         let bold = NSFontManager.shared.convert(base, toHaveTrait: .boldFontMask)
+        let dwellCount = Int((amountUsd * 1000).rounded())
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        let formatted = formatter.string(from: NSNumber(value: dwellCount)) ?? String(dwellCount)
         let s = NSMutableAttributedString(string: "Balance: ", attributes: [.font: base])
-        s.append(NSAttributedString(string: String(format: "$%.2f", amountUsd), attributes: [.font: bold]))
+        s.append(NSAttributedString(string: "\(formatted) dwells", attributes: [.font: bold]))
         return s
     }
 
@@ -494,7 +500,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshAccessibilityState()
     }
 
-    // Brand "F$" wordmark for the menu bar, rendered once per state: a hollow
+    // Brand "D$" wordmark for the menu bar, rendered once per state: a hollow
     // wireframe outline of the app-icon chip (tools/gen-icons.py) as a
     // monochrome template image, so the menu bar tints it (white on dark, dark
     // on light) rather than the filled coral.
@@ -505,9 +511,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var iconShowsWarning: Bool?
 
     /// Reflects Accessibility-permission state in the menu (row visibility) and
-    /// the status icon (the brand "F$" mark, badged amber when access is missing
+    /// the status icon (the brand "D$" mark, badged amber when access is missing
     /// OR the account isn't linked) so the user notices before wondering why
-    /// nothing shows / where their credits went. Cheap; runs each tick + on open.
+    /// nothing shows / where their dwells went. Cheap; runs each tick + on open.
     private func refreshAccessibilityState() {
         let trusted = demoMode || AXIsProcessTrusted()
         accessibilityItem?.isHidden = trusted
@@ -519,8 +525,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Draws the DWELL "F$" menu-bar mark as a hollow wireframe: a stroked
-    /// rounded-rect chip (the app-icon silhouette) with the monospace "F$"
+    /// Draws the DWELL "D$" menu-bar mark as a hollow wireframe: a stroked
+    /// rounded-rect chip (the app-icon silhouette) with the monospace "D$"
     /// inside. Returned as a template image — drawn in opaque black and tinted
     /// by the menu bar, so it shows white on the usual dark bar and dark on a
     /// light one, never coloured. When `warning` is set (Accessibility not
@@ -528,7 +534,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func makeStatusIcon(warning: Bool) -> NSImage {
         let height: CGFloat = 16
         let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .bold)
-        let text = "F$" as NSString
+        let text = "D$" as NSString
         // Template images are masked by alpha and tinted by the system, so the
         // ink colour itself is irrelevant — draw in opaque black.
         let ink = NSColor.black
@@ -569,7 +575,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openRedeem() {
-        NSWorkspace.shared.open(URL(string: "https://dwellprotocol.com/redeem")!)
+        NSWorkspace.shared.open(URL(string: "https://dwellprotocol.com/portal")!)
     }
 
     // MARK: sponsor-card height offset (per-app user setting)
@@ -732,7 +738,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: setup / onboarding window
     //
     // The 5-step onboarding (Welcome → How it works → Grant access → Save
-    // credits → All set) is the Claude Design handoff, rendered pixel-for-pixel
+    // dwells → All set) is the Claude Design handoff, rendered pixel-for-pixel
     // in a WKWebView from the bundled Resources/onboarding/* assets. The web UI
     // is wired to real app state through a JS↔Swift bridge: it opens the
     // Accessibility pane, reflects the live permission, toggles launch-at-login,
@@ -872,12 +878,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Open DWELL's real web sign-in so the device can be linked to an account
-    /// (credits already accrue to the anonymous device until then). The device
+    /// (dwells already accrue to the anonymous device until then). The device
     /// creds ride along in the URL **fragment** (never sent to a server, scrubbed
-    /// by redeem.js on arrival) so the page can POST /v1/devices/link once the
-    /// user is signed in — the same link the extension performs.
+    /// by the portal page on arrival) so the page can POST /v1/devices/link once
+    /// the user is signed in — the same link the extension performs.
     private func openWebSignin(email: String?, google: Bool) {
-        var comps = URLComponents(string: "https://dwellprotocol.com/redeem")!
+        var comps = URLComponents(string: "https://dwellprotocol.com/portal")!
         var items: [URLQueryItem] = []
         if let email, !email.isEmpty { items.append(URLQueryItem(name: "email", value: email)) }
         if google { items.append(URLQueryItem(name: "provider", value: "google")) }
@@ -899,23 +905,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         w.center()
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 440, height: 320))
-        let heading = NSTextField(labelWithString: "Earn Claude credits while you work")
+        let heading = NSTextField(labelWithString: "Earn dwells while you work")
         heading.font = .systemFont(ofSize: 16, weight: .bold)
         heading.frame = NSRect(x: 28, y: 268, width: 384, height: 24)
 
         let steps = NSTextField(wrappingLabelWithString: """
-        1.  Keep DWELL running — it lives in your menu bar (the F$ icon).
+        1.  Keep DWELL running — it lives in your menu bar (the D$ icon).
 
         2.  Open your preferred app — ChatGPT or Claude — and grant \
         Accessibility access if prompted (System Settings ▸ Privacy & \
         Security ▸ Accessibility).
 
-        3.  Start a response, then open the menu bar F$ icon and drag \
+        3.  Start a response, then open the menu bar D$ icon and drag \
         “Card height” until the sponsor card overlaps the app’s thinking \
         icon. Each app remembers its own height.
 
         4.  Done — the card appears only while the assistant is generating, \
-        and your credits build automatically.
+        and your dwells build automatically (1,000 dwells = $1.00 of earned \
+        ad value).
         """)
         steps.font = .systemFont(ofSize: 13)
         steps.frame = NSRect(x: 28, y: 64, width: 384, height: 196)

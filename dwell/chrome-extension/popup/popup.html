@@ -11,8 +11,8 @@
   <!-- sticky header — brand stays visible while the popup scrolls -->
   <header class="top">
     <div class="pbrand">
-      <span class="plogo">F$</span>
-      <span class="pname">DWELL<span class="dim">.fyi</span></span>
+      <span class="plogo">D$</span>
+      <span class="pname">Dwell<span class="dim"> Protocol</span></span>
     </div>
     <label class="switch" title="Enable / disable earning">
       <input type="checkbox" id="enabled" />
@@ -29,7 +29,8 @@
     <span class="notice-text">Out of ad inventory right now - they will be back tomorrow.</span>
   </div>
 
-  <!-- HERO — the fuel ring is the product: credits earned toward a free month -->
+  <!-- HERO — the fuel ring is the product: dwells earned toward this month's goal
+       (1,000 dwells = $1.00 of earned ad value) -->
   <section class="hero">
     <div class="ring">
       <svg width="152" height="152" viewBox="0 0 152 152" aria-hidden="true">
@@ -47,11 +48,11 @@
                 stroke-dasharray="0.5 12" stroke-linecap="round" />
       </svg>
       <div class="ring-center">
-        <div class="amt" id="earnings">$0.00</div>
-        <div class="goal" id="goal">of $20</div>
+        <div class="amt" id="earnings">0</div>
+        <div class="goal" id="goal">of 20,000 dwells</div>
       </div>
     </div>
-    <div class="tagline" id="progress"><b>0%</b> toward a free month of Claude</div>
+    <div class="tagline" id="progress"><b>0%</b> of 20,000 dwells this month</div>
 
     <!-- the little Claude critter, chilling on top of the redeem button -->
     <div class="cta-guy">
@@ -81,10 +82,10 @@
         </svg>
       </div>
     </div>
-    <a class="cta" id="redeem-cta" href="https://dwellprotocol.com/redeem" target="_blank" rel="noopener">Redeem for Claude →</a>
+    <a class="cta" id="redeem-cta" href="https://dwellprotocol.com/portal" target="_blank" rel="noopener">Redeem dwells →</a>
   </section>
 
-  <!-- CREW — invite up to 10 friends; earn 10% of their points, forever -->
+  <!-- CREW — invite up to 10 friends; earn 10% of their dwells, forever -->
   <section class="sec" id="crew">
     <div class="sec-head">
       <span class="lbl" id="crew-label">Your crew</span>
@@ -94,14 +95,14 @@
     <!-- linked: 10 slots (joined friends, pending invites, and one invite form),
          rendered by popup.js into #crew-slots -->
     <div id="crew-linked" hidden>
-      <p class="crew-intro">Invite up to <b>10 friends</b> — earn <b id="crew-pct">10%</b> of every credit they make, forever.</p>
+      <p class="crew-intro">Invite up to <b>10 friends</b> — earn <b id="crew-pct">10%</b> of every dwell they earn, forever.</p>
       <div id="crew-slots"></div>
     </div>
 
     <!-- anonymous: value prop + sign-in. Opens the dwellprotocol.com login page; once
          signed in there, the device auto-links and this panel fills in. -->
     <div id="crew-signedout">
-      <p class="crew-empty">Earn <b>10%</b> of every credit your friends make — forever.</p>
+      <p class="crew-empty">Earn <b>10%</b> of every dwell your friends earn — forever.</p>
       <button class="invite" id="signin-btn"><span class="plus">+</span>Sign in to earn with your friends</button>
     </div>
   </section>
@@ -110,7 +111,7 @@
   <section class="sec">
     <div class="stats">
       <div class="stat"><div class="n" id="adviews">0</div><div class="k">ads watched</div></div>
-      <div class="stat"><div class="n" id="perday">$0.00</div><div class="k">per day</div></div>
+      <div class="stat"><div class="n" id="perday">0</div><div class="k">dwells / day</div></div>
     </div>
   </section>
 

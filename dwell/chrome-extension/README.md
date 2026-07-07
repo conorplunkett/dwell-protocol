@@ -1,11 +1,14 @@
 # Dwell Protocol — Chrome extension
 
-> Earn money while you use AI. Ads appear while **ChatGPT, Claude & Gemini** think — a share of revenue goes to you.
+> Earn dwells while you use AI. One sponsored line appears while **ChatGPT, Claude & Gemini** think — 1,000 dwells = $1.00 of earned ad value.
 
 While the assistant is thinking/streaming, DWELL shows one clickable
-sponsored line near the composer — and a share of the revenue becomes credits you
-redeem for Claude. It reads none of your prompts or the model's output, only the
-on/off "is it generating" state.
+sponsored line near the composer — and your share of the revenue accrues as
+**dwells** (1,000 dwells = $1.00 of earned ad value). Redeem them in the web
+portal at [dwellprotocol.com/portal](https://dwellprotocol.com/portal): $DWELL
+tokens at launch, Claude gift cards, or cash via Stripe (10% protocol fee on
+gift cards and cash). It reads none of your prompts or the model's output,
+only the on/off "is it generating" state.
 
 ## Install & test it live (developer mode)
 
@@ -33,7 +36,7 @@ Then verify it two ways:
   generic `aria-label*="stop"` catch-all), an `aria-busy` region, or a streaming
   marker — and shows the sponsored bar only while the assistant is working.
 - Every 5 seconds served is one **impression**; clicks are tracked but no longer
-  paid. DWELL points accrue at your share of the campaign pool, stored locally
+  paid. Dwells accrue at your share of the campaign pool, stored locally
   (`chrome.storage`), shown live in the popup.
 - The bar mounts **inline, at the streaming reply** (Claude's
   `data-is-streaming` bubble, ChatGPT's last assistant turn, Gemini's
