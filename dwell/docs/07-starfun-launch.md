@@ -1,5 +1,16 @@
 # star.fun launch — assessment and adaptation
 
+> **Update (July 2026):** the equity structure below is superseded. The project
+> adopts the **Bedrock framework**: DWELL confers **zero equity rights**; the
+> independent Bedrock Foundation holds preference equity (10–30%, founder's
+> election) plus a golden share in the project company, founders retain ≥70%
+> ordinary shares, and the only token→equity path is Bedrock's constitutional
+> buyout (≥30% supply triggers a mandatory buyout at 7-day TWAP × 1.30;
+> acquirer must be accredited and pass KYC/AML). References below to
+> "$1M company valuation / tokens = 8.3% of the company" describe the prior
+> star.fun-native structure and no longer apply. ✎ Confirm Bedrock preference
+> percentage and star.fun × Bedrock integration mechanics before the raise.
+
 Decision doc for launching DWELL on [star.fun](https://star.fun) instead of the
 self-directed Base TGE in [06-launch-checklist.md](06-launch-checklist.md).
 Research date: July 2026 — the platform is ~13 months old and its mechanics
