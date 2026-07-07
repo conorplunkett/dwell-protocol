@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = [
+    "programs/dwell-funder",
+    "programs/mock-jupiter-swap",
+]
