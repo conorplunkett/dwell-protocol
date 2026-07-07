@@ -188,7 +188,8 @@ function mockGet(path) {
       payouts: [{ amountUsd: 8.1, status: "paid", createdAt: "2026-06-28T15:00:00Z" }],
     };
   }
-  // Non-empty inventory keeps the out-of-stock notice hidden in dev mode.
+  // Ad-notice banner stays hidden in dev mode (admin-controlled in prod).
+  if (p === "/v1/config") return { adNoticeVisible: false };
   if (p === "/v1/ads") return { ads: [{ id: "mock-ad" }] };
   return {};
 }
@@ -412,16 +413,6 @@ function showSection(name) {
 $("dash-tabs").addEventListener("click", (e) => {
   const tab = e.target.closest(".dash-tab");
   if (tab) showSection(tab.dataset.section);
-});
-
-// ---- wallet chip + modal (mock — no web3 libraries, no live calls) ----
-$("wallet-chip").addEventListener("click", () => { $("wallet-modal").hidden = false; });
-$("wallet-modal-close").addEventListener("click", () => { $("wallet-modal").hidden = true; });
-$("wallet-modal").addEventListener("click", (e) => {
-  if (e.target === $("wallet-modal")) $("wallet-modal").hidden = true;
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") $("wallet-modal").hidden = true;
 });
 
 // ---- install tab: per-service "active" status ----
@@ -787,9 +778,6 @@ function setBalance(points) {
   const big = `${pts(balancePoints)} <span class="balance-unit">dwells</span>`;
   $("balance").innerHTML = big;
   $("co-points").innerHTML = big;
-  const conv = `= ${usdFromPoints(balancePoints)} of earned ad value`;
-  $("balance-usd").textContent = conv;
-  $("co-usd").textContent = conv;
   renderGiftMenu();
   updateGiftSummary();
 }
@@ -801,7 +789,6 @@ async function loadPointsSummary() {
   const { status, body } = await apiGet("/v1/web/points/summary");
   if (status !== 200 || !body) return;
   if (body.balancePoints != null) setBalance(body.balancePoints);
-  if (body.pointsOutstanding != null) $("reserve-points").textContent = pts(body.pointsOutstanding);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -935,6 +922,10 @@ $("redeem-btn")?.addEventListener("click", async () => {
 let payoutInfo = null;
 
 async function loadPayoutStatus() {
+  // Cash-out is disabled pre-launch — the Redeem tab shows a static "coming
+  // soon" state (see #payout-body in portal.html). Skip the live Stripe
+  // status fetch/render entirely so it can't overwrite that state.
+  return;
   const { status, body } = await apiGet("/v1/web/payouts");
   if (status !== 200 || body.payoutFeeBps == null) return;
   payoutInfo = body;
@@ -1213,7 +1204,7 @@ function renderActivity() {
   $("act-count").textContent = `${rows.length} of ${activityRows.length} rows`;
 
   if (!activityRows.length) {
-    body.innerHTML = `<div class="act-empty"><p>No entries yet. Watch a sponsored line while your assistant thinks to start earning points.</p></div>`;
+    body.innerHTML = `<div class="act-empty"><p>No entries yet.</p></div>`;
     if (pager) pager.hidden = true;
     return;
   }
@@ -1375,14 +1366,14 @@ function enterDashboard(email) {
   }
 }
 
-// The out-of-inventory notice: /v1/ads is public (no session needed) and
-// returns an empty list whenever the auction has no funded campaign to serve.
-// Mirrors the same check in the extension popup.
+// The ad-notice banner is admin-controlled: /v1/config (public, no session
+// needed) carries an `adNoticeVisible` flag flipped from the admin dashboard.
+// Hidden by default; shown only when an admin turns it on.
 async function checkInventory() {
   try {
-    const res = await apiGet("/v1/ads");
-    const hasInventory = res.status === 200 && Array.isArray(res.body.ads) && res.body.ads.length > 0;
-    if ($("inventory-notice")) $("inventory-notice").hidden = hasInventory;
+    const res = await apiGet("/v1/config");
+    const show = res.status === 200 && res.body && res.body.adNoticeVisible === true;
+    if ($("inventory-notice")) $("inventory-notice").hidden = !show;
   } catch (_) {}
 }
 
