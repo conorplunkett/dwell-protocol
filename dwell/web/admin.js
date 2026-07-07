@@ -44,6 +44,11 @@ function safeHref(url) {
 }
 const usd = (n) => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const usd0 = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("en-US"); // whole-dollar (CPM)
+// DWELL user-side value is denominated in POINTS: 1,000 points = $1.00 of earned
+// ad value (backed 1:1 by the USDC reserve). The API returns these balances in
+// USD, so points = usd × 1,000. Use pts() for anything a viewer earns/holds;
+// keep usd() for real money (advertiser spend, platform fees, Stripe payouts).
+const pts = (n) => num(Math.round((Number(n) || 0) * 1000)) + " pts";
 const num = (n) => (Number(n) || 0).toLocaleString("en-US");
 const pct = (r) => (r == null ? "—" : (Number(r) * 100).toFixed(2) + "%");
 const usdOrDash = (n) => (n == null ? "—" : usd(n));
@@ -136,7 +141,6 @@ const TABS = [
   { id: "referrals", label: "Referrals", render: renderReferrals },
   { id: "affiliates", label: "Affiliates", render: renderAffiliates },
   { id: "waitlist", label: "Waitlist", render: renderWaitlist },
-  { id: "landers", label: "Landers", render: renderLanders },
   { id: "devices", label: "Devices & Fraud", render: renderDevices },
   { id: "schema", label: "Schema", render: renderSchema },
   { id: "settings", label: "Settings", render: renderSettings },
@@ -207,12 +211,12 @@ async function renderOverview(view) {
   setServePill(d.serving);
   view.innerHTML = "";
   view.append(tiles([
-    { k: "Outstanding liability", v: usd(r.outstandingLiabilityUsd), s: "owed to users (credits)", accent: true },
-    { k: "Platform revenue", v: usd(r.platformFeeUsd), s: "your 10% fees" },
+    { k: "Points liability", v: pts(r.outstandingLiabilityUsd), s: usd(r.outstandingLiabilityUsd) + " owed to viewers", accent: true },
+    { k: "Platform revenue", v: usd(r.platformFeeUsd), s: "your fee" },
     { k: "Ads purchased", v: usd(r.adsPurchasedUsd), s: usd(r.refundedUsd) + " refunded" },
-    { k: "Paid out", v: usd(r.paidOutUsd), s: "to developers" },
-    { k: "Redeemed", v: usd(r.redeemedUsd), s: "gift cards" },
-    { k: "Pending redemptions", v: usd(d.pendingRedemptionsUsd), s: c.redemptions_pending + " to send" },
+    { k: "Cashed out", v: usd(r.paidOutUsd), s: "to viewers (USDC)" },
+    { k: "Redeemed for Claude", v: usd(r.redeemedUsd), s: "points → Claude plans" },
+    { k: "Pending redemptions", v: usd(d.pendingRedemptionsUsd), s: c.redemptions_pending + " to fulfill" },
     { k: "Users", v: num(c.users), s: num(c.users_with_email) + " with email" },
     { k: "Devices", v: num(c.devices), s: num(c.devices_active_1d) + " active 24h" },
     { k: "Active ads", v: num(c.campaigns_active), s: num(c.campaigns_pending) + " awaiting review" },
@@ -244,10 +248,11 @@ async function renderDaily(view) {
     }, { imp: 0, clk: 0, rev: 0, bought: 0, dev: 0, red: 0, nd: 0, nu: 0 });
     body.append(tiles([
       { k: `Impressions (${days}d)`, v: num(totals.imp), s: num(totals.clk) + " clicks" },
-      { k: "Revenue recognized", v: usd(totals.rev), s: "fees + dev credit" },
+      { k: "Revenue recognized", v: usd(totals.rev), s: "fees + viewer points" },
       { k: "Ads purchased", v: usd(totals.bought) },
       { k: "New devices", v: num(totals.nd), s: num(totals.nu) + " new users" },
-      { k: "Redeemed", v: usd(totals.red) },
+      { k: "Viewer points", v: pts(totals.dev), s: "credited to viewers" },
+      { k: "Redeemed for Claude", v: usd(totals.red) },
     ]));
     body.append(h("div", { class: "hint", style: "margin:6px 0" }, "Impressions / day"));
     body.append(barChart(series, "impressions"));
@@ -256,13 +261,13 @@ async function renderDaily(view) {
     const cols = [
       { label: "Date" }, { label: "Impr", num: true }, { label: "Clicks", num: true },
       { label: "Eff. CPM", num: true }, { label: "Recognized", num: true }, { label: "Ads bought", num: true },
-      { label: "Dev credit", num: true }, { label: "New dev", num: true }, { label: "New usr", num: true },
+      { label: "Viewer pts", num: true }, { label: "New dev", num: true }, { label: "New usr", num: true },
       { label: "Redeem #", num: true }, { label: "Redeem $", num: true },
     ];
     const rev = series.slice().reverse();
     body.append(h("div", { style: "margin-top:18px" }, table(cols, rev, (r) => [
       r.date, num(r.impressions), num(r.clicks), usd0(r.effectiveCpmUsd), usd(r.recognizedUsd), usd(r.adsPurchasedUsd),
-      usd(r.developerCreditUsd), num(r.newDevices), num(r.newUsers), num(r.redemptions), usd(r.redemptionsUsd),
+      pts(r.developerCreditUsd), num(r.newDevices), num(r.newUsers), num(r.redemptions), usd(r.redemptionsUsd),
     ])));
   };
   [7, 30, 90].forEach((n) => $("#daily-range", view).append(
@@ -399,8 +404,8 @@ async function renderRedemptions(view) {
     ["", "pending", "fulfilled", "cancelled"].map((s) => h("option", { value: s }, s || "all statuses")));
   const body = h("div", {});
   view.append(h("div", { class: "card" },
-    h("div", { class: "card-head" }, h("h2", {}, "Claude gift redemptions"),
-      h("p", { class: "hint" }, "Mark each one sent once you’ve delivered the gift card."), h("div", { class: "row-gap" }, filter)),
+    h("div", { class: "card-head" }, h("h2", {}, "Claude redemptions"),
+      h("p", { class: "hint" }, "Viewers spend earned points to redeem a Claude plan (Pro / Max). Mark each one fulfilled once you’ve delivered the subscription."), h("div", { class: "row-gap" }, filter)),
     body));
   const load = async () => {
     body.innerHTML = '<div class="loading">Loading…</div>';
@@ -426,11 +431,11 @@ function redemptionActions(r, reload) {
     await api("/v1/admin/redemptions/status", { method: "POST", body: { id: r.id, status, refund } });
     toast(status === "fulfilled" ? "Marked sent" : "Updated"); reload();
   };
-  if (r.status !== "fulfilled") wrap.append(h("button", { class: "btn btn-sm btn-accent", onclick: () => set("fulfilled", false) }, "Mark sent"));
-  if (r.status === "fulfilled") wrap.append(h("button", { class: "btn btn-sm", onclick: () => set("pending", false) }, "Un-send"));
+  if (r.status !== "fulfilled") wrap.append(h("button", { class: "btn btn-sm btn-accent", onclick: () => set("fulfilled", false) }, "Mark fulfilled"));
+  if (r.status === "fulfilled") wrap.append(h("button", { class: "btn btn-sm", onclick: () => set("pending", false) }, "Un-fulfill"));
   if (r.status !== "cancelled") wrap.append(h("button", { class: "btn btn-sm btn-danger", onclick: () => {
     if (!confirm("Cancel this redemption?")) return;
-    const refund = confirm("Refund the credits back to the user’s balance?");
+    const refund = confirm("Refund the points back to the viewer’s balance?");
     set("cancelled", refund);
   } }, "Cancel"));
   return wrap;
@@ -443,11 +448,11 @@ async function renderIncome(view) {
   view.append(tiles([
     { k: "Ad purchases", v: usd(sum(["campaign_credit"])), accent: true },
     { k: "Platform fees", v: usd(sum(["platform_fee"])), s: "your revenue" },
-    { k: "Developer credit", v: usd(sum(["impression_credit", "click_credit"])) },
-    { k: "Referral credit", v: usd(sum(["referral_credit"])) },
-    { k: "Affiliate credit", v: usd(sum(["affiliate_credit"])) },
-    { k: "Paid out", v: usd(-sum(["payout_debit"])) },
-    { k: "Redeemed", v: usd(-sum(["gift_redemption_debit"])) },
+    { k: "Viewer points", v: pts(sum(["points_credit", "impression_credit", "click_credit"])), s: "earned from sponsored lines" },
+    { k: "Referral points", v: pts(sum(["referral_points_credit", "referral_credit"])) },
+    { k: "Affiliate points", v: pts(sum(["affiliate_credit"])) },
+    { k: "Cashed out", v: usd(-sum(["payout_debit"])), s: "to viewers (USDC)" },
+    { k: "Redeemed for Claude", v: usd(-sum(["gift_redemption_debit"])) },
     { k: "Admin adjustments", v: usd(sum(["admin_credit", "admin_debit"])) },
     { k: "Refunds", v: usd(-sum(["campaign_refund"])) },
   ]));
@@ -469,13 +474,13 @@ async function renderUsers(view) {
     const { users } = await api("/v1/admin/users" + (search.value ? "?search=" + encodeURIComponent(search.value) : ""));
     body.innerHTML = "";
     body.append(table([
-      { label: "Email" }, { label: "Verified" }, { label: "Payouts" }, { label: "Stripe" },
+      { label: "Email" }, { label: "Verified" }, { label: "Cashout" }, { label: "Stripe" },
       { label: "Devices", num: true }, { label: "Balance", num: true }, { label: "Earned", num: true },
       { label: "Referral" }, { label: "Joined" }, { label: "" },
     ], users, (u) => [
       td(h("span", { class: "mono" }, u.email || "—")),
       u.emailVerified ? "✓" : "—", u.payoutsEnabled ? "✓" : "—", u.stripeLinked ? "✓" : "—",
-      num(u.devices), usd(u.balanceUsd), usd(u.earnedUsd),
+      num(u.devices), pts(u.balanceUsd), pts(u.earnedUsd),
       td(h("span", { class: "mono muted" }, u.referralCode || "—")),
       dShort(u.createdAt),
       td(h("button", { class: "btn btn-sm", onclick: () => adjustBalance(u) }, "Adjust")),
@@ -485,7 +490,7 @@ async function renderUsers(view) {
   await load();
 }
 async function adjustBalance(u) {
-  const amount = prompt(`Adjust balance for ${u.email || u.id}.\nEnter dollar amount (positive = credit, negative = debit):`);
+  const amount = prompt(`Adjust balance for ${u.email || u.id}.\nEnter a dollar amount — $1.00 = 1,000 points (positive = credit, negative = debit):`);
   if (amount == null) return;
   const dollars = parseFloat(amount);
   if (!dollars) return toast("Enter a non-zero amount", true);
@@ -506,7 +511,7 @@ async function renderEmails(view) {
     h("div", { class: "card-head" },
       h("h2", {}, `Email list — ${num(emails.length)} rows, ${num(uniq)} unique`),
       h("button", { class: "btn btn-sm btn-accent", onclick: downloadEmailsCsv }, "⤓ Download CSV")),
-    h("p", { class: "hint" }, "Collected from users, advertisers, and gift-card recipients."),
+    h("p", { class: "hint" }, "Collected from users, advertisers, and Claude redemption recipients."),
     table([{ label: "Email" }, { label: "Source" }, { label: "First seen" }], emails,
       (e) => [h("span", { class: "mono" }, e.email), badge(e.source), dt(e.created_at)])));
 }
@@ -524,18 +529,18 @@ async function renderPayouts(view) {
   const d = await api("/v1/admin/payouts");
   view.innerHTML = "";
   view.append(tiles([
-    { k: "Payable now", v: num(d.payable.count), s: "users over threshold", accent: true },
-    { k: "Payable total", v: usd(d.payable.totalUsd) },
-    { k: "Threshold", v: usd(d.payable.thresholdUsd) },
+    { k: "Payable now", v: num(d.payable.count), s: "viewers over threshold", accent: true },
+    { k: "Payable total", v: usd(d.payable.totalUsd), s: pts(d.payable.totalUsd) },
+    { k: "Threshold", v: usd(d.payable.thresholdUsd), s: pts(d.payable.thresholdUsd) },
   ]));
   view.append(h("div", { class: "card" },
-    h("div", { class: "card-head" }, h("h2", {}, "Run payouts"),
+    h("div", { class: "card-head" }, h("h2", {}, "Cash out points"),
       h("button", { class: "btn btn-accent", onclick: async () => {
-        if (!confirm(`Pay out ${d.payable.count} user(s), ${usd(d.payable.totalUsd)} via Stripe?`)) return;
+        if (!confirm(`Cash out ${d.payable.count} viewer(s), ${usd(d.payable.totalUsd)} via Stripe?`)) return;
         try { const r = await api("/v1/admin/payouts", { method: "POST" }); toast(`Paid ${r.paid} payout(s)`); route(true); }
         catch (e) { toast(e.message, true); }
-      } }, "Run payout sweep")),
-    h("p", { class: "hint" }, "Transfers each eligible developer’s balance to their connected Stripe account.")));
+      } }, "Run cash-out sweep")),
+    h("p", { class: "hint" }, "Converts each eligible viewer’s point balance to USDC and transfers it to their connected Stripe account. Cash-out opens at token launch.")));
   view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Payout history")),
     table([{ label: "Date" }, { label: "User" }, { label: "Amount", num: true }, { label: "Status" }, { label: "Transfer" }],
@@ -548,11 +553,11 @@ async function renderReferrals(view) {
   view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Referrals by status")),
     table([{ label: "Status" }, { label: "Count", num: true }, { label: "Reward paid", num: true }], d.byStatus,
-      (s) => [badge(s.status), num(s.count), usd(s.rewardUsd)])));
+      (s) => [badge(s.status), num(s.count), pts(s.rewardUsd)])));
   view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Top referrers")),
     table([{ label: "Referrer" }, { label: "Referred", num: true }, { label: "Rewarded", num: true }, { label: "Earned", num: true }],
-      d.top, (t) => [h("span", { class: "mono" }, t.email || short(t.userId)), num(t.referred), num(t.rewarded), usd(t.rewardUsd)])));
+      d.top, (t) => [h("span", { class: "mono" }, t.email || short(t.userId)), num(t.referred), num(t.rewarded), pts(t.rewardUsd)])));
   // Referral invites funnel (emails people invited, and how far each got).
   const inv = await tryApi("/v1/admin/invites");
   if (!inv) { view.append(soonCard("Invites sent")); return; }
@@ -587,7 +592,7 @@ async function renderAffiliates(view) {
       td(affiliateTier(a)),
       td(affiliateSocials(a), "wrap"),
       num(a.attributed_count),
-      usd((a.credited_millicents || 0) / 100000),
+      pts((a.credited_millicents || 0) / 100000),
       dShort(a.created_at),
       td(affiliateActions(a, () => route(true))),
     ])));
@@ -672,41 +677,6 @@ async function renderWaitlist(view) {
       (s) => [h("span", { class: "mono" }, s.email || "—"), s.surface, dt(s.createdAt)])));
 }
 
-// Audience landing pages. Reads the static manifest written by
-// tools/gen-landers.mjs (landers/landers.json) so this list always matches what
-// was generated — no API or admin key needed, it's a same-origin static file.
-async function renderLanders(view) {
-  view.innerHTML = "";
-  let landers = [];
-  try {
-    const res = await fetch("/landers/landers.json", { cache: "no-store" });
-    if (res.ok) landers = await res.json();
-  } catch { /* fall through to the empty state below */ }
-
-  const card = h("div", { class: "card" },
-    h("div", { class: "card-head" }, h("h2", {}, "Landing pages"),
-      h("p", { class: "hint" }, "Per-audience landers. Edit copy in tools/gen-landers.mjs, then run `make landers`.")));
-
-  if (!landers.length) {
-    card.append(h("p", { class: "empty" }, "No landers manifest found (landers/landers.json). Run `make landers`."));
-    view.append(card);
-    return;
-  }
-
-  view.append(tiles([{ k: "Live landers", v: num(landers.length) }]));
-  card.append(table(
-    [{ label: "Audience" }, { label: "URL" }, { label: "Headline" }, { label: "Demo" }],
-    landers,
-    (l) => [
-      h("span", { class: "mono" }, l.slug),
-      td(h("a", { href: safeHref(l.url), target: "_blank", rel: "noopener" }, l.url)),
-      l.headline,
-      h("span", { class: "badge tool" }, l.tool),
-    ],
-  ));
-  view.append(card);
-}
-
 async function renderDevices(view) {
   const d = await api("/v1/admin/devices");
   view.innerHTML = "";
@@ -729,20 +699,20 @@ async function renderDevices(view) {
 }
 
 const TABLE_DESC = {
-  users: "Developer / advertiser accounts. Balances are derived from the ledger, never stored.",
-  devices: "One row per machine running the extension. Earns anonymously, links to a user later.",
+  users: "Viewer / advertiser accounts. Point balances are derived from the ledger, never stored.",
+  devices: "One row per machine running the extension. Earns points anonymously, links to a user later.",
   email_tokens: "Single-use magic-link tokens for email verification.",
   advertisers: "Ad campaign creators (email only).",
   campaigns: "Ads. Lifecycle: pending_payment → pending_review → active → exhausted (or rejected/cancelled).",
   event_batches: "Impression/click batches from extensions, with a hashed IP for fraud caps.",
-  ledger: "Append-only money log in millicents. The single source of truth for all balances.",
-  payouts: "Stripe transfers to developers.",
-  gift_redemptions: "Claude gift-card redemptions; fulfillment (sending the card) is manual.",
+  ledger: "Append-only points/money log in millicents (1,000 points = $1). The single source of truth for all balances.",
+  payouts: "Stripe cash-out transfers converting viewers’ points to USDC.",
+  gift_redemptions: "Points redeemed for a Claude plan (Pro / Max); fulfillment is manual.",
   web_sessions: "Website login bearer tokens.",
   processed_webhook_events: "Idempotency guard so Stripe webhooks process exactly once.",
   click_tokens: "Single-use server-side click verification tokens.",
-  referrals: "One row per referred user; pays the referrer $20 once on first redemption.",
-  affiliates: "Affiliate-program applications. Approval mints a code; approved affiliates earn 10% of referred users’ ad revenue as credits.",
+  referrals: "One row per referred user; pays the referrer a point reward once on first redemption.",
+  affiliates: "Affiliate-program applications. Approval mints a code; approved affiliates earn 10% of referred users’ ad revenue as points.",
   affiliate_attributions: "One row per user attributed to an affiliate (mutually exclusive with a referrer).",
   settings: "Persistent key/value config (e.g. the ad-serving killswitch).",
   diag_errors: "Captured unhandled route errors for diagnostics.",
@@ -870,13 +840,13 @@ async function renderSettings(view) {
     h("div", { class: "card-head" }, h("h2", {}, "Economics"),
       h("p", { class: "hint" }, "Read-only — set via the function’s environment.")),
     table([{ label: "Setting" }, { label: "Value", num: true }], [
-      { k: "Revenue share to developers", v: cfg.revenueSharePct + "%" },
+      { k: "Viewer revenue share", v: cfg.revenueSharePct + "%" },
       { k: "Reference gross CPM", v: usd0(cfg.grossCpmUsd) },
       { k: "Daily impression cap / device", v: num(cfg.dailyImpressionCap) },
       { k: "Daily impression cap / IP", v: num(cfg.ipDailyImpressionCap) },
       { k: "Daily click cap / device", v: num(cfg.dailyClickCap) },
-      { k: "Payout threshold", v: usd(cfg.payoutThresholdUsd) },
-      { k: "Referral reward", v: usd(cfg.referralRewardUsd) },
+      { k: "Cash-out threshold", v: usd(cfg.payoutThresholdUsd) },
+      { k: "Referral reward", v: pts(cfg.referralRewardUsd) },
       { k: "Referral cap / user", v: num(cfg.referralCap) },
       { k: "Affiliate reward share", v: (cfg.affiliateRewardPct ?? 10) + "%" },
       { k: "Affiliate cap / affiliate", v: num(cfg.affiliateCapPeople ?? 1000) + " friends" },
@@ -888,7 +858,7 @@ async function renderSettings(view) {
   // ── 4) Manual balance adjustment ──
   view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Manual balance adjustment")),
-    h("p", { class: "hint" }, "Credit or debit a user’s balance directly. Find the user under the Users tab and use “Adjust”, or use a device/user ID below."),
+    h("p", { class: "hint" }, "Credit or debit a viewer’s point balance directly (entered in dollars — $1.00 = 1,000 points). Find the user under the Users tab and use “Adjust”, or use a device/user ID below."),
     adjustForm()));
 
   // ── 5) Diagnostics ──
