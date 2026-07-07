@@ -19,8 +19,8 @@ ownership of the company via a BVI project company + Cayman SPC wrapper
 |---|---|
 | Chain | Solana (SPL token), liquidity on Meteora, USDC-denominated |
 | Supply | 1B fixed; curated raises set custom valuation and allocation buckets (the old fixed 60/20/20 preset no longer applies) |
-| Our raise (decided, confirmed with star) | **$50K target at a $1M company valuation**; the 1B tokens represent **8.3% of the company**. Buckets: 60% initial liquidity / 10% ad-rewards airdrop / 10% structured sell orders (execute at preset market-cap levels) / 20% team (3-mo cliff + 9-mo vest) |
-| Raise mechanics | 5-day deposit window, funds in escrow; full refund if the target isn't met; the Meteora pool is seeded with 60% of supply plus the raised USDC (implied launch price ≈ $0.000083/DWELL) |
+| Our raise (decided, confirmed with star) | **$1M company valuation**; the 1B tokens represent **8.3% of the company**. Total target ~$115K: ~$50K founder proceeds / ~$65K pool liquidity / ~$7.5K BVI setup ✎ exact split from star. Buckets: 60% initial liquidity / 10% ad-rewards airdrop / 10% structured sell orders (execute at preset market-cap levels) / 20% team (3-mo cliff + 9-mo vest) |
+| Raise mechanics | 5-day deposit window, funds in escrow; full refund if the target isn't met; the Meteora pool is seeded with 60% of supply plus the pool leg of the raise proceeds |
 | Fees | 1% of in-raise trades; 0.5% post-launch — and **the founder earns 0.5% of every trade, forever** |
 | Failure mode | Refunds if the raise misses thresholds |
 | KYC / geofence | None documented; US **not** excluded |
@@ -42,8 +42,8 @@ campaign (buy-and-distribute, [01-tokenomics.md](01-tokenomics.md)):
 4. Sellers return tokens to the pool; the next campaign's buy picks them up.
 
 The one exception is the **10% ad-rewards airdrop**: it covers the past
-(pre-launch points convert from it at the launch price, instantly at token
-launch) and launch boosts. Revenue covers the future — every campaign after
+(pre-launch points convert from it at the fixed $1M-valuation price,
+instantly at token launch) and launch boosts. Revenue covers the future — every campaign after
 the pool is live is buy-and-distribute. The protocol treasury self-builds at
 30–40% of every campaign buy (held, never sold); the 10% structured-sell
 bucket and the founder's 0.5% of all trading volume sit on top.
@@ -74,8 +74,8 @@ bucket and the founder's 0.5% of all trading volume sit on top.
 3. **Buybacks start once the pool is live.** The revenue flywheel switches on
    when the token is in the Meteora pool — with 60% of supply seeding it at
    launch, that is day one, not a later graduation event. Points earned before
-   launch convert at the launch price from the airdrop bucket (instant at
-   token launch).
+   launch convert at the fixed $1M-valuation price from the airdrop bucket
+   (instant at token launch).
 4. **Short team vest.** 3-month cliff + 9-month linear is far shorter than our
    specced 1-year cliff + 4-year vest — exactly the optics
    [05-legal-structure.md](05-legal-structure.md) warns about. ✎ Ask whether
@@ -102,9 +102,9 @@ bucket and the founder's 0.5% of all trading volume sit on top.
 - [ ] star.fun team Q&A ✎: Delaware C-Corp alternative? Custom vesting?
       Pre-graduation buy API or supported onchain path? Current curve
       parameters (docs have changed once already)? Geofencing options?
-- [x] Raise terms decided and confirmed with star: $50K target at a $1M
-      company valuation, token = 8.3% of the company, 60/10/10/20 buckets,
-      points convert at the launch price from the airdrop.
+- [x] Raise terms decided and confirmed with star: $1M company valuation,
+      token = 8.3% of the company, 60/10/10/20 buckets, points convert at the
+      fixed $1M-valuation price ($0.0000833/DWELL) from the airdrop.
 - [ ] Accept the Solana port scope: Jupiter keeper + Solana Merkle
       distributor + Squads treasury ([04-backend-adaptation.md](04-backend-adaptation.md)
       knobs gain `SOLANA_RPC_URL` / `JUPITER_API` variants).
