@@ -1,4 +1,4 @@
--- DWELL.fyi — seed one live entry. DEV/LOCAL ONLY — never run against the
+-- Dwell Protocol — seed one live entry. DEV/LOCAL ONLY — never run against the
 -- production database: the seeded campaign is funded with fiat ledger money,
 -- and every credit users earn from it is a real payout liability for you.
 -- Inserts a single active campaign so /v1/ads and /v1/leaderboard return one row
@@ -7,7 +7,7 @@
 -- exist. Amounts: price_per_block_cents >= 100 ($1.00), 1 block = 1,000 impressions.
 
 insert into advertisers (id, email)
-values ('00000000-0000-0000-0000-0000000000a1', 'ads@dwell-protocol.vercel.app')
+values ('00000000-0000-0000-0000-0000000000a1', 'ads@dwellprotocol.com')
 on conflict (id) do nothing;
 
 insert into campaigns (
@@ -19,7 +19,7 @@ insert into campaigns (
   '00000000-0000-0000-0000-0000000000a1',
   'DWELL',
   'DWELL — get Claude for free with ads.',
-  'https://dwell-protocol.vercel.app',
+  'https://dwellprotocol.com',
   'other',
   '#d97757',
   500, 10, 10000, 10000,

@@ -6,13 +6,13 @@ const { escapeHtml } = require("./util");
 
 function createMailer(config) {
   const provider = config.mailProvider || "console";
-  // Per-audience senders, all on the Resend-verified contact.dwell-protocol.vercel.app domain.
+  // Per-audience senders, all on the Resend-verified contact.dwellprotocol.com domain.
   // User mail comes from hello@ with replies routed to support@; advertiser mail
   // comes from ads@. Overridable via MAIL_FROM / MAIL_FROM_ADS.
-  const userFrom = config.mailFrom || "DWELL <hello@dwell.example>";
-  const adsFrom = config.mailFromAds || "DWELL <ads@contact.dwell-protocol.vercel.app>";
-  const supportReplyTo = "support@contact.dwell-protocol.vercel.app";
-  const adsReplyTo = "ads@contact.dwell-protocol.vercel.app";
+  const userFrom = config.mailFrom || "DWELL <hello@dwellprotocol.com>";
+  const adsFrom = config.mailFromAds || "DWELL <ads@contact.dwellprotocol.com>";
+  const supportReplyTo = "support@contact.dwellprotocol.com";
+  const adsReplyTo = "ads@contact.dwellprotocol.com";
 
   async function send(to, subject, htmlBody, opts = {}) {
     const from = opts.from || userFrom;
@@ -45,7 +45,7 @@ function createMailer(config) {
   // clients; palette mirrors theme.css (Claude coral on cream). The advertiser
   // and admin notices below keep their original plain layout on purpose. ──
   const FONT = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  const site = config.siteUrl || "https://dwell-protocol.vercel.app";
+  const site = config.siteUrl || "https://dwellprotocol.com";
   function button(href, label) {
     return `<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:26px auto 6px;"><tr>`
       + `<td align="center" bgcolor="#d97757" style="border-radius:10px;background:#d97757;background:linear-gradient(180deg,#e08a6a,#cf6b4a);">`
@@ -70,7 +70,7 @@ function createMailer(config) {
       + `<div style="font-family:${FONT};font-size:15px;line-height:1.6;color:#3d3b37;">${body}</div>${btn}${foot}`
       + `</td></tr>`
       + `<tr><td align="center" style="padding:22px 10px 6px;font-family:${FONT};font-size:12px;line-height:1.7;color:#9b988f;">`
-      + `<a href="${site}" style="color:#c15f3c;text-decoration:none;font-weight:700;">dwell-protocol.vercel.app</a>`
+      + `<a href="${site}" style="color:#c15f3c;text-decoration:none;font-weight:700;">dwellprotocol.com</a>`
       + `&nbsp;·&nbsp;<a href="${site}/terms" style="color:#9b988f;text-decoration:underline;">Terms</a>`
       + `&nbsp;·&nbsp;<a href="${site}/privacy" style="color:#9b988f;text-decoration:underline;">Privacy</a>`
       + `<br>Earn credits while you use Claude, ChatGPT &amp; Gemini.`
@@ -265,7 +265,7 @@ function createMailer(config) {
       hero: "🎉", heading: "You're on the waitlist",
       body: `<p style="margin:0 0 14px;">Thanks for joining DWELL — you're on the list. We'll email you the moment you can install it and start earning Claude credits while you use ChatGPT, Claude &amp; Gemini.</p>`
         + `<p style="margin:0;">The Chrome extension is in review right now, with the command line and desktop apps close behind.</p>`,
-      note: "You're getting this because you joined the waitlist at dwell-protocol.vercel.app. Didn't sign up? You can safely ignore this email.",
+      note: "You're getting this because you joined the waitlist at dwellprotocol.com. Didn't sign up? You can safely ignore this email.",
     }));
   }
 

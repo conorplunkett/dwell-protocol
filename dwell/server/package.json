@@ -1,7 +1,7 @@
 {
   "name": "dwell-server",
   "version": "0.1.0",
-  "description": "DWELL.fyi backend — ad auction, impression ledger, Stripe money in/out. Users keep 50%, redeemable as Claude credits.",
+  "description": "Dwell Protocol backend — ad auction, append-only points ledger, Stripe money in. Viewers earn DWELL points while an AI assistant is thinking.",
   "private": true,
   "main": "src/index.js",
   "scripts": {
