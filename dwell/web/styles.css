@@ -113,13 +113,13 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* HERO */
-.hero { max-width: 920px; margin: 0 auto; padding: 56px 32px 24px; text-align: center; }
+.hero { max-width: 920px; margin: 0 auto; padding: 72px 32px 48px; text-align: center; }
 .hero h1 {
   font-size: clamp(17px, 4.8vw, 50px); font-weight: 900; letter-spacing: -.045em;
   line-height: 1.05; margin: 8px 0 22px;
   text-wrap: balance; /* wrap evenly when the headline needs more than one line */
 }
-.sub { font-size: 19px; color: var(--gray); margin: 0 auto 46px; line-height: 1.55; max-width: 560px; }
+.sub { font-size: 19px; color: var(--gray); margin: 0 auto 52px; line-height: 1.55; max-width: 560px; }
 .sub strong { color: var(--ink); font-weight: 800; }
 .sub .hl { color: var(--green); font-weight: 700; }
 
@@ -128,7 +128,7 @@ a { color: inherit; text-decoration: none; }
 
 /* DEMO — before/after, with a little Claude Code guy perched on top */
 .demo {
-  text-align: left; margin: 0 auto 36px; position: relative;
+  text-align: left; margin: 0 auto 52px; position: relative;
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 22px;
   /* Safety net: the absolutely-positioned mascot (and its JS wander) can never
      extend the document width. overflow-x:clip keeps overflow-y visible so the
@@ -147,10 +147,10 @@ a { color: inherit; text-decoration: none; }
 .ast { color: var(--accent); display: inline-block; animation: spin 1.1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .claude-guy {
-  position: absolute; top: -20px; right: 30px; z-index: 0;
+  position: absolute; top: -34px; right: 24px; z-index: 0;
   transition: right 1.2s cubic-bezier(.5, 1.5, .4, 1), top .6s ease;
 }
-.claude-guy.cg-duck { top: 16px; }
+.claude-guy.cg-duck { top: 2px; }
 .cg-sprite {
   display: block;
   image-rendering: pixelated;
@@ -284,7 +284,7 @@ a { color: inherit; text-decoration: none; }
 .cli-sub strong { color: var(--ov-text); }
 .cli-sub a { color: var(--accent); font-weight: 600; white-space: nowrap; }
 
-.hero-note { font-size: 14.5px; color: var(--gray-2); margin: 0 auto 8px; line-height: 1.55; max-width: 620px; }
+.hero-note { font-size: 14.5px; color: var(--gray-2); margin: 0 auto 16px; line-height: 1.55; max-width: 620px; }
 .hero-note strong { color: var(--gray); }
 /* Advertiser CTA under the hero note (centered; hidden until enabled). */
 .hero-adv { margin-top: 14px; text-align: center; }
@@ -375,13 +375,13 @@ a { color: inherit; text-decoration: none; }
 /* "Get it on your platform" — coral label above the quick-install row. */
 .tryit {
   display: flex; align-items: center; justify-content: center;
-  margin: 4px 0 14px; font-family: var(--mono); font-weight: 700;
+  margin: 36px 0 16px; font-family: var(--mono); font-weight: 700;
   font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
 }
 
 /* DOWNLOAD CTAs — three quick installs above the surfaces showcase. Chrome +
    Desktop are greyed "coming soon"; Terminal is a compact copy-paste. */
-.downloads { padding: 16px 0 4px; }
+.downloads { padding: 16px 0 64px; }
 .dl-grid {
   max-width: 1180px; margin: 0 auto; padding: 0 28px;
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start;
