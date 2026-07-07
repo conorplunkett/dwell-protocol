@@ -32,6 +32,50 @@ test("installShellBlock inserts and replaces a reversible zsh alias block", () =
   assert.equal(readFileSync(rc, "utf8"), "export FOO=1\n");
 });
 
+test("installShellBlock migrates a legacy FreeAI block without --force", () => {
+  const dir = tempDir();
+  const rc = join(dir, ".zshrc");
+  const freeaiBlock = `# >>> FreeAI Claude terminal integration >>>
+claude() {
+  if command -v freeai >/dev/null 2>&1; then
+    freeai claude run "$@"
+  else
+    command claude "$@"
+  fi
+}
+# <<< FreeAI Claude terminal integration <<<
+`;
+  writeFileSync(rc, `export FOO=1\n${freeaiBlock}`, "utf8");
+
+  // The legacy block is ours, not a user-authored alias — setup must replace
+  // it, not refuse with "existing claude alias/function".
+  const installed = installShellBlock({ shell: "zsh", rcPath: rc });
+  assert.equal(installed.changed, true);
+  const content = readFileSync(rc, "utf8");
+  assert.doesNotMatch(content, /FreeAI Claude terminal integration/);
+  assert.doesNotMatch(content, /freeai claude run/);
+  assert.match(content, /dwell claude run "\$@"/);
+
+  // restore removes the DWELL block and leaves the rest of the rc intact.
+  const restored = restoreShellBlock({ shell: "zsh", rcPath: rc });
+  assert.equal(restored.changed, true);
+  assert.equal(readFileSync(rc, "utf8"), "export FOO=1\n");
+});
+
+test("restoreShellBlock also removes a legacy FreeAI block", () => {
+  const dir = tempDir();
+  const rc = join(dir, ".bashrc");
+  writeFileSync(rc, `# >>> FreeAI Claude terminal integration >>>
+claude() { freeai claude run "$@"; }
+# <<< FreeAI Claude terminal integration <<<
+export BAR=2
+`, "utf8");
+
+  const restored = restoreShellBlock({ shell: "bash", rcPath: rc });
+  assert.equal(restored.changed, true);
+  assert.equal(readFileSync(rc, "utf8"), "export BAR=2\n");
+});
+
 test("installShellBlock aborts on an existing non-DWELL claude alias unless forced", () => {
   const dir = tempDir();
   const rc = join(dir, ".bashrc");

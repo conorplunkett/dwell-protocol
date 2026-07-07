@@ -8,6 +8,13 @@ Standalone Claude Code terminal integration.
 npx @dwell-protocol/terminal claude setup
 ```
 
+**Migrating from FreeAI:** setup detects the old `# >>> FreeAI Claude terminal
+integration >>>` block in your rc file and replaces it with the DWELL one — no
+`--force` needed. The retired freeai backend serves no ads, so a leftover
+freeai alias silently runs plain `claude` with no ad line; rerun setup (then
+`source` your rc or open a new shell) to fix it. `dwell claude restore` removes
+the legacy block too.
+
 ## Commands
 
 Local dev (from this repo):

@@ -6,6 +6,16 @@ import { writeFileAtomic } from "./util.js";
 export const MARKER_START = "# >>> DWELL Claude terminal integration >>>";
 export const MARKER_END = "# <<< DWELL Claude terminal integration <<<";
 
+// The FreeAI-era installer wrote the same wrapper under these markers. A
+// machine migrating freeai→dwell still has that block in its rc, and its
+// `claude()` definition would otherwise trip the foreign-definition guard in
+// installShellBlock — leaving `claude` routed through the retired freeai
+// wrapper (whose backend serves no ads) with setup refusing to run. Both
+// managed blocks are ours: strip and replace them.
+export const LEGACY_MARKER_PAIRS = [
+  ["# >>> FreeAI Claude terminal integration >>>", "# <<< FreeAI Claude terminal integration <<<"],
+];
+
 export function shellFromEnv(env = process.env) {
   const shell = env.SHELL || "";
   if (shell.endsWith("/fish")) return "fish";
@@ -51,8 +61,12 @@ ${MARKER_END}
 }
 
 export function stripDwellBlock(content) {
-  const re = new RegExp(`${escapeRegex(MARKER_START)}[\\s\\S]*?${escapeRegex(MARKER_END)}\\n?`, "g");
-  return content.replace(re, "");
+  let out = content;
+  for (const [start, end] of [[MARKER_START, MARKER_END], ...LEGACY_MARKER_PAIRS]) {
+    const re = new RegExp(`${escapeRegex(start)}[\\s\\S]*?${escapeRegex(end)}\\n?`, "g");
+    out = out.replace(re, "");
+  }
+  return out;
 }
 
 export function hasNonDwellClaudeDefinition(content, shell) {
