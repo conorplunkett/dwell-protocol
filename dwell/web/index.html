@@ -3,24 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Production API. Points the waitlist, advertiser checkout, and leaderboard
-       at the live backend (or set window.DWELL_API). Append ?dev=1 to the URL
-       for the self-contained mock-data mode (sticky; ?dev=0 to exit) — handled
-       in script.js. -->
+  <!-- Production API. Points the advertiser checkout and leaderboard at the
+       live backend (or set window.DWELL_API). Append ?dev=1 to the URL for the
+       self-contained mock-data mode (sticky; ?dev=0 to exit) — handled in
+       script.js. -->
   <meta name="dwell-api" content="https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/dwell-api" />
-  <title>DWELL — Get paid for your attention</title>
-  <meta name="description" content="One sponsored line shows while ChatGPT, Claude, or Gemini is thinking — and the person watching gets paid. Launching soon: join the waitlist. Advertisers can book campaigns today." />
+  <title>DWELL — Earn crypto while you use AI</title>
+  <meta name="description" content="One sponsored line shows while ChatGPT, Claude, or Gemini is thinking. Advertisers buy $DWELL on the open market for adspace; you earn $DWELL for watching ads." />
   <link rel="canonical" href="https://dwellprotocol.com/" />
   <meta name="theme-color" content="#ff0000" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="DWELL" />
   <meta property="og:url" content="https://dwellprotocol.com/" />
   <meta property="og:locale" content="en_US" />
-  <meta property="og:title" content="DWELL — Get paid for your attention" />
-  <meta property="og:description" content="We turned every AI waiting spinner into an ad marketplace — and the person watching gets paid. Join the waitlist." />
+  <meta property="og:title" content="DWELL — Earn crypto while you use AI" />
+  <meta property="og:description" content="Advertisers buy $DWELL on the open market for adspace. You earn $DWELL for watching ads while ChatGPT, Claude, or Gemini thinks." />
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="DWELL — Get paid for your attention" />
-  <meta name="twitter:description" content="We turned every AI waiting spinner into an ad marketplace — and the person watching gets paid. Join the waitlist." />
+  <meta name="twitter:title" content="DWELL — Earn crypto while you use AI" />
+  <meta name="twitter:description" content="Advertisers buy $DWELL on the open market for adspace. You earn $DWELL for watching ads while ChatGPT, Claude, or Gemini thinks." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -29,15 +29,17 @@
   <link rel="icon" href="assets/favicon.svg" />
 </head>
 <body>
-  <!-- NAV — eight-dot brand mark, tokenomics + waitlist links, red Advertise CTA. -->
-  <header class="nav nav-autohide">
+  <!-- NAV — eight-dot brand mark, tokenomics + login links, red Advertise CTA.
+       Always visible (not autohide): the "Earn crypto" hero is the opening
+       frame now, not the full-viewport protocol lockup. -->
+  <header class="nav">
     <a class="brand" href="#top">
       <span class="logo"><img src="assets/logo.svg" alt="" /></span>
-      <span class="brand-name">$DWELL</span>
+      <span class="brand-name">Dwell Protocol</span>
     </a>
     <nav class="nav-btns" aria-label="Primary">
       <a href="/tokenomics" class="navbtn">Tokenomics</a>
-      <a href="#wl" class="navbtn"><span class="nav-txt-opt">Join the </span>Waitlist</a>
+      <a href="/portal" class="navbtn"><span class="nav-txt-opt">User </span>Login</a>
       <a href="#advertisers" class="navbtn navbtn-cta">Advertise</a>
     </nav>
   </header>
@@ -46,8 +48,10 @@
     <!-- PROTOCOL HERO — the brand lockup over an animated geometric mesh
          (nodes + connecting lines drifting slowly; drawn on canvas in
          script.js, static under prefers-reduced-motion). Mirrors the
-         DWELL PROTOCOL brand card: mesh weighted to the right, lockup left. -->
-    <section class="proto-hero">
+         DWELL PROTOCOL brand card: mesh weighted to the right, lockup left.
+         HIDDEN (not deleted) — the "Earn crypto" hero below is the opening
+         frame now; remove `hidden` to restore. -->
+    <section class="proto-hero" hidden>
       <canvas class="proto-mesh" id="proto-mesh" aria-hidden="true"></canvas>
       <div class="proto-lockup">
         <svg class="proto-logo" viewBox="0 0 200 200" aria-hidden="true">
@@ -70,69 +74,125 @@
       </div>
     </section>
 
-    <!-- HERO -->
+    <!-- HERO — 1:1 with the freeai.fyi lander structure: headline, before/after
+         demo with the mascot, then the "want to advertise?" link. No waitlist —
+         both sides of the marketplace (advertisers + earners) are live. -->
     <section class="hero">
-      <!-- LEGACY HERO — hidden (not deleted) while the protocol lockup
-           above is the opening frame; drop the `hidden` to restore. -->
-      <div class="hero-legacy" hidden>
-        <h1>Earn tokens while you use AI.</h1>
-        <p class="sub">
-          We turned every waiting spinner into an ad marketplace that earns you crypto.<br />
-          <strong>90%</strong> of every ad dollar goes to the people watching.
-        </p>
+      <h1>Earn crypto while you use AI.</h1>
+      <p class="sub">
+        Advertisers buy <span class="dwell-token">$DWELL</span> on the open market for adspace.<br />
+        You earn <span class="dwell-token">$DWELL</span> for watching ads.
+      </p>
 
-        <!-- BEFORE / AFTER DEMO -->
-        <div class="demo">
-          <div class="demo-card">
-            <span class="demo-label">Stock spinner</span>
-            <div class="demo-line"><span class="ast">✳</span> <span id="word-stock">Thinking</span>…</div>
-          </div>
-          <div class="demo-chevs">»</div>
-          <div class="demo-card">
-            <span class="demo-label">With DWELL</span>
-            <!-- Static first frame mirrors ADS[0] in script.js so the line is never
-                 blank, even before/without JS; the rotator then cycles sponsors.
-                 NB: classed/id'd "brand-*", NOT "ad-*", so ad blockers don't hide
-                 our own sponsored-line demo. -->
-            <div class="demo-line">
-              <span class="brandchip">R</span>
-              <span class="brand-line" id="brand-line">Ramp · Spend smarter</span>
-            </div>
+      <!-- BEFORE / AFTER DEMO -->
+      <div class="demo">
+        <div class="claude-guy" id="claude-guy" aria-hidden="true">
+          <svg class="cg-sprite" width="42" height="36" viewBox="0 0 14 12" shape-rendering="crispEdges">
+            <!-- checkered sparkle over his head -->
+            <g class="cg-spark">
+              <rect x="10" y="0" width="1" height="1" fill="#15181d" />
+              <rect x="11" y="0" width="1" height="1" fill="#f3f5f8" />
+              <rect x="10" y="1" width="1" height="1" fill="#f3f5f8" />
+              <rect x="11" y="1" width="1" height="1" fill="#15181d" />
+            </g>
+            <!-- ear -->
+            <rect x="3" y="2" width="1" height="1" fill="var(--accent)" />
+            <!-- body + snout -->
+            <rect x="2" y="3" width="10" height="5" fill="var(--accent)" />
+            <rect x="1" y="4" width="1" height="3" fill="var(--accent)" />
+            <!-- tail nub -->
+            <rect x="12" y="4" width="1" height="2" fill="var(--accent-d)" />
+            <!-- eye -->
+            <g class="cg-eye">
+              <rect x="3" y="4" width="2" height="2" fill="#f3f5f8" />
+              <rect x="4" y="4" width="1" height="1" fill="#15181d" />
+            </g>
+            <!-- belly stripes -->
+            <rect x="6" y="6" width="1" height="2" fill="var(--accent-d)" />
+            <rect x="8" y="6" width="1" height="2" fill="var(--accent-d)" />
+            <rect x="10" y="6" width="1" height="2" fill="var(--accent-d)" />
+            <!-- legs -->
+            <rect x="3" y="8" width="1" height="2" fill="var(--accent-d)" />
+            <rect x="5" y="8" width="1" height="2" fill="var(--accent-d)" />
+            <rect x="8" y="8" width="1" height="2" fill="var(--accent-d)" />
+            <rect x="10" y="8" width="1" height="2" fill="var(--accent-d)" />
+          </svg>
+        </div>
+        <div class="demo-card">
+          <span class="demo-label">Stock spinner</span>
+          <div class="demo-line"><span class="ast">✳</span> <span id="word-stock">Thinking</span>…</div>
+        </div>
+        <div class="demo-chevs">»</div>
+        <div class="demo-card">
+          <span class="demo-label">With DWELL</span>
+          <!-- Static first frame mirrors ADS[0] in script.js so the line is never
+               blank, even before/without JS; the rotator then cycles sponsors.
+               NB: classed/id'd "brand-*", NOT "ad-*", so ad blockers don't hide
+               our own sponsored-line demo. -->
+          <div class="demo-line">
+            <span class="brandchip">R</span>
+            <span class="brand-line" id="brand-line">Ramp · Spend smarter</span>
           </div>
         </div>
-
-        <p class="hero-note">
-          Works inside <strong>ChatGPT</strong>, <strong>Claude</strong> &amp; <strong>Gemini</strong>.
-        </p>
       </div>
 
-      <!-- WAITLIST — the one earn-side CTA while nothing is installable yet.
-           POSTs a bare email to /v1/waitlist (dwell Supabase); wired in
-           script.js. The advertiser link jumps to the live ad form below. -->
-      <div class="wl" id="wl">
-        <span class="wl-eyebrow">Join the waitlist to earn — July 14th</span>
-        <div class="wl-row">
-          <form class="wl-form" id="wl-form" novalidate>
-            <input class="wl-input" id="wl-email" type="email" name="email" autocomplete="email" inputmode="email" placeholder="you@example.com" aria-label="Email for the DWELL waitlist" required />
-            <button class="wl-btn" type="submit">Join the waitlist</button>
-          </form>
+      <p class="hero-note">
+        Works inside <strong>ChatGPT</strong>, <strong>Claude</strong> &amp; <strong>Gemini</strong>.
+      </p>
+
+      <div class="hero-adv" id="hero-adv">
+        <a class="wl-adv" href="#advertisers">Want to advertise?</a>
+      </div>
+    </section>
+
+    <!-- Section label for the quick-install row -->
+    <div class="tryit">Get it on your platform</div>
+
+    <!-- DOWNLOAD CTAs — three quick installs above the surfaces showcase.
+         Chrome + Desktop route to the existing FreeAI listings until DWELL's
+         own extension/app ship; Terminal is DWELL's own live package. -->
+    <section class="downloads">
+      <div class="dl-grid">
+        <div class="dl-col">
+          <span class="dl-label">1 · Chrome</span>
+          <a id="dl-chrome" href="https://chromewebstore.google.com/detail/freeaifyi-%E2%80%94-earn-from-cha/himeomhnejkhdjcilclhmemkppipoiaj" class="dl-btn" aria-label="Add the Chrome extension" target="_blank" rel="noopener">
+            <svg class="dl-btn-icon dl-btn-icon--round" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+              <circle cx="12" cy="12" r="3.4" fill="none" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 8.6h8.4M9 13.5 4.8 6.3M15 13.5l-4.2 7.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            Add to Chrome
+          </a>
         </div>
-        <div class="wl-adv-row">
-          <a class="wl-adv" href="#advertisers">Want to advertise?</a>
+        <div class="dl-col">
+          <span class="dl-label">2 · Terminal</span>
+          <div class="dl-cli">
+            <code class="dl-cmd">npm install -g @dwell-protocol/terminal &amp;&amp; dwell claude setup</code>
+            <button type="button" class="dl-copy copy-btn" data-copy="npm install -g @dwell-protocol/terminal && dwell claude setup">Copy</button>
+          </div>
         </div>
-        <p class="wl-note" id="wl-note"></p>
+        <div class="dl-col">
+          <span class="dl-label">3 · Desktop app</span>
+          <a id="dl-mac" href="https://freeai.fyi/download/mac" class="dl-btn" aria-label="Download the Mac desktop app" target="_blank" rel="noopener">
+            <svg class="dl-btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <rect x="3" y="4.5" width="18" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="2"/>
+              <path d="M8.5 20h7M12 16.5V20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Download for Mac
+          </a>
+        </div>
       </div>
     </section>
 
     <!-- ── SURFACES — "Native everywhere it appears." The one auction re-skinned
-         as native chrome on each surface. Screenshots are the product previews;
-         every CTA routes to the hero waitlist until launch.
-         The per-surface download/install CTAs are HIDDEN (not deleted) until
-         the products ship — remove the `hidden` attributes to reveal them. -->
+         as native chrome on each surface. Screenshots are the product previews.
+         Terminal is live (mirrors the "Get it on your platform" CTA above);
+         Chrome + Desktop CTAs stay HIDDEN (not deleted) until those ship —
+         remove the `hidden` attributes to reveal them. -->
     <section class="surfaces" id="surfaces">
         <div class="wrap">
           <div class="secthead">
-            <h2>DWELL serves ads everywhere people use AI.</h2>
+            <h2>Native everywhere it appears.</h2>
           </div>
 
           <!-- Surface 01 — browser, 3 provider tabs -->
@@ -159,9 +219,9 @@
               <h3>Dwell Chrome extension</h3>
               <p>Inserts an ad pill under the thinking spinner of Claude, ChatGPT, or Gemini, and more&hellip;</p>
             </div>
-            <!-- Chrome CTA, folded full-width under the browser surface — joins
-                 the waitlist until the extension ships. -->
-            <a href="#wl" class="install-card surface-cta" hidden>
+            <!-- Chrome CTA, folded full-width under the browser surface — hidden
+                 until the extension ships. -->
+            <a href="#surfaces" class="install-card surface-cta" hidden>
               <span class="install-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="22" height="22">
                   <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -201,23 +261,22 @@
               <h3>Dwell Terminal</h3>
               <p>As Claude thinks, ads earn you tokens.</p>
             </div>
-            <!-- Terminal CTA, folded full-width under the terminal surface —
-                 waitlist until the CLI ships. -->
-            <a href="#wl" class="install-card surface-cta" hidden>
-              <span class="install-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="22" height="22">
-                  <path d="M5 7.5 9 12l-4 4.5M12.5 16.5h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
+            <!-- Terminal paste CTA, folded full-width under the terminal surface -->
+            <div class="cli-card surface-cta">
+              <span class="cli-head">
+                <span class="cli-glyph" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="15" height="15">
+                    <path d="M5 7.5 9 12l-4 4.5M12.5 16.5h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+                Paste this into your shell.
+                <span class="cli-earn">Earn <strong class="earn-amt">$76.71<span class="per">/mo</span></strong></span>
               </span>
-              <span class="install-text">
-                <span class="install-title">Dwell Terminal<span class="soon-tag">Coming soon</span></span>
-              </span>
-              <span class="install-pill">
-                <span class="install-pill-label">Earn up to</span>
-                <span class="install-pill-amt earn-amt">$76.71<span class="per">/mo</span></span>
-              </span>
-              <span class="install-arrow">→</span>
-            </a>
+              <div class="cli-code">
+                <code class="cli-cmd">npm install -g @dwell-protocol/terminal &amp;&amp; dwell claude setup</code>
+                <button type="button" class="cli-copy copy-btn" data-copy="npm install -g @dwell-protocol/terminal && dwell claude setup">Copy</button>
+              </div>
+            </div>
           </div>
 
           <!-- Surface 03 — desktop apps -->
@@ -241,13 +300,14 @@
               <span class="idx">Surface 03 — Desktop apps</span>
               <h3>Dwell Desktop</h3>
               <p>In the native Claude and ChatGPT desktop apps the pill docks right above the composer.<br />Only appears when AI is thinking.</p>
-              <!-- Waitlist link, full width of the copy column -->
-              <a href="#wl" class="scopy-dl" hidden>
+              <!-- Desktop download link, full width of the copy column — hidden
+                   until the app ships. -->
+              <a href="#surfaces" class="scopy-dl" hidden>
                 <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
                   <rect x="3" y="4.5" width="18" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="2"/>
                   <path d="M8.5 20h7M12 16.5V20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                Coming soon — join the waitlist
+                Coming soon
               </a>
             </div>
           </div>
@@ -399,8 +459,8 @@
     <p class="fdim tiny">Not affiliated with Anthropic, OpenAI, or Google.</p>
   </footer>
 
-  <!-- This is the live public page. The waitlist + bid form + leaderboard hit
-       the production API (set above via <meta name="dwell-api">). Keep the
+  <!-- This is the live public page. The bid form + leaderboard hit the
+       production API (set above via <meta name="dwell-api">). Keep the
        user-facing copy production-only — no test/demo wording. The one developer
        affordance is an opt-in mock-data mode at ?dev=1 (sticky; ?dev=0 to exit),
        handled in script.js, which never shows unless explicitly requested. -->
