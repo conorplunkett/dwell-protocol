@@ -123,8 +123,8 @@ a { color: inherit; text-decoration: none; }
 .sub strong { color: var(--ink); font-weight: 800; }
 .sub .hl { color: var(--green); font-weight: 700; }
 
-/* $DWELL — called out in red wherever the token is mentioned. */
-.dwell-token { font-weight: 800; color: var(--accent); }
+/* $DWELL — bolded wherever the token is mentioned, same ink as body text. */
+.dwell-token { font-weight: 800; color: var(--ink); }
 
 /* DEMO — before/after, with a little Claude Code guy perched on top */
 .demo {
