@@ -1,4 +1,4 @@
-// DWELL.fyi — live browser test.
+// Dwell Protocol — live browser test.
 // Loads the REAL unpacked extension into actual Chrome (new headless) via
 // Puppeteer, points it at a local fake chat page, and verifies end-to-end in a
 // real browser what test/run.js verifies in a mock DOM:

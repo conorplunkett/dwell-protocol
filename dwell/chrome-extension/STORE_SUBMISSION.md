@@ -20,9 +20,9 @@ parts reviewers actually read — keep them in sync with `manifest.json`.
 2. **Pay the one-time $5 USD registration fee.** Required before you can publish.
 3. **Verify the publisher.** Set a public contact email in the console and
    verify it — unverified publishers can't go live.
-4. **(Recommended) Verify the `dwell-protocol.vercel.app` domain** in
+4. **(Recommended) Verify the `dwellprotocol.com` domain** in
    [Google Search Console](https://search.google.com/search-console) under the
-   same account. This lets you list `https://dwell-protocol.vercel.app` as the official site
+   same account. This lets you list `https://dwellprotocol.com` as the official site
    and reduces "is this really you?" review friction.
 
 ---
@@ -54,13 +54,13 @@ manifest and pre-fills name, version, and icons. Then complete the tabs below.
 
 | Field | Value |
 | --- | --- |
-| **Name** | `DWELL.fyi — Earn from ChatGPT, Claude & Gemini` (from manifest) |
-| **Summary** (132 char max) | `Earn money while you use AI. Ads appear while AI thinks — 50% of revenue goes to you.` |
+| **Name** | `Dwell Protocol — Earn from ChatGPT, Claude & Gemini` (from manifest) |
+| **Summary** (132 char max) | `Earn while you use AI. One sponsored line shows while the AI is thinking — you earn DWELL points for watching.` (from manifest) |
 | **Category** | Productivity |
 | **Language** | English |
-| **Official website** | `https://dwell-protocol.vercel.app` |
+| **Official website** | `https://dwellprotocol.com` |
 | **Support / contact** | `hello@dwell.example` |
-| **Privacy policy URL** | `https://dwell-protocol.vercel.app/privacy` |
+| **Privacy policy URL** | `https://dwellprotocol.com/privacy` |
 
 **Detailed description** (paste into the description box):
 
@@ -110,8 +110,8 @@ the #1 cause of rejection. Answer it to match what the code actually does
   - ☑ **Personally identifiable information** — an **email address**, in two
     cases: the email you sign in with to redeem, and a **friend's email** you
     type into the referral "invite" form (sent once to deliver the invite).
-  - ☑ **Authentication information** — only your **own dwell-protocol.vercel.app session
-    token**, read on **dwell-protocol.vercel.app only**, sent to our server to link this device
+  - ☑ **Authentication information** — only your **own dwellprotocol.com session
+    token**, read on **dwellprotocol.com only**, sent to our server to link this device
     to your account so earnings show in your portal. It's first-party and used
     solely for that link; we never read auth tokens on the AI chat sites.
   - **Leave UNCHECKED:** prompts/page content/model output (Website content),
@@ -145,7 +145,7 @@ specific justifications keep review fast:
 | `alarms` | Schedules a periodic background task that refreshes the live ad inventory and config from the backend (`chrome.alarms`, ~every 10 min). |
 | **Host permissions** (claude.ai, chatgpt.com, chat.openai.com, gemini.google.com) | The content script must run on these AI chat sites to detect the "generating" state and inject the single sponsored line at the reply. |
 | Host permission: `wpjfhezklpczxzocgxsb.supabase.co` | The backend API: registers the anonymous device, pulls live ad inventory/config, and reports impression/click counts to compute earnings. |
-| Host permission: `dwell-protocol.vercel.app` | A small content script (`src/link.js`) runs on the DWELL website to link the user's anonymous device to their signed-in account so earnings appear in their portal. It reads only the site's own session token from the page; no AI chat-site data is involved. |
+| Host permission: `dwellprotocol.com` | A small content script (`src/link.js`) runs on the DWELL website to link the user's anonymous device to their signed-in account so earnings appear in their portal. It reads only the site's own session token from the page; no AI chat-site data is involved. |
 
 ---
 
@@ -185,7 +185,7 @@ labelled mock ad renders on demand, see `README.md`):
 - [ ] `make package-ext` succeeded (mirror + lint gates green).
 - [ ] Zip contains only the runtime files — no `test/`, `node_modules/`,
       or `README.md` (the script guarantees this).
-- [ ] Privacy policy is live at `https://dwell-protocol.vercel.app/privacy` and **matches the
+- [ ] Privacy policy is live at `https://dwellprotocol.com/privacy` and **matches the
       data-usage answers** (see the note in [§8](#8-anything-else--open-items)).
 - [ ] At least one 1280×800 screenshot uploaded.
 - [ ] Permission justifications pasted for every permission.

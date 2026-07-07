@@ -1,4 +1,4 @@
-// DWELL.fyi — Chrome extension verification harness.
+// Dwell Protocol — Chrome extension verification harness.
 // Loads the REAL content.js and background.js against a hand-rolled minimal DOM
 // + chrome API mock, so the whole loop can be checked headlessly:
 //   detection on ChatGPT / Claude / Gemini · Test Mode shows the mock ad ·
@@ -231,10 +231,10 @@ function makeChrome(stateRef, sentRef) {
     const orig = sandbox.chrome.runtime.sendMessage;
     sandbox.chrome.runtime.sendMessage = () => {};
     try {
-      T.setState({ enabled: true, testMode: false, ads: [{ id: "x", chip: "X", line: "X ad", url: "https://dwell-protocol.vercel.app/go/x" }] });
+      T.setState({ enabled: true, testMode: false, ads: [{ id: "x", chip: "X", line: "X ad", url: "https://dwellprotocol.com/go/x" }] });
       opened.length = 0;
       T.bar._click();
-      assert.deepStrictEqual(opened, ["https://dwell-protocol.vercel.app/go/x"], "ad did not open synchronously");
+      assert.deepStrictEqual(opened, ["https://dwellprotocol.com/go/x"], "ad did not open synchronously");
     } finally {
       sandbox.chrome.runtime.sendMessage = orig;
     }
@@ -460,7 +460,7 @@ function makeChrome(stateRef, sentRef) {
     assert.ok(intent, "no /v1/clicks/intent POST"); // click recorded on our own backend
     assert.strictEqual(JSON.parse(intent.options.body).campaignId, "c1");
     // the server returned a third-party trackingUrl; the SW must NOT request it
-    // (only declared hosts — dwell-protocol.vercel.app / *.supabase.co — may be fetched).
+    // (only declared hosts — dwellprotocol.com / *.supabase.co — may be fetched).
     assert.ok(!fetches.some((f) => f.url.includes("tracker.example.com")), "fetched an UNDECLARED tracking host");
   });
 

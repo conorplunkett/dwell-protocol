@@ -1,4 +1,4 @@
-// DWELL.fyi — popup logic (Fuel Ring)
+// Dwell Protocol — popup logic (Fuel Ring)
 const $ = (id) => document.getElementById(id);
 const setText = (id, val) => { const el = $(id); if (el) el.textContent = val; };
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -91,7 +91,7 @@ async function refresh() {
 
 // CREW — the affiliate "earn with your friends" panel. The extension stays
 // anonymous: until the device is linked to an account it shows the sign-in CTA
-// (which opens the dwell-protocol.vercel.app login page); once linked (device-scoped
+// (which opens the dwellprotocol.com login page); once linked (device-scoped
 // /v1/me/affiliate via the background) it shows up to 10 slots — each a joined
 // friend (with their generated credits + your 10% cut, forever), a pending
 // invite, or an open invite form to add the next friend.
@@ -179,7 +179,7 @@ function bindInviteForm() {
   });
 }
 
-// Bottom-of-popup line naming the dwell-protocol.vercel.app account this device is linked to,
+// Bottom-of-popup line naming the dwellprotocol.com account this device is linked to,
 // so it's always clear whose earnings the extension is crediting. Anonymous
 // until the device links, matching the hero's "connect to start earning" CTA.
 function setAccountStatus(linked, email) {
@@ -251,12 +251,12 @@ async function primeCrewFromCache() {
   } catch (_) {}
 }
 
-// Sign-in: open the dwell-protocol.vercel.app login page in a new tab. No magic link in the
+// Sign-in: open the dwellprotocol.com login page in a new tab. No magic link in the
 // extension — once the user signs in there, the device auto-links and the crew
 // panel flips to linked on the next poll.
 if ($("signin-btn")) {
   $("signin-btn").addEventListener("click", () => {
-    chrome.tabs.create({ url: "https://dwell-protocol.vercel.app/redeem.html" });
+    chrome.tabs.create({ url: "https://dwellprotocol.com/redeem.html" });
   });
 }
 

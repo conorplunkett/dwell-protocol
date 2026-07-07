@@ -1,4 +1,4 @@
-// DWELL.fyi — account link bridge. Runs only on dwell-protocol.vercel.app. When the user is
+// Dwell Protocol — account link bridge. Runs only on dwellprotocol.com. When the user is
 // signed in to the website, their session token sits in localStorage; hand it to
 // the background so it can link THIS device to the account — no magic link, no
 // extra clicks in the extension. Polls briefly (and on focus) so signing in

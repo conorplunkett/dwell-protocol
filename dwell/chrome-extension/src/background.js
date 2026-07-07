@@ -1,4 +1,4 @@
-// DWELL.fyi — service worker
+// Dwell Protocol — service worker
 // Holds earnings state and the revenue math. 50% comes back as Claude credits.
 //
 // Talks to the production backend (Supabase Edge Function):
@@ -251,7 +251,7 @@ async function reportClick(campaignId) {
     // returns a tracking pixel, fire it ONLY when it's first-party — the
     // extension must never request a host it didn't declare in host_permissions.
     // Any advertiser-side pixel is fired by the server during the
-    // dwell-protocol.vercel.app/go/* click redirect instead.
+    // dwellprotocol.com/go/* click redirect instead.
     const { trackingUrl } = await res.json();
     if (trackingUrl && isFirstPartyUrl(trackingUrl)) {
       try { await fetch(trackingUrl, { redirect: "manual" }); } catch (_) {}
@@ -260,13 +260,13 @@ async function reportClick(campaignId) {
 }
 
 // True only for the hosts the extension actually declares in host_permissions
-// (dwell-protocol.vercel.app and the Supabase backend), so the service worker never reaches out
+// (dwellprotocol.com and the Supabase backend), so the service worker never reaches out
 // to an undeclared origin. Anything else (e.g. an advertiser's pixel) is left to
-// the server to fire during the dwell-protocol.vercel.app/go/* click redirect.
+// the server to fire during the dwellprotocol.com/go/* click redirect.
 function isFirstPartyUrl(u) {
   try {
     const h = new URL(u).hostname;
-    return h === "dwell-protocol.vercel.app" || h.endsWith(".supabase.co");
+    return h === "dwellprotocol.com" || h === "www.dwellprotocol.com" || h.endsWith(".supabase.co");
   } catch (_) {
     return false;
   }
@@ -337,7 +337,7 @@ async function getCrew() {
   }
 }
 
-// Earning is gated on the device being linked to a dwell-protocol.vercel.app account (see
+// Earning is gated on the device being linked to a dwellprotocol.com account (see
 // recordImpression / tickImpressionToken). An anonymous device must never accrue
 // credits: the web portal is account-scoped, so device-only earnings can never
 // show up there — the exact mismatch where the popup reads e.g. $0.20 but the
@@ -377,7 +377,7 @@ async function inviteFriend(email) {
   }
 }
 
-// Link this device to the dwell-protocol.vercel.app account whose web session the link bridge
+// Link this device to the dwellprotocol.com account whose web session the link bridge
 // (src/link.js) found in the site's localStorage. Authed by device creds + that
 // web session; the server sets devices.user_id and auto-enrolls the affiliate.
 // We remember the last session we linked so we don't re-POST on every poll tick;
