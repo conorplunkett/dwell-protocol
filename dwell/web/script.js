@@ -296,63 +296,43 @@ document.querySelectorAll(".copy-btn").forEach((btn) => {
   });
 });
 
-// --- Download-button email capture (Chrome + Mac) -----------------------
+// --- Download-slot email capture (Chrome + Mac) --------------------------
 // Neither DWELL's own Chrome extension nor its desktop app is out yet, so
-// clicking either button opens the existing FreeAI listing in a background
-// tab (best-effort — browsers don't let a page reliably suppress the focus
-// switch, but re-focusing the opener right after the tab opens gets close)
-// and, in the same click, swaps the button for an inline email field so we
-// can tell the person when DWELL's own version ships.
-function wireDownloadCapture(id, source) {
-  const btn = document.getElementById(id);
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    setTimeout(() => window.focus(), 0);
-    const col = btn.closest(".dl-col");
-    if (!col || col.dataset.captured) return;
-    col.dataset.captured = "1";
-    const row = document.createElement("div");
-    row.className = "dl-cli";
-    row.innerHTML =
-      '<input type="email" class="dl-email-input" placeholder="you@example.com" autocomplete="email" inputmode="email" aria-label="Email for the DWELL launch notice" />' +
-      '<button type="button" class="dl-copy dl-email-btn">Notify me</button>';
-    const note = document.createElement("p");
-    note.className = "dl-email-note";
-    note.textContent = "Get an email when the full version is live.";
-    btn.replaceWith(row, note);
-    const input = row.querySelector(".dl-email-input");
-    const saveBtn = row.querySelector(".dl-email-btn");
-    input.focus();
-    const submit = async () => {
-      const value = input.value.trim();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) {
-        input.focus();
-        return;
+// those two "Get it on your platform" slots are an email field from the
+// start (not a button) — enter an address and get pinged when they ship.
+function wireNotify(inputId, btnId, source) {
+  const input = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
+  if (!input || !btn) return;
+  const submit = async () => {
+    const value = input.value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) {
+      input.focus();
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    try {
+      if (API_BASE) {
+        await fetch(`${API_BASE}/v1/waitlist`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: value, source: "download:" + source }),
+        });
       }
-      saveBtn.disabled = true;
-      saveBtn.textContent = "Saving…";
-      try {
-        if (API_BASE) {
-          await fetch(`${API_BASE}/v1/waitlist`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: value, source: "download:" + source }),
-          });
-        }
-      } catch (_) {
-        /* best-effort — still confirm below */
-      }
-      note.textContent = "You’re on the list ✓ — we’ll email you at launch.";
-      row.remove();
-    };
-    saveBtn.addEventListener("click", submit);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); submit(); }
-    });
+    } catch (_) {
+      /* best-effort — still confirm below */
+    }
+    input.disabled = true;
+    btn.textContent = "You’re on the list ✓";
+  };
+  btn.addEventListener("click", submit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); submit(); }
   });
 }
-wireDownloadCapture("dl-chrome", "chrome");
-wireDownloadCapture("dl-mac", "mac");
+wireNotify("notify-chrome-input", "notify-chrome-btn", "chrome");
+wireNotify("notify-mac-input", "notify-mac-btn", "mac");
 
 // --- API wiring ---------------------------------------------------------
 // In production the leaderboard + advertiser checkout point at the live backend
