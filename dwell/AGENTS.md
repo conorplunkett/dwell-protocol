@@ -26,9 +26,8 @@ State mechanics as facts. No price talk, ever — the banned-language grep in CI
 copy rules in `docs/05-legal-structure.md`. **Never claim points are "backed"
 or "escrowed" until the USDC reserve actually exists** — say points are
 recorded on the ledger / earmarked, not guaranteed. CI for this tree runs from
-the **root** `.github/workflows/ci.yml` (the `dwell-*` jobs); `dwell/` must
-stay free of any reference to the frozen root product's brand (CI greps for
-it).
+the **root** `.github/workflows/dwell-ci.yml`; `dwell/` must stay free of any
+reference to the frozen root product's brand (CI greps for it).
 
 ## Layout
 

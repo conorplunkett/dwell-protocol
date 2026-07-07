@@ -52,8 +52,8 @@ database server.
 Points-phase deployment. The site is live at
 [dwellprotocol.com](https://dwellprotocol.com) (Vercel, root directory
 `dwell/web`); the API is the `dwell-api` Supabase Edge Function, deployed by
-`.github/workflows/deploy-dwell-api.yml` at the repo root — note that **all CI
-for this tree runs from the root `.github/workflows/ci.yml`** (`dwell-*` jobs).
+`.github/workflows/deploy-dwell-functions.yml` at the repo root — note that
+**all CI for this tree runs from the root `.github/workflows/dwell-ci.yml`**.
 The contracts are machine-verified (forge 1.7.1 / solc 0.8.26, 25/25) but
 unaudited; advertiser checkout is disabled until Stripe keys exist. Nothing
 here is investment advice, and nothing here promises anything about any
