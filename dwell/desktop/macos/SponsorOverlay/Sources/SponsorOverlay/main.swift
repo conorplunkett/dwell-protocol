@@ -60,6 +60,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var accessibilityItem: NSMenuItem!
     /// Account-link row: shows the linked email, or a warning + sign-in prompt.
     private var linkItem: NSMenuItem!
+    /// Campaign-availability row. With zero live campaigns the card never
+    /// appears and the app is otherwise indistinguishable from broken, so the
+    /// menu says which of the two silent states it's in ("no live campaigns"
+    /// vs "can't reach the server"). Hidden while ads are being served.
+    private var campaignsItem: NSMenuItem!
+    /// nil = no fetch has completed yet; true = the last /v1/ads request
+    /// failed; false = it succeeded (ads holds the live list).
+    private var adsFetchFailed: Bool?
     /// nil = not checked yet; true/false = linked status from /v1/me/affiliate.
     private var isLinked: Bool?
     private var linkedEmail: String?
@@ -224,10 +232,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshAds() {
         client.fetchAds { [weak self] ads in
             DispatchQueue.main.async {
-                self?.ads = ads
-                if self?.currentAd == nil { self?.rotateAd() }
+                guard let self else { return }
+                self.adsFetchFailed = (ads == nil)
+                // On a failed fetch keep the last known list — a transient
+                // network blip shouldn't tear down a working rotation.
+                if let ads { self.ads = ads }
+                self.refreshCampaignsRow()
+                if self.currentAd == nil { self.rotateAd() }
             }
         }
+    }
+
+    /// Reflect ad availability in the menu. Zero live campaigns (or an
+    /// unreachable API) means the card can never appear — without this row that
+    /// state reads as "the app is broken", since the overlay just never shows.
+    private func refreshCampaignsRow() {
+        guard let campaignsItem else { return }
+        if demoMode || !ads.isEmpty || adsFetchFailed == nil {
+            campaignsItem.isHidden = true
+            return
+        }
+        campaignsItem.title = adsFetchFailed == true
+            ? "⚠ Can't reach DWELL — retrying…"
+            : "No live campaigns yet — the card appears when one launches"
+        campaignsItem.isHidden = false
     }
 
     private func refreshBalance() {
@@ -464,6 +492,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         linkItem = NSMenuItem(title: "Account: checking…", action: nil, keyEquivalent: "")
         linkItem.isHidden = demoMode
         menu.addItem(linkItem)
+        // Info-only row (no action → greyed like the balance row); title and
+        // visibility are owned by refreshCampaignsRow().
+        campaignsItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        campaignsItem.isHidden = true
+        menu.addItem(campaignsItem)
         // Shown only while Accessibility is not granted — the overlay can't see
         // the assistant's window without it, so this is the #1 "nothing
         // happens" fix.

@@ -193,6 +193,16 @@ generation. The card should appear while the assistant streams; 5 visible
 seconds → one impression batch lands in the server ledger; clicking routes
 through `/v1/go/:token`, which records the click (clicks are tracked, not paid).
 
+> **If the card never appears against the real API, check the menu bar first.**
+> The card can only show when `GET /v1/ads` returns at least one campaign — with
+> zero *active* campaigns in the backend (status `active`, `paid_at` set,
+> impressions remaining) the app is working correctly but has nothing to serve,
+> which looks identical to "broken". The menu-bar menu now says which silent
+> state you're in: *"No live campaigns yet"* (API fine, nothing to serve) vs
+> *"⚠ Can't reach DWELL"* (request failing). Verify server-side with
+> `curl "$DWELL_API_URL/v1/ads"` — an empty `ads: []` means seed/activate a
+> campaign, not debug the app.
+
 **CI** builds the Swift app on a `macos-14` runner on every push/PR, packages
 it with `packaging/bundle.sh`, and uploads `SponsorOverlay.zip` + `.dmg` as the
 `SponsorOverlay-macos` artifact. Download it from the Actions run, open the dmg
