@@ -782,6 +782,24 @@ html.auth-pending #portal-loading { display: flex; }
 .earn-surface.is-live { border-color: var(--ok-line); background: var(--ok-bg); }
 .earn-surface.is-live .ia-label { color: var(--ok-fg); }
 
+/* Surface marks spin like the homepage brand mark: a slow idle rotation while
+   inactive, speeding up once the surface lights up (its .logo loses
+   .is-inactive). Applies to the earnings 3-up row, the install tiles, and the
+   install hero. Parked entirely for reduced-motion users. */
+@media (prefers-reduced-motion: no-preference) {
+  .earn-surface .logo img,
+  .install-active .logo img,
+  .install-hero-logo img {
+    animation: surface-spin 3.4s linear infinite;
+  }
+  .earn-surface .logo:not(.is-inactive) img,
+  .install-active .logo:not(.is-inactive) img,
+  .install-hero-logo:not(.is-inactive) img {
+    animation-duration: 1s;
+  }
+}
+@keyframes surface-spin { to { transform: rotate(360deg); } }
+
 /* ════════════════════════════════════════════════════════════════
    CASH OUT — the future-flow preview, clearly labeled
    ════════════════════════════════════════════════════════════════ */
@@ -1003,6 +1021,9 @@ html.auth-pending #portal-loading { display: flex; }
   border-radius: var(--radius-xl);
   background: var(--surface-inset);
 }
+/* Cash-out is disabled pre-launch — mute the whole block behind its
+   "Coming soon" state. */
+.redeem-block.is-disabled { opacity: .6; }
 .rb-head {
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px; flex-wrap: wrap; margin-bottom: 10px;

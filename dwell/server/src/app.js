@@ -171,10 +171,11 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
   route("GET", "/healthz", async (req, res) => json(res, 200, { ok: true }));
 
   route("GET", "/v1/config", async (req, res) => {
-    let leaderboardPublic = false, liveTopCpm = false;
+    let leaderboardPublic = false, liveTopCpm = false, adNoticeVisible = false;
     try { leaderboardPublic = (await repo.getSetting("leaderboard_public")) === true; } catch { /* settings table absent */ }
     try { liveTopCpm = (await repo.getSetting("live_top_cpm")) === true; } catch { /* settings table absent */ }
-    json(res, 200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) });
+    try { adNoticeVisible = (await repo.getSetting("ad_notice_visible")) === true; } catch { /* settings table absent */ }
+    json(res, 200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) });
   });
 
   route("GET", "/v1/ads", async (req, res) => {
@@ -1339,6 +1340,20 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     if (typeof body.enabled !== "boolean") return json(res, 400, { error: "enabled (boolean) required" });
     await repo.setSetting("live_top_cpm", body.enabled);
     json(res, 200, { ok: true, enabled: body.enabled });
+  });
+
+  // ---------- portal "not serving ads" notice visibility (off by default) ----------
+  route("GET", "/v1/admin/ad-notice", async (req, res, body, rawBody, query) => {
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    let visible = false;
+    try { visible = (await repo.getSetting("ad_notice_visible")) === true; } catch { /* settings table absent */ }
+    json(res, 200, { visible });
+  });
+  route("POST", "/v1/admin/ad-notice", async (req, res, body) => {
+    if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
+    if (typeof body.visible !== "boolean") return json(res, 400, { error: "visible (boolean) required" });
+    await repo.setSetting("ad_notice_visible", body.visible);
+    json(res, 200, { ok: true, visible: body.visible });
   });
 
   // ---------- completion-receipt auto-send toggle + batched sweep ----------

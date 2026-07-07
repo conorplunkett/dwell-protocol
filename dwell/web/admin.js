@@ -787,11 +787,12 @@ function switchRow({ title, on, onLabel = "On", offLabel = "Off", desc, confirmO
 async function renderSettings(view) {
   // Everything the page needs in ONE parallel round-trip, then paint once.
   // (This was 7 sequential fetches — the whole tab felt laggy.)
-  const [d, ra, lb, ltc, cfg, errs, p] = await Promise.all([
+  const [d, ra, lb, ltc, an, cfg, errs, p] = await Promise.all([
     api("/v1/admin/overview"),
     tryApi("/v1/admin/campaigns/receipts-auto"),
     tryApi("/v1/admin/leaderboard-visibility"),
     tryApi("/v1/admin/live-top-cpm"),
+    tryApi("/v1/admin/ad-notice"),
     tryApi("/v1/admin/config"),
     tryApi("/v1/admin/errors"),
     tryApi("/v1/admin/pricing"),
@@ -833,6 +834,16 @@ async function renderSettings(view) {
       action: async (next) => {
         await api("/v1/admin/leaderboard-visibility", { method: "POST", body: { public: next } });
         toast(next ? "Leaderboard shown" : "Leaderboard hidden");
+      },
+    }),
+    switchRow({
+      title: "Ad notice", on: !!(an && an.visible), offLabel: "Hidden", onLabel: "Shown",
+      desc: (on) => on
+        ? "Portal users see the “Not serving ads until after launch.” banner at the top of their dashboard."
+        : "The banner is hidden from all portal users (the portal reads this from /v1/config).",
+      action: async (next) => {
+        await api("/v1/admin/ad-notice", { method: "POST", body: { visible: next } });
+        toast(next ? "Ad notice shown" : "Ad notice hidden");
       },
     }),
     switchRow({

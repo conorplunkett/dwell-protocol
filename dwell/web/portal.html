@@ -283,25 +283,20 @@
       <a class="brand" href="index.html">
         <span class="logo"><img src="assets/logo.svg" alt="" /></span>
         <span class="brand-name">DWELL</span>
-        <span class="brand-sub">— Portal</span>
       </a>
       <div class="dash-account">
         <span class="dash-account-who" id="nav-signed-in" hidden></span>
-        <button class="wallet-chip" id="wallet-chip" type="button">
-          <span class="wallet-dot" aria-hidden="true"></span>
-          Wallet · at token launch
-        </button>
         <a href="index.html" class="dash-account-link dash-home">Home</a>
         <button class="dash-account-link dash-signout js-signout" id="signout" type="button">Sign out</button>
       </div>
     </header>
 
-    <!-- Out-of-inventory notice — shown only when the live auction has nothing
-         to serve. Toggled by checkInventory() in portal.js against the public
-         /v1/ads endpoint; text mirrors the extension popup's version. -->
+    <!-- Ad-notice banner — hidden by default. An admin toggle (Settings →
+         "Ad notice") flips the `adNoticeVisible` flag in /v1/config; portal.js
+         checkInventory() reads it and shows this banner when it's on. -->
     <div class="dash-notice" id="inventory-notice" hidden>
       <span class="dash-notice-ico" aria-hidden="true">⏳</span>
-      <span>Out of ad inventory right now - they will be back tomorrow.</span>
+      <span>Not serving ads until after launch.</span>
     </div>
 
     <!-- Primary section nav — one active view at a time. Same order as the
@@ -336,7 +331,6 @@
           <div>
             <span class="eyebrow">Dwells balance</span>
             <div class="balance" id="balance">0 <span class="balance-unit">dwells</span></div>
-            <div class="balance-sub" id="balance-usd">= $0.00 of earned ad value</div>
             <div class="balance-sub" id="balance-email"></div>
           </div>
         </div>
@@ -445,18 +439,10 @@
           <div>
             <span class="eyebrow">Your dwells</span>
             <div class="balance" id="co-points">0 <span class="balance-unit">dwells</span></div>
-            <div class="balance-sub" id="co-usd">= $0.00 of earned ad value</div>
           </div>
         </div>
 
         <h2>Redeem your dwells</h2>
-        <p class="portal-copy">
-          Dwells convert to $DWELL at token launch at a fixed, pre-announced
-          rate — 1,000 dwells = 12,000 $DWELL; value floats with the market.
-          You can also redeem now: trade dwells for a Claude gift card or cash
-          out to your bank through Stripe. Gift cards and cash carry a 10%
-          protocol fee; the $DWELL claim does not.
-        </p>
 
         <!-- (a) Claude gift cards — live. Grid rendered by portal.js from
              GET /v1/giftcards; prices shown in dwells at face + the protocol
@@ -464,7 +450,6 @@
         <div class="redeem-block" id="gift-block">
           <div class="rb-head">
             <h3 class="rb-title">Claude gift card</h3>
-            <span class="rb-badge" id="gift-fee-badge">includes 10% protocol fee</span>
           </div>
           <p class="portal-copy">
             Pick a plan and term. The gift card is emailed to your account
@@ -485,14 +470,20 @@
           <p class="redeem-result" id="redeem-result" hidden></p>
         </div>
 
-        <!-- (b) Cash payout via Stripe — live. Three states rendered by
-             portal.js from GET /v1/web/payouts: set-up, in-review, enabled. -->
-        <div class="redeem-block" id="payout-block">
+        <!-- (b) Cash payout via Stripe — disabled pre-launch. Static "coming
+             soon" state; portal.js loadPayoutStatus() early-returns so it
+             never renders the live Stripe flow into #payout-body. -->
+        <div class="redeem-block is-disabled" id="payout-block">
           <div class="rb-head">
             <h3 class="rb-title">Cash out to your bank</h3>
-            <span class="rb-badge" id="payout-fee-badge">10% protocol fee · $10 minimum</span>
+            <span class="rb-badge" id="payout-fee-badge">Coming soon</span>
           </div>
-          <div id="payout-body"><!-- rendered by portal.js --></div>
+          <div id="payout-body">
+            <div class="payout-state">
+              <p>Cashing out to your bank arrives after token launch.</p>
+              <button class="btn-accent" type="button" disabled>Coming soon</button>
+            </div>
+          </div>
           <div class="payout-history" id="payout-history" hidden></div>
           <p class="redeem-result" id="payout-result" hidden></p>
         </div>
@@ -506,13 +497,9 @@
           <ol class="lp-steps">
             <li><strong>Claim $DWELL to your wallet.</strong> Your dwells convert to
               DWELL tokens at the published rate — no fee on the claim; it
-              happens onchain, on Solana, into an email-based wallet created for
-              you or one you connect yourself.</li>
-            <li><strong>Spend or hold.</strong> Claimed $DWELL is yours onchain —
+              happens onchain, on Solana, into an external wallet.</li>
+            <li><strong>Hold or sell.</strong> Claimed $DWELL is yours onchain —
               hold it, swap it, or move it anywhere.</li>
-            <li><strong>Redemptions revalue.</strong> After launch, gift cards and
-              cash-outs are valued at the market price at redemption instead of
-              the earn basis shown today.</li>
           </ol>
         </div>
 
@@ -688,41 +675,11 @@
       </section>
     </main>
 
-    <!-- Points strip — points-phase accounting, in one line. Fed by
-         GET /v1/web/points/summary with a seeded mock fallback (see portal.js). -->
-    <div class="reserve-strip">
-      <span class="reserve-pill"><strong id="reserve-points">3,912,400</strong> dwells outstanding across all accounts</span>
-    </div>
-
     <footer class="footer">
-      <p>© 2026 DWELL · Dwells are non-transferable until token launch · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
+      <p>© 2025 Dwell Protocol · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
     </footer>
 
   </div><!-- /portal-page -->
-
-  <!-- ══════════════════════════════════════════════════
-       WALLET MODAL (mock — opened from the header chip).
-       Pure preview: no web3 libraries, no live calls.
-  ══════════════════════════════════════════════════ -->
-  <div class="modal-backdrop" id="wallet-modal" hidden>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="wallet-modal-title">
-      <h3 class="modal-title" id="wallet-modal-title">Wallets arrive at token launch</h3>
-      <p class="modal-body">
-        There's nothing to connect yet. When the DWELL token launches, this chip
-        becomes your wallet — claims happen onchain, on Solana:
-      </p>
-      <ul class="modal-list">
-        <li><strong>Email-based</strong> — a wallet created from the email you sign in with; no seed phrase to manage.</li>
-        <li><strong>Exportable</strong> — take your keys to any self-custody wallet whenever you like.</li>
-        <li><strong>Or connect your own</strong> — use an existing wallet with the portal instead.</li>
-      </ul>
-      <p class="modal-body">
-        Until launch, dwells accrue to your account and stay recorded on the
-        ledger.
-      </p>
-      <button class="btn-accent" id="wallet-modal-close" type="button">Got it</button>
-    </div>
-  </div>
 
   <script src="portal.js"></script>
 </body>
