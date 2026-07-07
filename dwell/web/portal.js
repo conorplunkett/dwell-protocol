@@ -1,7 +1,7 @@
 // DWELL — signed-in portal (portal.html). Email magic-link or OAuth sign-in,
 // then the points dashboard: earnings, the activity ledger, the cash-out
 // preview, referrals, and install status. Points are the unit everywhere:
-// 1,000 points = $1.00 of earned ad value, backed 1:1 by the USDC reserve.
+// 1,000 points = $1.00 of earned ad value.
 //
 // Dev mode — open portal.html?dev=1. The flag sticks in localStorage and the
 // whole portal renders from seeded, deterministic mock data with no backend
@@ -35,7 +35,6 @@ function isDev() {
 // ---- formatters — mono-forward numbers, points first ----
 const pts = (n) => Math.round(Number(n) || 0).toLocaleString();
 const usd = (n) => "$" + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const usdWhole = (n) => "$" + (Number(n) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const usdFromPoints = (p) => usd((Number(p) || 0) / 1000);
 // Signed points for ledger rows: credits read "+320 pts", debits "−2,000 pts".
 const ptsSigned = (n) => {
@@ -122,7 +121,7 @@ function buildMock() {
       earnedPoints: 6270, canApplyCode: false, upgraded: false, upgradeRequested: false,
     },
     sources: { chrome: true, claude_code: false, desktop: false },
-    summary: { balancePoints: 12450, reserveUsd: 48120, pointsOutstanding: 3912400 },
+    summary: { balancePoints: 12450, pointsOutstanding: 3912400 },
   };
 }
 const MOCK = buildMock();
@@ -733,14 +732,13 @@ function setBalance(points) {
   $("co-sum-usd").textContent = usdFromPoints(balancePoints);
 }
 
-// ---- points summary + reserve strip ----
-// GET /v1/web/points/summary carries the balance plus protocol-wide reserve
+// ---- points summary + points strip ----
+// GET /v1/web/points/summary carries the balance plus protocol-wide points
 // accounting. On any failure outside dev mode the strip keeps its static line.
 async function loadPointsSummary() {
   const { status, body } = await apiGet("/v1/web/points/summary");
   if (status !== 200 || !body) return;
   if (body.balancePoints != null) setBalance(body.balancePoints);
-  if (body.reserveUsd != null) $("reserve-usd").textContent = usdWhole(body.reserveUsd);
   if (body.pointsOutstanding != null) $("reserve-points").textContent = pts(body.pointsOutstanding);
 }
 
@@ -1058,7 +1056,7 @@ function enterDashboard(email) {
   setBalance(balancePoints); // paint whatever we know now; summary refines it
   loadEarnings("7d");
   retrieveActivity();  // auto-load the ledger so it's ready when the tab opens
-  loadPointsSummary(); // balance + the reserve strip
+  loadPointsSummary(); // balance + the points strip
   checkInventory();
 }
 

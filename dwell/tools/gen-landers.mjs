@@ -81,10 +81,10 @@ const DEMO = {
 const LANDERS = [
   {
     slug: "developers",
-    title: "DWELL.fyi — Get Claude for free while you ship code",
+    title: "DWELL — Get Claude for free while you ship code",
     description:
       "Build with Claude Code, ChatGPT, and Gemini like you already do. 50% of the ad revenue comes back to you as Claude credits.",
-    ogTitle: "DWELL.fyi — Get Claude for free while you ship code",
+    ogTitle: "DWELL — Get Claude for free while you ship code",
     ogDescription:
       "Build with the tools you already use. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Make money while you build.",
@@ -100,10 +100,10 @@ const LANDERS = [
   },
   {
     slug: "chatgpt",
-    title: "DWELL.fyi — Earn Claude credits while you use ChatGPT",
+    title: "DWELL — Earn Claude credits while you use ChatGPT",
     description:
       "Use ChatGPT like you already do. 50% of the ad revenue comes back to you as Claude credits. Free Chrome extension.",
-    ogTitle: "DWELL.fyi — Earn Claude credits while you use ChatGPT",
+    ogTitle: "DWELL — Earn Claude credits while you use ChatGPT",
     ogDescription:
       "Use ChatGPT like you already do. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Get paid to use ChatGPT.",
@@ -119,10 +119,10 @@ const LANDERS = [
   },
   {
     slug: "gemini",
-    title: "DWELL.fyi — Earn Claude credits while you use Gemini",
+    title: "DWELL — Earn Claude credits while you use Gemini",
     description:
       "Use Gemini like you already do. 50% of the ad revenue comes back to you as Claude credits. Free Chrome extension.",
-    ogTitle: "DWELL.fyi — Earn Claude credits while you use Gemini",
+    ogTitle: "DWELL — Earn Claude credits while you use Gemini",
     ogDescription:
       "Use Gemini like you already do. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Get paid to use Gemini.",
@@ -138,10 +138,10 @@ const LANDERS = [
   },
   {
     slug: "students",
-    title: "DWELL.fyi — Free AI for students",
+    title: "DWELL — Free AI for students",
     description:
       "Stop paying for AI. Use ChatGPT, Claude, and Gemini for class — 50% of the ad revenue comes back to you as Claude credits.",
-    ogTitle: "DWELL.fyi — Free AI for students",
+    ogTitle: "DWELL — Free AI for students",
     ogDescription:
       "Stop paying for AI. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Free AI for students.",
@@ -157,10 +157,10 @@ const LANDERS = [
   },
   {
     slug: "writers",
-    title: "DWELL.fyi — Earn Claude credits while you write with AI",
+    title: "DWELL — Earn Claude credits while you write with AI",
     description:
       "Draft and edit with ChatGPT, Claude, and Gemini like you already do. 50% of the ad revenue comes back to you as Claude credits.",
-    ogTitle: "DWELL.fyi — Earn Claude credits while you write with AI",
+    ogTitle: "DWELL — Earn Claude credits while you write with AI",
     ogDescription:
       "Write with the AI you already use. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Get paid while you write.",
@@ -176,10 +176,10 @@ const LANDERS = [
   },
   {
     slug: "researchers",
-    title: "DWELL.fyi — Earn Claude credits while you research with AI",
+    title: "DWELL — Earn Claude credits while you research with AI",
     description:
       "Research with Gemini, ChatGPT, and Claude like you already do. 50% of the ad revenue comes back to you as Claude credits.",
-    ogTitle: "DWELL.fyi — Earn Claude credits while you research with AI",
+    ogTitle: "DWELL — Earn Claude credits while you research with AI",
     ogDescription:
       "Research with the AI you already use. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Get paid while you research.",
@@ -195,10 +195,10 @@ const LANDERS = [
   },
   {
     slug: "founders",
-    title: "DWELL.fyi — Cut your startup's AI bill to $0",
+    title: "DWELL — Cut your startup's AI bill to $0",
     description:
       "Your team already runs on Claude, ChatGPT, and Gemini. 50% of the ad revenue comes back as Claude credits.",
-    ogTitle: "DWELL.fyi — Cut your startup's AI bill to $0",
+    ogTitle: "DWELL — Cut your startup's AI bill to $0",
     ogDescription:
       "Turn your team's AI spend into runway. 50% of the ad revenue comes back as Claude credits.",
     h1: "Turn AI spend into runway.",
@@ -214,10 +214,10 @@ const LANDERS = [
   },
   {
     slug: "marketers",
-    title: "DWELL.fyi — Earn Claude credits while you make content with AI",
+    title: "DWELL — Earn Claude credits while you make content with AI",
     description:
       "Make content with ChatGPT, Claude, and Gemini like you already do. 50% of the ad revenue comes back to you as Claude credits.",
-    ogTitle: "DWELL.fyi — Earn Claude credits while you make content with AI",
+    ogTitle: "DWELL — Earn Claude credits while you make content with AI",
     ogDescription:
       "Make content with the AI you already use. 50% of the ad revenue comes back to you as Claude credits.",
     h1: "Get paid for every prompt.",
@@ -312,7 +312,7 @@ const ADV_MAIN = `<main id="top">
     <section id="advertisers" class="advertisers">
       <div class="adv-card">${advFormVariant}</div>
       <p class="adv-recurring">
-        Want a recurring budget? Reach out to <a href="mailto:ads@contact.dwell-protocol.vercel.app">ads@contact.dwell-protocol.vercel.app</a>.
+        Want a recurring budget? Reach out to <a href="mailto:ads@contact.dwellprotocol.com">ads@contact.dwellprotocol.com</a>.
       </p>
     </section>
 
@@ -360,7 +360,7 @@ const ADV_MAIN = `<main id="top">
       <details class="faq-item">
         <summary class="faq-q">Can I run a recurring or always-on budget?</summary>
         <div class="faq-a">
-          <p class="faq-lead">The self-serve form funds a single campaign. For a recurring monthly budget, managed pacing, or a guaranteed top slot, email <a href="mailto:ads@contact.dwell-protocol.vercel.app">ads@contact.dwell-protocol.vercel.app</a> and we'll set it up.</p>
+          <p class="faq-lead">The self-serve form funds a single campaign. For a recurring monthly budget, managed pacing, or a guaranteed top slot, email <a href="mailto:ads@contact.dwellprotocol.com">ads@contact.dwellprotocol.com</a> and we'll set it up.</p>
         </div>
       </details>
 
@@ -392,7 +392,7 @@ function buildAdvertisersPage() {
     .replace(/href="styles\.css/g, 'href="/styles.css')
     .replace(/src="script\.js/g, 'src="/script.js');
 
-  const title = "DWELL.fyi — Advertise where AI-native customers already are";
+  const title = "DWELL — Advertise where AI-native customers already are";
   const description =
     "Reach customers inside Claude, ChatGPT, and Gemini while they wait for an answer. Billed by impression, at a lower CPM than saturated channels.";
   out = sub(out, "title", /<title>[\s\S]*?<\/title>/, `<title>${title}</title>`);
@@ -430,13 +430,13 @@ function buildAdvertisersPage() {
     out,
     "og:url",
     /<meta property="og:url" content="[\s\S]*?" \/>/,
-    `<meta property="og:url" content="https://dwell-protocol.vercel.app/advertisers" />`,
+    `<meta property="og:url" content="https://dwellprotocol.com/advertisers" />`,
   );
   out = sub(
     out,
     "canonical",
     /<link rel="canonical" href="[\s\S]*?" \/>/,
-    `<link rel="canonical" href="https://dwell-protocol.vercel.app/advertisers" />`,
+    `<link rel="canonical" href="https://dwellprotocol.com/advertisers" />`,
   );
 
   out = out.replace(/<body>/, `<body data-lander="advertisers">`);
@@ -509,13 +509,13 @@ for (const l of LANDERS) {
     out,
     "og:url",
     /<meta property="og:url" content="[\s\S]*?" \/>/,
-    `<meta property="og:url" content="https://dwell-protocol.vercel.app/${l.slug}" />`,
+    `<meta property="og:url" content="https://dwellprotocol.com/${l.slug}" />`,
   );
   out = sub(
     out,
     "canonical",
     /<link rel="canonical" href="[\s\S]*?" \/>/,
-    `<link rel="canonical" href="https://dwell-protocol.vercel.app/${l.slug}" />`,
+    `<link rel="canonical" href="https://dwellprotocol.com/${l.slug}" />`,
   );
   out = sub(out, "hero h1", /<h1>[\s\S]*?<\/h1>/, `<h1>${l.h1}</h1>`);
   out = sub(
@@ -565,7 +565,7 @@ manifest.push({
   slug: "advertisers",
   url: "/advertisers",
   headline: "Get your product in front of customers who are already AI-native.",
-  title: "DWELL.fyi — Advertise where AI-native customers already are",
+  title: "DWELL — Advertise where AI-native customers already are",
   tool: "Advertisers",
 });
 console.log("  wrote landers/advertisers.html (bespoke)");
@@ -575,7 +575,7 @@ writeFileSync(join(outDir, "landers.json"), JSON.stringify(manifest, null, 2) + 
 
 // Keep vercel.json's lander rewrites in sync with the LANDERS list above, so
 // each campaign is served at a clean short URL (`/chatgpt`). Non-lander
-// rewrites (e.g. the api.dwell-protocol.vercel.app proxy) are preserved untouched.
+// rewrites (e.g. the api.dwellprotocol.com proxy) are preserved untouched.
 const vercelPath = join(root, "web", "vercel.json");
 const vercel = JSON.parse(readFileSync(vercelPath, "utf8"));
 const isLanderRewrite = (r) =>

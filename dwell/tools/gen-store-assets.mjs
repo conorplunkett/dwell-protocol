@@ -104,7 +104,7 @@ const marqueeHtml = (demoB64) => `<!doctype html><html><head><meta charset="utf-
   .shot{width:100%;border-radius:16px;border:1px solid ${C.line};background:${C.tint};padding:14px 16px;box-shadow:0 18px 44px rgba(20,23,28,.12)}
   .shot img{width:100%;display:block;border-radius:8px}
 </style></head><body><div class="frame"></div><div class="pad">
-  <div class="top">${logo(58, 31)}<div class="wordmark">DWELL.fyi</div><div class="domain">dwell-protocol.vercel.app</div></div>
+  <div class="top">${logo(58, 31)}<div class="wordmark">DWELL</div><div class="domain">dwellprotocol.com</div></div>
   <div class="eyebrow">Chrome extension</div>
   <h1>Get Claude <span class="pop">for free.</span></h1>
   <p class="sub">A sponsored line shows while <b>ChatGPT, Claude &amp; Gemini</b> think — and <b>50% of the revenue</b> comes back to you as Claude Pro &amp; Max credits.</p>
@@ -129,7 +129,7 @@ const smallHtml = () => `<!doctype html><html><head><meta charset="utf-8">${FONT
     display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px}
   .pill .line{color:${C.ovLine}} .pill .name{font-weight:700}
 </style></head><body><div class="frame"></div><div class="pad">
-  <div class="top">${logo(34, 19)}<div class="wordmark">DWELL.fyi</div></div>
+  <div class="top">${logo(34, 19)}<div class="wordmark">DWELL</div></div>
   <h1>Get Claude <span class="pop">for free.</span></h1>
   <p class="sub"><b>50%</b> of the ad revenue comes back as Claude credits.</p>
   <div class="pill"><span class="chip">L</span> <span class="name">Linear</span> <span class="line">· Plan your next sprint faster</span></div>
