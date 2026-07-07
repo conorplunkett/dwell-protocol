@@ -876,6 +876,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "merkle-distributor"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.5.1",
+ "solana-program",
+]
+
+[[package]]
 name = "mock-jupiter-swap"
 version = "0.1.0"
 dependencies = [

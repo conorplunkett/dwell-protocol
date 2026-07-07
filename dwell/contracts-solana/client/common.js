@@ -17,6 +17,7 @@ export const RPC_URL = process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.
 
 export const FUNDER_PROGRAM_ID = new PublicKey("6M2Gnz9shBWWkPuSz6Ty6coDJkGPTJsAvRDVubsBbuqe");
 export const SWAP_PROGRAM_ID = new PublicKey("9YeYN5KMqFQTnu7RcqDnxQTpagvjFkSsiemzTmqBKnXH");
+export const DISTRIBUTOR_PROGRAM_ID = new PublicKey("DBfMVuq2WPrBS6aoXyJFRYppWntSC7qCHP2ApNBLCbFJ");
 
 export function connection() {
   return new Connection(RPC_URL, { commitment: "confirmed" });
@@ -52,6 +53,18 @@ export function swapStatePda() {
 export function swapVaultAuthorityPda() {
   return PublicKey.findProgramAddressSync([Buffer.from("vault_authority")], SWAP_PROGRAM_ID)[0];
 }
+export function distributorStatePda() {
+  return PublicKey.findProgramAddressSync([Buffer.from("distributor_state")], DISTRIBUTOR_PROGRAM_ID)[0];
+}
+export function distributorVaultAuthorityPda() {
+  return PublicKey.findProgramAddressSync([Buffer.from("vault_authority")], DISTRIBUTOR_PROGRAM_ID)[0];
+}
+export function claimStatusPda(wallet) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("claim_status"), wallet.toBuffer()],
+    DISTRIBUTOR_PROGRAM_ID,
+  )[0];
+}
 
 // --- borsh instruction encoding (mirrors the two programs' enums) ---
 
@@ -81,6 +94,24 @@ export const swapIx = {
   initialize: (rate) => Buffer.concat([Buffer.from([0]), u64le(rate)]),
   setRate: (rate) => Buffer.concat([Buffer.from([1]), u64le(rate)]),
   swap: (usdcIn) => Buffer.concat([Buffer.from([2]), u64le(usdcIn)]),
+};
+
+function u32le(n) {
+  const b = Buffer.alloc(4);
+  b.writeUInt32LE(n);
+  return b;
+}
+
+export const distributorIx = {
+  initialize: () => Buffer.from([0]),
+  setRoot: (root32, newEpoch, totalNewlyAllocated) =>
+    Buffer.concat([Buffer.from([1]), root32, u64le(newEpoch), u64le(totalNewlyAllocated)]),
+  setRootSetter: (pubkey) => Buffer.concat([Buffer.from([2]), pubkey.toBuffer()]),
+  pause: () => Buffer.from([3]),
+  unpause: () => Buffer.from([4]),
+  // borsh Vec<[u8;32]> = u32 LE length prefix + elements
+  claim: (cumulativeAmount, proof) =>
+    Buffer.concat([Buffer.from([5]), u64le(cumulativeAmount), u32le(proof.length), ...proof]),
 };
 
 // --- websocket-free send + confirm ---
