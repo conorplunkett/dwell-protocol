@@ -230,6 +230,22 @@ async function renderOverview(view) {
     h("div", { class: "card-head" }, h("h2", {}, "Campaigns by status")),
     table([{ label: "Status" }, { label: "Count", num: true }], d.campaignsByStatus,
       (s) => [badge(s.status), num(s.n)])));
+
+  // Every dollar figure above is real Stripe revenue only. If a campaign was
+  // ever marked paid WITHOUT a real Stripe charge (dev/seed data run against
+  // this database), it's excluded from those numbers but never hidden —
+  // flagged here so it can't quietly masquerade as real money again.
+  const tm = d.testMoney;
+  if (tm && (tm.adsPurchasedUsd > 0 || tm.campaigns.length)) {
+    view.append(h("div", { class: "card danger-zone" },
+      h("div", { class: "card-head" }, h("h2", {}, "⚠ Test / seed money (excluded above)")),
+      h("p", { class: "hint" },
+        `${usd(tm.adsPurchasedUsd)} of "ads purchased" and ${pts(tm.liabilityUsd)} of points liability come from `
+        + "campaigns marked paid with no real Stripe charge — dev/seed data, not advertiser revenue. "
+        + "Already excluded from every number above; shown here so it's visible instead of silently vanishing."),
+      table([{ label: "Campaign" }, { label: "Status" }, { label: "Budget", num: true }, { label: "Marked paid" }], tm.campaigns,
+        (cm) => [cm.brand, badge(cm.status), usd(cm.budgetUsd), dt(cm.paidAt)])));
+  }
 }
 
 async function renderDaily(view) {

@@ -2027,6 +2027,22 @@ function createRepo(pool: any) {
              ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','admin_credit','admin_debit','payout_debit','gift_redemption_debit')),0)::bigint as liability
          from ledger`
       )).rows[0];
+      // "Test money" = ledger activity tied to a campaign that was marked paid
+      // without a real Stripe charge (stripe_payment_intent_id is null) — i.e. a
+      // dev/seed-funded campaign, never actual advertiser revenue. Every dollar
+      // figure above double-counts this unless a caller subtracts it out; keep
+      // it as its own bucket so the dashboard can show real vs. test instead of
+      // silently blending them (that blend is exactly how a $600 seed campaign
+      // once read as real "ads purchased").
+      const moneyTest = (await pool.query(
+        `select
+           coalesce(sum(amount_millicents) filter (where entry_type='campaign_credit'),0)::bigint as campaign_credit,
+           coalesce(sum(amount_millicents) filter (where entry_type='platform_fee'),0)::bigint as platform_fee,
+           coalesce(sum(amount_millicents) filter (where entry_type in
+             ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','admin_credit','admin_debit','payout_debit','gift_redemption_debit')),0)::bigint as liability
+         from ledger
+         where campaign_id in (select id from campaigns where paid_at is not null and stripe_payment_intent_id is null)`
+      )).rows[0];
       const counts = (await pool.query(
         `select
            (select count(*) from users)::int as users,
@@ -2047,7 +2063,12 @@ function createRepo(pool: any) {
       const byStatus = (await pool.query(
         "select status, count(*)::int as n from campaigns group by status order by status"
       )).rows;
-      return { money, counts, campaignsByStatus: byStatus };
+      const testCampaigns = (await pool.query(
+        `select id, brand, budget_cents, status, paid_at from campaigns
+          where paid_at is not null and stripe_payment_intent_id is null
+          order by paid_at desc`
+      )).rows;
+      return { money, moneyTest, counts, campaignsByStatus: byStatus, testCampaigns };
     },
 
     // One bucket per UTC day, merged across tables in JS by the route.
@@ -3566,19 +3587,31 @@ const receiptStats = (row: any) => {
 route("GET", "/v1/admin/overview", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   const o = await repo.adminOverview();
-  const m = o.money;
+  const m = o.money, t = o.moneyTest;
   return json(200, {
     revenue: {
-      adsPurchasedUsd: mcUsd(m.campaign_credit),
+      // "Real" = backed by an actual Stripe charge. Test/seed-funded campaigns
+      // (paid_at set but no stripe_payment_intent_id) are subtracted out here
+      // and broken out separately below, so this never blends fake money into
+      // what looks like real advertiser revenue.
+      adsPurchasedUsd: mcUsd(m.campaign_credit - t.campaign_credit),
       refundedUsd: -mcUsd(m.campaign_refund),
-      platformFeeUsd: mcUsd(m.platform_fee),
+      platformFeeUsd: mcUsd(m.platform_fee - t.platform_fee),
       developerCreditUsd: mcUsd(m.dev_credit),
       referralCreditUsd: mcUsd(m.referral_credit),
       affiliateCreditUsd: mcUsd(m.affiliate_credit),
       paidOutUsd: -mcUsd(m.payout_debit),
       redeemedUsd: -mcUsd(m.redemption_debit),
       adminAdjustUsd: mcUsd(m.admin_adjust),
-      outstandingLiabilityUsd: mcUsd(m.liability),
+      outstandingLiabilityUsd: mcUsd(m.liability - t.liability),
+    },
+    testMoney: {
+      adsPurchasedUsd: mcUsd(t.campaign_credit),
+      platformFeeUsd: mcUsd(t.platform_fee),
+      liabilityUsd: mcUsd(t.liability),
+      campaigns: o.testCampaigns.map((c: any) => ({
+        id: c.id, brand: c.brand, budgetUsd: cUsd(c.budget_cents), status: c.status, paidAt: c.paid_at,
+      })),
     },
     counts: o.counts,
     campaignsByStatus: o.campaignsByStatus,
