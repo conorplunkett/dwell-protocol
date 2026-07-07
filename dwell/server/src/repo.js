@@ -1,0 +1,1834 @@
+// Postgres repository. All money mutations happen inside transactions, and all
+// amounts in the ledger are MILLICENTS (1/1000 cent) so the revenue split is exact.
+
+const crypto = require("node:crypto");
+
+const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
+
+const isUuid = (s) => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+// Referral codes are short, human-shareable, and avoid ambiguous glyphs
+// (no 0/O/1/I) so they survive being typed by hand.
+const REFERRAL_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+function generateReferralCode(len = 8) {
+  const bytes = crypto.randomBytes(len);
+  let out = "";
+  for (let i = 0; i < len; i++) out += REFERRAL_ALPHABET[bytes[i] % REFERRAL_ALPHABET.length];
+  return out;
+}
+
+// Mask a referred friend's email for the dashboard: keep the first local-part
+// character and the domain, hide the rest (jane@acme.com -> j•••@acme.com). The
+// referrer can recognise who they referred without the page leaking the full
+// address of someone who signed up through their link.
+function maskEmail(email) {
+  const s = String(email || "");
+  const at = s.indexOf("@");
+  if (at < 1) return "•••";
+  const local = s.slice(0, at);
+  const domain = s.slice(at + 1);
+  const head = local.length > 1 ? local[0] : "";
+  return `${head}•••@${domain}`;
+}
+
+// Advisory-lock namespace (classid) for redemption serialization. Concurrent
+// redeems that draw on the same balance take pg_advisory_xact_lock under this
+// class so the in-transaction balance check can't be raced into an overdraft.
+const LOCK_REDEEM = 0x52454431; // "RED1"
+
+function createRepo(pool) {
+  async function tx(fn) {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const out = await fn(client);
+      await client.query("commit");
+      return out;
+    } catch (err) {
+      await client.query("rollback");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Attribute a brand-new user to a referrer. Called inside the user-creation
+  // transaction, and only on first sign-in, so a code can never be applied to an
+  // existing account. Unknown codes and self-referrals are silently ignored.
+  async function applyReferral(client, newUserId, refCode) {
+    if (!refCode) return;
+    const code = String(refCode).trim().toUpperCase();
+    if (!code) return;
+    const r = await client.query(
+      "select id from users where upper(referral_code) = $1",
+      [code]
+    );
+    const referrer = r.rows[0];
+    if (!referrer || referrer.id === newUserId) return;
+    await client.query(
+      "update users set referred_by = $2 where id = $1 and referred_by is null",
+      [newUserId, referrer.id]
+    );
+    await client.query(
+      `insert into referrals (referrer_user_id, referred_user_id, status)
+       values ($1, $2, 'pending')
+       on conflict (referred_user_id) do nothing`,
+      [referrer.id, newUserId]
+    );
+    // Flip the "code used" indicator on a matching email invite, if the referrer
+    // had invited this exact address. Matched by email so it survives the OAuth /
+    // magic-link round-trip; harmless when the friend signed up some other way.
+    const ne = await client.query("select email from users where id = $1", [newUserId]);
+    if (ne.rows[0]?.email) {
+      await client.query(
+        `update referral_invites set status = 'joined', joined_at = now()
+          where referrer_user_id = $1 and lower(email) = lower($2) and status = 'sent'`,
+        [referrer.id, ne.rows[0].email]
+      );
+    }
+  }
+
+  // Pay the referrer their one-time bonus once the referred user redeems. The
+  // pending -> rewarded transition (selected FOR UPDATE) is the idempotency guard
+  // so repeat redemptions never double-credit. Past the cap, the referral is
+  // marked 'capped' and no credit is posted.
+  async function maybeRewardReferral(client, referredUserId, rewardMillicents, cap) {
+    const ref = await client.query(
+      `select id, referrer_user_id from referrals
+        where referred_user_id = $1 and status = 'pending' for update`,
+      [referredUserId]
+    );
+    if (!ref.rows[0]) return;
+    const { id, referrer_user_id } = ref.rows[0];
+    const cnt = await client.query(
+      "select count(*)::int as n from referrals where referrer_user_id = $1 and status = 'rewarded'",
+      [referrer_user_id]
+    );
+    if (cnt.rows[0].n >= cap) {
+      await client.query("update referrals set status = 'capped' where id = $1", [id]);
+      return;
+    }
+    await client.query(
+      `insert into ledger (entry_type, amount_millicents, user_id, meta)
+       values ('referral_credit', $1, $2, $3)`,
+      [String(rewardMillicents), referrer_user_id,
+       JSON.stringify({ referralId: id, referredUserId })]
+    );
+    await client.query(
+      `update referrals set status = 'rewarded', rewarded_at = now(), reward_millicents = $2
+        where id = $1`,
+      [id, String(rewardMillicents)]
+    );
+    // Advance a matching email invite to its final 'rewarded' stage too.
+    const re = await client.query("select email from users where id = $1", [referredUserId]);
+    if (re.rows[0]?.email) {
+      await client.query(
+        `update referral_invites set status = 'rewarded', rewarded_at = now()
+          where referrer_user_id = $1 and lower(email) = lower($2) and status <> 'rewarded'`,
+        [referrer_user_id, re.rows[0].email]
+      );
+    }
+    // Surface the granted reward so the caller can email the referrer AFTER the
+    // transaction commits — never send mail from inside the tx.
+    const referrer = await client.query("select email from users where id = $1", [referrer_user_id]);
+    return { referrerUserId: referrer_user_id, referrerEmail: referrer.rows[0]?.email || null, rewardMillicents };
+  }
+
+  // Attribute a user to an approved affiliate by code. Unlike referrals this can
+  // run at signup OR retroactively, but only when the user has no prior
+  // attribution (no referrer and no affiliate) — the two are mutually exclusive.
+  // Self-attribution and unknown/unapproved codes are ignored. Returns true when
+  // the user was attributed.
+  async function applyAffiliateCode(client, userId, code) {
+    if (!code) return false;
+    const norm = String(code).trim().toUpperCase();
+    if (!norm) return false;
+    const a = await client.query(
+      "select id, user_id, cap_people from affiliates where upper(code) = $1 and status = 'approved' for update",
+      [norm]
+    );
+    const aff = a.rows[0];
+    if (!aff || aff.user_id === userId) return false;
+    // People cap: an affiliate can attribute at most cap_people friends.
+    const cnt = await client.query(
+      "select count(*)::int as n from affiliate_attributions where affiliate_id = $1",
+      [aff.id]
+    );
+    if (cnt.rows[0].n >= aff.cap_people) return false;
+    const upd = await client.query(
+      `update users set affiliate_id = $2
+        where id = $1 and affiliate_id is null and referred_by is null
+        returning id`,
+      [userId, aff.id]
+    );
+    if (!upd.rows[0]) return false;
+    await client.query(
+      `insert into affiliate_attributions (affiliate_id, affiliated_user_id)
+       values ($1, $2) on conflict (affiliated_user_id) do nothing`,
+      [aff.id, userId]
+    );
+    return true;
+  }
+
+  // Resolve a code entered at signup. The $20 referral program is retired, so a
+  // signup code only ever resolves to an affiliate attribution now; old referral
+  // codes no longer attribute anything (applyReferral is archived/uncalled).
+  async function applyCode(client, userId, code) {
+    if (!code) return;
+    const attributed = await applyAffiliateCode(client, userId, code);
+  }
+
+  // Pay an affiliate their cut of an affiliated user's just-earned credits. The
+  // credit is a platform-funded bonus — the affiliated user keeps 100% of their
+  // own earnings. `baseMillicents` is the user's earning the cut is computed from.
+  // Dollar earnings are UNCAPPED now (the cap is people-based, enforced at
+  // attribution); credited_millicents stays as a lifetime "credits earned" tally.
+  // The affiliate row is locked FOR UPDATE to serialize the tally update. No-op
+  // when the user has no approved affiliate.
+  // The device's user's approved affiliate, row-locked to serialize tally
+  // updates. Shared by the legacy platform-funded bonus (creditAffiliate) and
+  // the token-mode referrer leg (creditTokenSplit). Null when unattributed.
+  async function approvedAffiliateFor(client, affiliatedUserId) {
+    if (!affiliatedUserId) return null;
+    const a = await client.query(
+      `select a.id, a.user_id, a.reward_bps
+         from affiliates a
+         join users u on u.affiliate_id = a.id
+        where u.id = $1 and a.status = 'approved'
+        for update of a`,
+      [affiliatedUserId]
+    );
+    return a.rows[0] || null;
+  }
+
+  async function creditAffiliate(client, affiliatedUserId, baseMillicents) {
+    if (!affiliatedUserId) return;
+    const base = BigInt(baseMillicents);
+    if (base <= 0n) return;
+    const aff = await approvedAffiliateFor(client, affiliatedUserId);
+    if (!aff) return;
+    const share = (base * BigInt(aff.reward_bps)) / 10000n;
+    if (share <= 0n) return;
+    await client.query(
+      `insert into ledger (entry_type, amount_millicents, user_id, meta)
+       values ('affiliate_credit', $1, $2, $3)`,
+      [share.toString(), aff.user_id,
+       JSON.stringify({ affiliateId: aff.id, affiliatedUserId })]
+    );
+    await client.query(
+      "update affiliates set credited_millicents = credited_millicents + $2 where id = $1",
+      [aff.id, share.toString()]
+    );
+  }
+
+  // DWELL token mode (dwell/docs/04 §B): three-way BPS split of the reserve
+  // tranche, replacing the legacy two-way revenueShare split. Per billed gross:
+  //   pool     = gross × RESERVE_TRANCHE_BPS/10000       (the 90%)
+  //   viewer   = pool × VIEWER_SHARE_BPS/10000           → points_credit (+device)
+  //   referrer = pool × REFERRER_SHARE_BPS/10000 if attributed
+  //                                                      → referral_points_credit (+user)
+  //   protocol = pool − viewer − referrer                → protocol_points_credit (+platform)
+  //   business = gross − pool                            → platform_fee (+platform)
+  // The platform_fee row keeps the ledger closed (rows sum to gross, same
+  // invariant as the legacy path), so campaign spend metrics stay exact. The
+  // legacy platform-funded affiliate bonus is retired here — the referrer's cut
+  // is carved from the pool — but the crew tally keeps accruing for the UI.
+  // Returns the viewer's credit (what the device earned).
+  async function creditTokenSplit(c, { deviceId, campaignId, gross, tokenSplit, meta }) {
+    const du = await c.query("select user_id from devices where id = $1", [deviceId]);
+    const aff = await approvedAffiliateFor(c, du.rows[0]?.user_id);
+    const pool_ = (gross * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+    const viewer = (pool_ * BigInt(tokenSplit.viewerShareBps)) / 10000n;
+    const referrer = aff ? (pool_ * BigInt(tokenSplit.referrerShareBps)) / 10000n : 0n;
+    const protocol = pool_ - viewer - referrer; // remainder keeps millicent exactness
+    const business = gross - pool_;
+    await c.query(
+      `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
+       values ('points_credit', $1, $2, $3, $4)`,
+      [viewer.toString(), deviceId, campaignId, JSON.stringify(meta)]
+    );
+    if (aff && referrer > 0n) {
+      await c.query(
+        `insert into ledger (entry_type, amount_millicents, user_id, campaign_id, meta)
+         values ('referral_points_credit', $1, $2, $3, $4)`,
+        [referrer.toString(), aff.user_id, campaignId,
+         JSON.stringify({ affiliateId: aff.id, affiliatedUserId: du.rows[0].user_id })]
+      );
+      await c.query(
+        "update affiliates set credited_millicents = credited_millicents + $2 where id = $1",
+        [aff.id, referrer.toString()]
+      );
+    }
+    await c.query(
+      `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+       values ('protocol_points_credit', $1, $2, '{}')`,
+      [protocol.toString(), campaignId]
+    );
+    await c.query(
+      `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+       values ('platform_fee', $1, $2, '{}')`,
+      [business.toString(), campaignId]
+    );
+    return viewer;
+  }
+
+  // Mint a unique affiliate code (unique across users.referral_code AND
+  // affiliates.code) onto an affiliate row that has none yet; returns the code
+  // (existing or freshly minted). Shared by approveAffiliate and the self-serve
+  // getOrCreateAffiliate path so the two never drift.
+  async function mintAffiliateCode(affiliateId) {
+    const ex = await pool.query("select code from affiliates where id = $1", [affiliateId]);
+    if (ex.rows[0]?.code) return ex.rows[0].code;
+    for (let i = 0; i < 8; i++) {
+      const cand = generateReferralCode();
+      const clash = await pool.query(
+        `select 1 from users where upper(referral_code) = $1
+         union all select 1 from affiliates where upper(code) = $1`,
+        [cand]
+      );
+      if (clash.rows[0]) continue;
+      try {
+        const r = await pool.query(
+          "update affiliates set code = $2 where id = $1 and code is null returning code",
+          [affiliateId, cand]
+        );
+        if (r.rows[0]) return r.rows[0].code;
+        const re = await pool.query("select code from affiliates where id = $1", [affiliateId]);
+        if (re.rows[0]?.code) return re.rows[0].code;
+      } catch (err) {
+        if (err.code === "23505") continue;
+        throw err;
+      }
+    }
+    throw new Error("could not allocate affiliate code");
+  }
+
+  // Ensure the user is enrolled as an APPROVED affiliate with a code (self-serve,
+  // no social application), idempotently; returns { id, code }. Shared by the
+  // device popup path and the web dashboard so everyone has a base 10% link.
+  async function ensureAffiliate(userId) {
+    const ins = await pool.query(
+      `insert into affiliates (user_id, status, approved_at)
+       values ($1, 'approved', now())
+       on conflict (user_id) do nothing
+       returning id`,
+      [userId]
+    );
+    let id = ins.rows[0]?.id;
+    if (!id) {
+      const ex = await pool.query("select id, status from affiliates where user_id = $1", [userId]);
+      id = ex.rows[0].id;
+      if (ex.rows[0].status !== "approved") {
+        await pool.query(
+          "update affiliates set status = 'approved', approved_at = coalesce(approved_at, now()) where id = $1",
+          [id]
+        );
+      }
+    }
+    const code = await mintAffiliateCode(id);
+    return { id, code };
+  }
+
+  return {
+    // ---------- devices ----------
+    async registerDevice() {
+      const secret = crypto.randomBytes(32).toString("hex");
+      const { rows } = await pool.query(
+        "insert into devices (key_hash) values ($1) returning id",
+        [sha256(secret)]
+      );
+      return { deviceId: rows[0].id, deviceKey: secret };
+    },
+
+    async authDevice(deviceId, deviceKey) {
+      if (!deviceId || !deviceKey) return null;
+      const { rows } = await pool.query(
+        "update devices set last_seen_at = now() where id = $1 and key_hash = $2 returning id, user_id",
+        [deviceId, sha256(deviceKey)]
+      );
+      return rows[0] || null;
+    },
+
+    // ---------- auction ----------
+    async activeAds(limit = 20) {
+      // paid_at guards every serve/credit path: a campaign that never went
+      // through payment (e.g. a row seeded straight to 'active') must never
+      // show or mint credits — user credits have to be backed by real budget.
+      const { rows } = await pool.query(
+        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard
+           from campaigns
+          where status = 'active' and impressions_remaining > 0 and paid_at is not null
+          order by price_per_block_cents desc, activated_at asc
+          limit $1`,
+        [limit]
+      );
+      return rows;
+    },
+
+    async leaderboard(limit = 15) {
+      const { rows } = await pool.query(
+        `select brand, ad_line, price_per_block_cents
+           from campaigns
+          where status in ('active', 'exhausted') and show_on_leaderboard
+          order by price_per_block_cents desc, activated_at asc
+          limit $1`,
+        [limit]
+      );
+      return rows;
+    },
+
+    // ---------- advertiser checkout ----------
+    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, showOnLeaderboard }) {
+      return tx(async (c) => {
+        // Upsert so a returning advertiser (same email) reuses their row and owns
+        // many campaigns, rather than minting a disconnected advertiser per checkout.
+        const adv = await c.query(
+          "insert into advertisers (email) values ($1) on conflict (email) do update set email = excluded.email returning id",
+          [email]
+        );
+        const { rows } = await c.query(
+          `insert into campaigns
+             (advertiser_id, brand, ad_line, url, category, color, price_per_block_cents,
+              blocks, impressions_total, impressions_remaining, show_on_leaderboard)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10)
+           returning id`,
+          [adv.rows[0].id, brand || null, adLine, url, category || "other", color || null,
+           pricePerBlockCents, blocks, blocks * 1000, showOnLeaderboard !== false]
+        );
+        return rows[0].id;
+      });
+    },
+
+    async attachCheckoutSession(campaignId, sessionId) {
+      await pool.query(
+        "update campaigns set stripe_checkout_session_id = $2 where id = $1",
+        [campaignId, sessionId]
+      );
+    },
+
+    // Called from the Stripe webhook when payment completes. Idempotent at two
+    // levels: the webhook event id is deduped upstream, and only a
+    // pending_payment campaign transitions. Money is now received, so the
+    // funding ledger entry rides this tx — but the ad doesn't serve until a
+    // human approves it (status -> pending_review).
+    // Returns the campaign + advertiser details on the first (transitioning)
+    // call so the caller can email a receipt, or false on a no-op (already paid
+    // / unknown). The receipt thus rides the same exactly-once guarantee as the
+    // funding ledger entry.
+    async markCampaignPaid(campaignId, paymentIntentId, { tokenSplit } = {}) {
+      return tx(async (c) => {
+        const { rows } = await c.query(
+          `update campaigns cmp set status = 'pending_review', paid_at = now(),
+                  stripe_payment_intent_id = coalesce($2, cmp.stripe_payment_intent_id)
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_payment'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line, cmp.price_per_block_cents, cmp.blocks`,
+          [campaignId, paymentIntentId || null]
+        );
+        if (!rows[0]) return false;
+        const funded = BigInt(rows[0].price_per_block_cents) * BigInt(rows[0].blocks) * 1000n;
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+           values ('campaign_credit', $1, $2, $3)`,
+          [funded.toString(), campaignId, JSON.stringify({ blocks: rows[0].blocks })]
+        );
+        // Token mode: earmark the campaign's reserve tranche at payment
+        // (dwell/docs/04 §A — the accounting mirror of campaign_credit). The
+        // fiat sweeper later records the matching USDC escrow movement in
+        // usdc_reserve_entries; a daily attestation checks the two agree.
+        if (tokenSplit) {
+          const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+             values ('reserve_allocation', $1, $2, $3)`,
+            [tranche.toString(), campaignId, JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps })]
+          );
+        }
+        return {
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+        };
+      });
+    },
+
+    // ---------- moderation ----------
+    async pendingReviewCampaigns(limit = 50) {
+      const { rows } = await pool.query(
+        `select id, brand, ad_line, url, category, price_per_block_cents, blocks, paid_at
+           from campaigns where status = 'pending_review'
+          order by paid_at asc limit $1`,
+        [limit]
+      );
+      return rows;
+    },
+
+    // Full campaign list for the admin Ads view, with per-campaign realized metrics
+    // derived from the append-only ledger:
+    //   recognized_millicents = gross spend (advertiser's billed budget),
+    //   clicks                = one row per verified click,
+    //   impressions_shown     = sum of impression_credit.meta.billed.
+    // impressions_shown is NOT impressions_total - impressions_remaining: that's
+    // budget units consumed and counts each click as 50, inflating CPM/CTR.
+    async adminCampaigns({ status, limit, offset } = {}) {
+      const n = Math.max(1, Math.min(500, parseInt(limit, 10) || 200));
+      const off = Math.max(0, parseInt(offset, 10) || 0);
+      const params = [];
+      let where = "";
+      if (status) { params.push(status); where = `where c.status = $${params.length}`; }
+      params.push(n); const lim = `$${params.length}`;
+      params.push(off); const ofs = `$${params.length}`;
+      const { rows } = await pool.query(
+        `select c.id, c.brand, c.ad_line, c.url, c.category, c.status,
+                c.price_per_block_cents, c.blocks, c.impressions_total, c.impressions_remaining,
+                (c.impressions_total - c.impressions_remaining) as impressions_served,
+                c.show_on_leaderboard, c.review_note, c.completion_email_sent_at,
+                c.created_at, c.paid_at, c.activated_at,
+                a.email as advertiser_email,
+                coalesce((select sum(amount_millicents) from ledger
+                          where campaign_id = c.id and entry_type in ('impression_credit','click_credit','platform_fee','points_credit','referral_points_credit','protocol_points_credit')),0)::bigint as recognized_millicents,
+                coalesce((select count(*) from ledger
+                          where campaign_id = c.id and entry_type in ('click_credit','click_event')),0)::int as clicks,
+                coalesce((select sum((meta->>'billed')::int) from ledger
+                          where campaign_id = c.id and entry_type in ('impression_credit','points_credit')),0)::bigint as impressions_shown
+           from campaigns c left join advertisers a on a.id = c.advertiser_id
+           ${where}
+          order by c.created_at desc limit ${lim} offset ${ofs}`,
+        params
+      );
+      return rows;
+    },
+
+    // Per-advertiser rollup for the admin Advertisers view: one row per advertiser,
+    // aggregating realized metrics across all of their campaigns.
+    async adminAdvertisers({ limit, offset } = {}) {
+      const n = Math.max(1, Math.min(500, parseInt(limit, 10) || 200));
+      const off = Math.max(0, parseInt(offset, 10) || 0);
+      const { rows } = await pool.query(
+        `select a.id, a.email, a.created_at,
+                count(distinct c.id)::int as campaigns,
+                count(distinct c.id) filter (where c.status = 'active')::int as active_campaigns,
+                coalesce(sum(l.amount_millicents) filter (where l.entry_type in ('impression_credit','click_credit','platform_fee','points_credit','referral_points_credit','protocol_points_credit')),0)::bigint as spend_millicents,
+                coalesce(sum((l.meta->>'billed')::int) filter (where l.entry_type in ('impression_credit','points_credit')),0)::bigint as impressions_shown,
+                count(*) filter (where l.entry_type in ('click_credit','click_event'))::int as clicks
+           from advertisers a
+           left join campaigns c on c.advertiser_id = a.id
+           left join ledger l on l.campaign_id = c.id
+          group by a.id, a.email, a.created_at
+          order by spend_millicents desc, a.created_at desc
+          limit $1 offset $2`,
+        [n, off]
+      );
+      return rows;
+    },
+
+    // One campaign's full data for the completion-receipt preview/send: advertiser
+    // email + ad copy + status + the receipt guard + the same realized metrics as
+    // adminCampaigns. Returns null for an unknown/invalid id.
+    async campaignReceiptData(campaignId) {
+      if (!isUuid(campaignId)) return null;
+      const { rows } = await pool.query(
+        `select c.id, c.brand, c.ad_line, c.url, c.status,
+                c.price_per_block_cents, c.blocks, c.budget_cents,
+                c.impressions_total, c.impressions_remaining, c.completion_email_sent_at,
+                c.created_at, c.activated_at,
+                a.email as advertiser_email,
+                coalesce((select sum(amount_millicents) from ledger
+                          where campaign_id = c.id and entry_type in ('impression_credit','click_credit','platform_fee','points_credit','referral_points_credit','protocol_points_credit')),0)::bigint as recognized_millicents,
+                coalesce((select count(*) from ledger
+                          where campaign_id = c.id and entry_type in ('click_credit','click_event')),0)::int as clicks,
+                coalesce((select sum((meta->>'billed')::int) from ledger
+                          where campaign_id = c.id and entry_type in ('impression_credit','points_credit')),0)::bigint as impressions_shown
+           from campaigns c left join advertisers a on a.id = c.advertiser_id
+          where c.id = $1`,
+        [campaignId]
+      );
+      return rows[0] || null;
+    },
+
+    // Atomically claim the one-time completion receipt: stamps completion_email_sent_at
+    // only if the campaign is exhausted and unstamped. Returns { sentAt } on the
+    // winning claim, null if already sent / not finished — so a send can't double-fire.
+    async claimCampaignReceipt(campaignId) {
+      if (!isUuid(campaignId)) return null;
+      const { rows } = await pool.query(
+        `update campaigns set completion_email_sent_at = now()
+          where id = $1 and status = 'exhausted' and completion_email_sent_at is null
+          returning completion_email_sent_at`,
+        [campaignId]
+      );
+      return rows[0] ? { sentAt: rows[0].completion_email_sent_at } : null;
+    },
+    // Roll the stamp back when a send fails (so the admin can retry); also backs the
+    // deliberate resend ("force") path.
+    async clearCampaignReceipt(campaignId) {
+      if (!isUuid(campaignId)) return;
+      await pool.query("update campaigns set completion_email_sent_at = null where id = $1", [campaignId]);
+    },
+
+    // Persistent key/value settings (the receipts auto-send switch). Mirrors the
+    // edge function's jsonb-safe write: ($2::jsonb #>> '{}')::jsonb unwraps the
+    // JSON.stringify'd value so the driver can't double-encode it as a json string.
+    async getSetting(key) {
+      const { rows } = await pool.query("select value from settings where key = $1", [key]);
+      return rows[0] ? rows[0].value : null;
+    },
+    async setSetting(key, value) {
+      await pool.query(
+        `insert into settings (key, value, updated_at) values ($1, ($2::jsonb #>> '{}')::jsonb, now())
+         on conflict (key) do update set value = excluded.value, updated_at = now()`,
+        [key, JSON.stringify(value)]
+      );
+    },
+    // Exhausted campaigns still awaiting their one-time completion receipt — the
+    // batched sweep's work list, oldest-finished first.
+    async pendingReceiptCampaignIds(limit = 100) {
+      const n = Math.max(1, Math.min(500, parseInt(limit, 10) || 100));
+      const { rows } = await pool.query(
+        `select id from campaigns
+          where status = 'exhausted' and completion_email_sent_at is null
+          order by activated_at nulls last, created_at limit $1`,
+        [n]
+      );
+      return rows.map((r) => r.id);
+    },
+
+    async approveCampaign(campaignId) {
+      const { rows } = await pool.query(
+        `update campaigns set status = 'active', activated_at = now()
+          where id = $1 and status = 'pending_review' returning id`,
+        [campaignId]
+      );
+      return !!rows[0];
+    },
+
+    // Reject -> mark rejected and post a refund ledger entry that zeroes out the
+    // funding. Returns the payment intent (so the caller can issue a Stripe
+    // refund) plus the advertiser + campaign details (so the caller can email
+    // the advertiser). Null on a no-op (unknown / not in review).
+    async rejectCampaign(campaignId, note) {
+      return tx(async (c) => {
+        const { rows } = await c.query(
+          `update campaigns cmp set status = 'rejected', review_note = $2
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_review'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line,
+                      cmp.price_per_block_cents, cmp.blocks, cmp.stripe_payment_intent_id`,
+          [campaignId, note || null]
+        );
+        if (!rows[0]) return null;
+        const refund = BigInt(rows[0].price_per_block_cents) * BigInt(rows[0].blocks) * 1000n;
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+           values ('campaign_refund', $1, $2, $3)`,
+          [(-refund).toString(), campaignId, JSON.stringify({ note: note || null })]
+        );
+        return {
+          paymentIntentId: rows[0].stripe_payment_intent_id,
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+          note: note || null,
+        };
+      });
+    },
+
+    // ---------- webhook idempotency ----------
+    // Returns true the first time an event id is seen, false on retries.
+    async claimWebhookEvent(eventId, type) {
+      if (!eventId) return true; // nothing to dedupe against
+      const { rows } = await pool.query(
+        `insert into processed_webhook_events (event_id, type) values ($1, $2)
+         on conflict (event_id) do nothing returning event_id`,
+        [eventId, type || null]
+      );
+      return !!rows[0];
+    },
+
+    // ---------- event ingestion (the core money loop) ----------
+    // One batch = { batchKey, events: [{ campaignId, impressions, clicks }] }.
+    // Only impressions bill: the user's share (revenueShare, 0.5 by default)
+    // credits the device, the rest is the platform fee. Self-reported clicks in
+    // the batch are ignored — verified clicks go through the token path and are free.
+    async ingestBatch({ deviceId, batchKey, events, source, revenueShare, dailyCap, ipHash, ipDailyCap, tokenSplit }) {
+      return tx(async (c) => {
+        const claimedImpressions = events.reduce((n, e) => n + (e.impressions || 0), 0);
+        const claimedClicks = events.reduce((n, e) => n + (e.clicks || 0), 0);
+
+        // idempotency: replays of the same batch are acknowledged, not re-paid
+        const ins = await c.query(
+          `insert into event_batches (device_id, batch_key, impressions, clicks, ip_hash)
+           values ($1,$2,$3,$4,$5) on conflict (batch_key) do nothing returning id`,
+          [deviceId, batchKey, claimedImpressions, claimedClicks, ipHash || null]
+        );
+        if (!ins.rows[0]) return { duplicate: true, creditedMillicents: 0 };
+
+        // fraud cap: impressions per device per UTC day
+        const cap = await c.query(
+          `select coalesce(sum(impressions), 0)::bigint as n from event_batches
+            where device_id = $1 and created_at >= date_trunc('day', now())`,
+          [deviceId]
+        );
+        if (Number(cap.rows[0].n) > dailyCap) {
+          const err = new Error("daily impression cap exceeded");
+          err.code = "CAP_EXCEEDED";
+          throw err;
+        }
+
+        // fraud cap: impressions per source IP per UTC day. Devices are free and
+        // anonymous, so the per-device cap alone doesn't stop one host minting
+        // many devices — this bounds the whole IP. Hashed, fail-open (skipped
+        // when no IP is known), and disabled when ipDailyCap is not positive so
+        // operators with large shared-NAT/CGNAT audiences can opt out.
+        if (ipHash && Number.isFinite(ipDailyCap) && ipDailyCap > 0) {
+          const ipCap = await c.query(
+            `select coalesce(sum(impressions), 0)::bigint as n from event_batches
+              where ip_hash = $1 and created_at >= date_trunc('day', now())`,
+            [ipHash]
+          );
+          if (Number(ipCap.rows[0].n) > ipDailyCap) {
+            const err = new Error("daily ip impression cap exceeded");
+            err.code = "CAP_EXCEEDED";
+            throw err;
+          }
+        }
+
+        let credited = 0n;
+        for (const ev of events) {
+          const imp = Math.max(0, ev.impressions | 0);
+          // Clicks are NOT billed here. Self-reported click counts are
+          // unverifiable, bill at 50x, and would bypass the daily cap (which is
+          // keyed on impressions) — so a direct API caller could mint unlimited
+          // credit. Genuine clicks are credited only through the single-use,
+          // forgery-proof token path (/v1/clicks/intent -> /v1/go/:token).
+          const billable = imp;
+          if (!billable) continue;
+
+          // lock the campaign row; never bill past its remaining budget
+          const camp = await c.query(
+            `select price_per_block_cents, impressions_remaining from campaigns
+              where id = $1 and status = 'active' and paid_at is not null for update`,
+            [ev.campaignId]
+          );
+          if (!camp.rows[0]) continue;
+          const billed = Math.min(billable, camp.rows[0].impressions_remaining);
+          if (!billed) continue;
+
+          await c.query(
+            `update campaigns set
+               impressions_remaining = impressions_remaining - $2,
+               status = case when impressions_remaining - $2 <= 0 then 'exhausted' else status end
+             where id = $1`,
+            [ev.campaignId, billed]
+          );
+
+          // gross per impression in millicents: price_per_block_cents / 1000 cents
+          // = price_per_block_cents millicents. Exact integer math throughout.
+          const gross = BigInt(camp.rows[0].price_per_block_cents) * BigInt(billed);
+          const meta = source ? { impressions: imp, billed, source } : { impressions: imp, billed };
+          // Token mode (DWELL deployment): three-way points split, same math as
+          // the token redeem path; no platform-funded affiliate bonus.
+          if (tokenSplit) {
+            credited += await creditTokenSplit(c, { deviceId, campaignId: ev.campaignId, gross, tokenSplit, meta });
+            continue;
+          }
+          const dev = (gross * BigInt(Math.round(revenueShare * 1000))) / 1000n;
+          const fee = gross - dev;
+          credited += dev;
+
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
+             values ('impression_credit', $1, $2, $3, $4)`,
+            [dev.toString(), deviceId, ev.campaignId, JSON.stringify(meta)]
+          );
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+             values ('platform_fee', $1, $2, '{}')`,
+            [fee.toString(), ev.campaignId]
+          );
+        }
+        // If this device's user was attributed to an affiliate, accrue the
+        // affiliate's cut (platform-funded, on top) on the batch's net credit.
+        // Retired in token mode — the referrer's 10% is inside the split.
+        if (credited > 0n && !tokenSplit) {
+          const dev = await c.query("select user_id from devices where id = $1", [deviceId]);
+          await creditAffiliate(c, dev.rows[0]?.user_id, credited);
+        }
+        return { duplicate: false, creditedMillicents: Number(credited) };
+      });
+    },
+
+    // ---------- earnings & payouts ----------
+    async earningsForDevice(deviceId) {
+      // admin_credit/admin_debit are manual balance adjustments (e.g. a
+      // cancelled-redemption refund, or wiping credits an unfunded campaign
+      // minted) — they move the spendable balance but not lifetime "earned".
+      const { rows } = await pool.query(
+        `select
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
+         from ledger
+         where device_id = $1
+            or user_id = (select user_id from devices where id = $1 and user_id is not null)`,
+        [deviceId]
+      );
+      const earned = Number(rows[0].earned);
+      const paidOut = Number(rows[0].paid_out); // stored negative
+      const redeemed = Number(rows[0].redeemed); // stored negative
+      return {
+        earnedMillicents: earned,
+        paidOutMillicents: -paidOut,
+        redeemedMillicents: -redeemed,
+        balanceMillicents: earned + paidOut + redeemed + Number(rows[0].adjusted),
+      };
+    },
+
+    async userForDevice(deviceId) {
+      const { rows } = await pool.query(
+        `select u.* from users u join devices d on d.user_id = u.id where d.id = $1`,
+        [deviceId]
+      );
+      return rows[0] || null;
+    },
+
+    // ---------- email verification (magic link) ----------
+    async createEmailToken(email, deviceId, ttlMs, referralCode, cooldownMs, ipHash, ipDailyCap) {
+      // Per-IP daily cap: the per-email cooldown below only throttles a single
+      // address, so one host can still blast magic links to many DISTINCT
+      // addresses (spam-cannon / sender-reputation abuse). This bounds sends per
+      // source IP per UTC day. Hashed, fail-open (skipped when no IP is known),
+      // and disabled when ipDailyCap is not positive (shared-NAT/CGNAT opt-out).
+      // Throws CAP_EXCEEDED so the route can answer 429 — unlike the per-email
+      // cooldown, a per-IP limit reveals nothing about whether an address exists.
+      if (ipHash && Number.isFinite(ipDailyCap) && ipDailyCap > 0) {
+        const ipCap = await pool.query(
+          `select count(*)::int as n from email_tokens
+            where ip_hash = $1 and created_at >= date_trunc('day', now())`,
+          [ipHash]
+        );
+        if (ipCap.rows[0].n >= ipDailyCap) {
+          const err = new Error("daily email cap exceeded");
+          err.code = "CAP_EXCEEDED";
+          throw err;
+        }
+      }
+      // Per-email send cooldown: collapse rapid repeat requests so the
+      // magic-link endpoints can't be used to email-bomb or probe an address.
+      // Scoped by device so the verify-email (device-linked) and website-login
+      // (device-null) flows never throttle each other. Returns null when a fresh
+      // token was just issued — the caller responds the same either way so a
+      // throttle never leaks whether the address exists.
+      if (cooldownMs) {
+        const recent = await pool.query(
+          `select 1 from email_tokens
+            where lower(email) = lower($1) and used_at is null
+              and device_id is not distinct from $2
+              and created_at > now() - ($3 || ' milliseconds')::interval
+            limit 1`,
+          [email, deviceId || null, String(cooldownMs)]
+        );
+        if (recent.rows[0]) return null;
+      }
+      const token = crypto.randomBytes(32).toString("base64url");
+      await pool.query(
+        `insert into email_tokens (token, email, device_id, referral_code, ip_hash, expires_at)
+         values ($1, $2, $3, $4, $5, now() + ($6 || ' milliseconds')::interval)`,
+        [token, email, deviceId || null, referralCode || null, ipHash || null, String(ttlMs)]
+      );
+      return token;
+    },
+
+    // Consume a magic-link token: mark used, upsert a verified user, link the
+    // device. Single-use and time-bound. Returns the user or null.
+    async verifyEmailToken(token) {
+      return tx(async (c) => {
+        const t = await c.query(
+          `update email_tokens set used_at = now()
+            where token = $1 and used_at is null and expires_at > now()
+            returning email, device_id`,
+          [token]
+        );
+        if (!t.rows[0]) return null;
+        const { email, device_id } = t.rows[0];
+        const u = await c.query(
+          `insert into users (email, email_verified) values ($1, true)
+           on conflict (email) do update set email_verified = true
+           returning id, email, stripe_account_id, payouts_enabled, email_verified`,
+          [email]
+        );
+        if (device_id) {
+          await c.query("update devices set user_id = $2 where id = $1", [device_id, u.rows[0].id]);
+        }
+        return u.rows[0];
+      });
+    },
+    // Link a device to a user (self-serve, from the dwell-protocol.vercel.app web session). Same
+    // association the magic-link verify makes — balance queries already roll up
+    // "this user OR any device linked to them", so no balance merge is needed.
+    async linkDeviceToUser(deviceId, userId) {
+      await pool.query("update devices set user_id = $2 where id = $1", [deviceId, userId]);
+    },
+
+    // ---------- server-side clicks ----------
+    async createClickToken(campaignId, deviceId, ttlMs) {
+      const camp = await pool.query(
+        "select 1 from campaigns where id = $1 and status = 'active'",
+        [campaignId]
+      );
+      if (!camp.rows[0]) return null;
+      const token = crypto.randomBytes(24).toString("base64url");
+      await pool.query(
+        `insert into click_tokens (token, campaign_id, device_id, expires_at)
+         values ($1, $2, $3, now() + ($4 || ' milliseconds')::interval)`,
+        [token, campaignId, deviceId, String(ttlMs)]
+      );
+      return token;
+    },
+
+    // Redeem a click token exactly once: record the click and return the
+    // destination URL to redirect to. Clicks are FREE — we record a zero-value
+    // 'click_event' for analytics (clicks / CTR / CPC) but never bill the
+    // campaign, draw budget, or credit the device (the 50x click billing was
+    // removed). Historical 'click_credit' rows are untouched.
+    async redeemClickToken(token, dailyClickCap) {
+      return tx(async (c) => {
+        const t = await c.query(
+          `update click_tokens set used_at = now()
+            where token = $1 and used_at is null and expires_at > now()
+            returning campaign_id, device_id`,
+          [token]
+        );
+        if (!t.rows[0]) return null;
+        const { campaign_id, device_id } = t.rows[0];
+
+        // Per-device daily cap still bounds how many clicks we RECORD per day, so
+        // the click metric can't be spammed. Past the cap we still 302 the user
+        // onward (clean UX) but record nothing.
+        let overCap = false;
+        if (Number.isFinite(dailyClickCap)) {
+          const used = await c.query(
+            `select count(*)::int as n from ledger
+              where device_id = $1 and entry_type = 'click_event'
+                and created_at >= date_trunc('day', now())`,
+            [device_id]
+          );
+          if (used.rows[0].n >= dailyClickCap) overCap = true;
+        }
+
+        const camp = await c.query(
+          "select url from campaigns where id = $1 and status = 'active'",
+          [campaign_id]
+        );
+        if (!camp.rows[0]) return null;
+        // Record the click for analytics only — amount 0, no budget draw, no
+        // platform fee, no affiliate accrual.
+        if (!overCap) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
+             values ('click_event', 0, $1, $2, $3)`,
+            [device_id, campaign_id, JSON.stringify({ via: "go" })]
+          );
+        }
+        return { url: camp.rows[0].url };
+      });
+    },
+
+    // ---------- server-authoritative impressions (single-use tokens) ----------
+    // An impression is billable only when the server SERVED that ad to this
+    // device (mint here) and only ONCE (redeem below, after the qualifying
+    // dwell). Replaces trust in the client's self-reported /v1/events count.
+    // Caps are enforced here on tokens served today, so billed <= served <= cap.
+    async serveImpression({ deviceId, ipHash, ttlMs, dailyCap, ipDailyCap }) {
+      if (Number.isFinite(dailyCap) && dailyCap > 0) {
+        const n = await pool.query(
+          `select count(*)::int as n from impression_tokens
+            where device_id = $1 and created_at >= date_trunc('day', now())`,
+          [deviceId]
+        );
+        if (n.rows[0].n >= dailyCap) return { capped: true };
+      }
+      // Per source IP per UTC day — bounds farming across many anonymous devices.
+      if (ipHash && Number.isFinite(ipDailyCap) && ipDailyCap > 0) {
+        const n = await pool.query(
+          `select count(*)::int as n from impression_tokens
+            where ip_hash = $1 and created_at >= date_trunc('day', now())`,
+          [ipHash]
+        );
+        if (n.rows[0].n >= ipDailyCap) return { capped: true };
+      }
+      // Auction winner: highest bid, oldest activated (same order as activeAds).
+      const pick = await pool.query(
+        `select id, brand, ad_line, url, category, color, price_per_block_cents
+           from campaigns
+          where status = 'active' and impressions_remaining > 0 and paid_at is not null
+          order by price_per_block_cents desc, activated_at asc
+          limit 1`
+      );
+      const ad = pick.rows[0];
+      if (!ad) return { ad: null };
+      const token = crypto.randomBytes(24).toString("base64url");
+      await pool.query(
+        `insert into impression_tokens (token, campaign_id, device_id, ip_hash, expires_at)
+         values ($1, $2, $3, $4, now() + ($5 || ' milliseconds')::interval)`,
+        [token, ad.id, deviceId, ipHash || null, String(ttlMs)]
+      );
+      return { token, ad };
+    },
+
+    // Redeem a served impression EXACTLY ONCE, after the dwell. Bills one
+    // impression against the (locked) campaign, credits the device its share and
+    // the affiliate, records the platform fee — identical math to ingestBatch for
+    // a single billed impression. A redeem before minDwellMs does NOT consume the
+    // token, so an honest client can retry once the 2s dwell completes.
+    async redeemImpression({ token, deviceId, revenueShare, minDwellMs, source, tokenSplit }) {
+      return tx(async (c) => {
+        const t = await c.query(
+          `select campaign_id,
+                  used_at is not null                                       as used,
+                  expires_at <= now()                                       as expired,
+                  (now() - created_at) < ($2 || ' milliseconds')::interval  as too_soon
+             from impression_tokens
+            where token = $1 and device_id = $3
+            for update`,
+          [token, String(Math.max(0, minDwellMs | 0)), deviceId]
+        );
+        const row = t.rows[0];
+        if (!row) return { ok: false, reason: "not_found" };
+        if (row.used) return { ok: false, reason: "used" };
+        if (row.expired) return { ok: false, reason: "expired" };
+        if (row.too_soon) return { ok: false, reason: "too_soon" }; // unconsumed → retryable
+
+        await c.query("update impression_tokens set used_at = now() where token = $1", [token]);
+
+        // Bill one impression, never past the campaign's remaining budget.
+        const camp = await c.query(
+          `select price_per_block_cents, impressions_remaining from campaigns
+            where id = $1 and status = 'active' and paid_at is not null for update`,
+          [row.campaign_id]
+        );
+        if (!camp.rows[0] || camp.rows[0].impressions_remaining < 1) {
+          return { ok: true, creditedMillicents: 0, campaignId: row.campaign_id }; // spent, nothing billable
+        }
+        await c.query(
+          `update campaigns set
+             impressions_remaining = impressions_remaining - 1,
+             status = case when impressions_remaining - 1 <= 0 then 'exhausted' else status end
+           where id = $1`,
+          [row.campaign_id]
+        );
+        const gross = BigInt(camp.rows[0].price_per_block_cents); // billed = 1
+        const meta = source ? { impressions: 1, billed: 1, via: "token", source } : { impressions: 1, billed: 1, via: "token" };
+        // Token mode (DWELL deployment): three-way points split of the reserve
+        // tranche; the legacy platform-funded affiliate bonus does not apply.
+        if (tokenSplit) {
+          const viewer = await creditTokenSplit(c, { deviceId, campaignId: row.campaign_id, gross, tokenSplit, meta });
+          return { ok: true, creditedMillicents: Number(viewer), campaignId: row.campaign_id };
+        }
+        const dev = (gross * BigInt(Math.round(revenueShare * 1000))) / 1000n;
+        const fee = gross - dev;
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, device_id, campaign_id, meta)
+           values ('impression_credit', $1, $2, $3, $4)`,
+          [dev.toString(), deviceId, row.campaign_id, JSON.stringify(meta)]
+        );
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+           values ('platform_fee', $1, $2, '{}')`,
+          [fee.toString(), row.campaign_id]
+        );
+        // Affiliate cut (platform-funded, on top) if the device's user is attributed.
+        const du = await c.query("select user_id from devices where id = $1", [deviceId]);
+        await creditAffiliate(c, du.rows[0]?.user_id, dev);
+        return { ok: true, creditedMillicents: Number(dev), campaignId: row.campaign_id };
+      });
+    },
+
+    async setStripeAccount(userId, accountId) {
+      await pool.query("update users set stripe_account_id = $2 where id = $1", [userId, accountId]);
+    },
+
+    async setPayoutsEnabledByAccount(accountId, enabled) {
+      await pool.query(
+        "update users set payouts_enabled = $2 where stripe_account_id = $1",
+        [accountId, enabled]
+      );
+    },
+
+    // Users at/over the threshold with onboarded Stripe accounts. Balance is
+    // derived from the ledger via their linked devices.
+    async payableUsers(thresholdMillicents) {
+      const { rows } = await pool.query(
+        `select u.id, u.stripe_account_id,
+                coalesce(sum(l.amount_millicents), 0)::bigint as balance
+           from users u
+           join devices d on d.user_id = u.id
+           join ledger l on (l.device_id = d.id and l.entry_type in ('impression_credit','click_credit'))
+          where u.payouts_enabled and u.stripe_account_id is not null
+          group by u.id
+         having coalesce(sum(l.amount_millicents), 0)
+              + coalesce((select sum(amount_millicents) from ledger where user_id = u.id and entry_type = 'payout_debit'), 0)
+              + coalesce((select sum(amount_millicents) from ledger
+                           where entry_type = 'gift_redemption_debit'
+                             and device_id in (select id from devices where user_id = u.id)), 0)
+              + coalesce((select sum(amount_millicents) from ledger
+                           where entry_type in ('admin_credit','admin_debit')
+                             and (user_id = u.id or device_id in (select id from devices where user_id = u.id))), 0)
+             >= $1`,
+        [thresholdMillicents]
+      );
+      return rows.map((r) => ({ ...r, balance: Number(r.balance) }));
+    },
+
+    // ---------- gift card redemptions ----------
+    // Deducts the device's balance for a Claude gift card. The balance is
+    // re-checked inside the transaction (with the ledger as source of truth) so
+    // concurrent redemptions can't spend the same credits twice. Returns the
+    // redemption id, or null if the balance is insufficient.
+    // ---------- OAuth sign-in ----------
+    // Find or create a user from a Google/Apple OAuth callback, then open a
+    // web session. Looks up by provider ID first, then by email. Patches any
+    // missing fields on an existing account.
+    async upsertUserByOAuth({ email, googleId, appleId, referralCode, emailVerified }, sessionTtlMs) {
+      return tx(async (c) => {
+        // Only a provider-verified email may match or merge into an existing
+        // account — otherwise an attacker who controls an OAuth identity with an
+        // unverified email claim could take over a victim's account (and its
+        // balance) by email. Unverified emails are dropped; the provider id is
+        // the only trusted key.
+        const matchEmail = emailVerified ? (email || null) : null;
+
+        let found = null;
+        if (googleId) {
+          const r = await c.query("select id, email, google_id, apple_id from users where google_id = $1", [googleId]);
+          found = r.rows[0] || null;
+        }
+        if (!found && appleId) {
+          const r = await c.query("select id, email, google_id, apple_id from users where apple_id = $1", [appleId]);
+          found = r.rows[0] || null;
+        }
+        if (!found && matchEmail) {
+          const r = await c.query("select id, email, google_id, apple_id from users where email = $1", [matchEmail]);
+          found = r.rows[0] || null;
+        }
+
+        let userId;
+        if (found) {
+          const sets = ["email_verified = true"];
+          const vals = [found.id];
+          if (matchEmail && !found.email)   { sets.push(`email = $${vals.length + 1}`);     vals.push(matchEmail); }
+          if (googleId && !found.google_id) { sets.push(`google_id = $${vals.length + 1}`); vals.push(googleId); }
+          if (appleId && !found.apple_id)   { sets.push(`apple_id = $${vals.length + 1}`);  vals.push(appleId); }
+          await c.query(`update users set ${sets.join(", ")} where id = $1`, vals);
+          userId = found.id;
+        } else {
+          const r = await c.query(
+            `insert into users (email, email_verified, google_id, apple_id)
+             values ($1, true, $2, $3) returning id`,
+            [matchEmail || null, googleId || null, appleId || null]
+          );
+          userId = r.rows[0].id;
+          await applyCode(c, userId, referralCode); // first sign-in only; affiliate or referral
+        }
+
+        const sessionToken = crypto.randomBytes(32).toString("base64url");
+        await c.query(
+          `insert into web_sessions (token, user_id, expires_at)
+           values ($1, $2, now() + ($3 || ' milliseconds')::interval)`,
+          [sessionToken, userId, String(sessionTtlMs)]
+        );
+        return { sessionToken };
+      });
+    },
+
+    // ---------- website login sessions ----------
+    // Consume a magic-link token, upsert the verified user, and open a web
+    // session for them. Single-use and time-bound. Returns { sessionToken, user }
+    // or null if the token is invalid/expired.
+    async createWebSessionFromToken(token, sessionTtlMs) {
+      return tx(async (c) => {
+        const t = await c.query(
+          `update email_tokens set used_at = now()
+            where token = $1 and used_at is null and expires_at > now()
+            returning email, referral_code`,
+          [token]
+        );
+        if (!t.rows[0]) return null;
+        // (xmax = 0) is true only for a fresh INSERT, false when ON CONFLICT
+        // updated an existing row — so we apply the referral on first sign-in only.
+        const u = await c.query(
+          `insert into users (email, email_verified) values ($1, true)
+           on conflict (email) do update set email_verified = true
+           returning id, email, (xmax = 0) as is_new`,
+          [t.rows[0].email]
+        );
+        if (u.rows[0].is_new) await applyCode(c, u.rows[0].id, t.rows[0].referral_code);
+        const sessionToken = crypto.randomBytes(32).toString("base64url");
+        await c.query(
+          `insert into web_sessions (token, user_id, expires_at)
+           values ($1, $2, now() + ($3 || ' milliseconds')::interval)`,
+          [sessionToken, u.rows[0].id, String(sessionTtlMs)]
+        );
+        return { sessionToken, user: { id: u.rows[0].id, email: u.rows[0].email } };
+      });
+    },
+
+    async userForSession(sessionToken) {
+      if (!sessionToken) return null;
+      const { rows } = await pool.query(
+        `select u.id, u.email from web_sessions s join users u on u.id = s.user_id
+          where s.token = $1 and s.expires_at > now()`,
+        [sessionToken]
+      );
+      return rows[0] || null;
+    },
+
+    // Revoke a web session server-side so the bearer token is dead immediately,
+    // even if a copy lingers in a browser's localStorage. Idempotent.
+    async deleteWebSession(sessionToken) {
+      if (!sessionToken) return;
+      await pool.query("delete from web_sessions where token = $1", [sessionToken]);
+    },
+
+    // Aggregate credit balance for a user, across every device linked to them
+    // plus any user-level ledger entries (redemptions/payouts).
+    async balanceForUser(userId) {
+      // admin_credit/admin_debit adjust the spendable balance (see
+      // earningsForDevice) without rewriting lifetime "earned".
+      const { rows } = await pool.query(
+        `select
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
+         from ledger
+         where user_id = $1
+            or device_id in (select id from devices where user_id = $1)`,
+        [userId]
+      );
+      const earned = Number(rows[0].earned);
+      const paidOut = Number(rows[0].paid_out); // negative
+      const redeemed = Number(rows[0].redeemed); // negative
+      return {
+        earnedMillicents: earned,
+        paidOutMillicents: -paidOut,
+        redeemedMillicents: -redeemed,
+        balanceMillicents: earned + paidOut + redeemed + Number(rows[0].adjusted),
+      };
+    },
+
+    // Earnings tracking for the web dashboard. Lifetime / today / month-to-date
+    // credit totals plus the same balance math as balanceForUser, in one pass.
+    // "Today" and "this month" are bucketed in UTC (date_trunc on now()).
+    async earningsForUser(userId) {
+      const { rows } = await pool.query(
+        `select
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit') and created_at >= date_trunc('day', now())), 0)::bigint as today,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit') and created_at >= date_trunc('month', now())), 0)::bigint as month,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
+           coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
+         from ledger
+         where user_id = $1
+            or device_id in (select id from devices where user_id = $1)`,
+        [userId]
+      );
+      const earned = Number(rows[0].earned);
+      const today = Number(rows[0].today);
+      const month = Number(rows[0].month);
+      const paidOut = Number(rows[0].paid_out); // negative
+      const redeemed = Number(rows[0].redeemed); // negative
+      return {
+        lifetimeMillicents: earned,
+        todayMillicents: today,
+        monthMillicents: month,
+        redeemedMillicents: -redeemed,
+        paidOutMillicents: -paidOut,
+        balanceMillicents: earned + paidOut + redeemed + Number(rows[0].adjusted),
+      };
+    },
+
+    // Time-bucketed credit totals for the earnings chart. `bucket` is 'hour' or
+    // 'day'; only buckets with activity at/after `since` are returned (the caller
+    // fills the gaps to a continuous axis). Ordered oldest-first.
+    async earningsSeriesForUser(userId, { bucket, since }) {
+      const unit = bucket === "hour" ? "hour" : "day";
+      const { rows } = await pool.query(
+        `select
+           date_trunc($2, created_at) as t,
+           coalesce(sum(amount_millicents), 0)::bigint as millicents,
+           count(*)::int as count
+         from ledger
+         where (user_id = $1 or device_id in (select id from devices where user_id = $1))
+           and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')
+           and created_at >= $3
+         group by 1
+         order by 1 asc`,
+        [userId, unit, since]
+      );
+      return rows.map((r) => ({
+        t: r.t,
+        millicents: Number(r.millicents),
+        count: r.count,
+      }));
+    },
+
+    // Recent credited ledger rows for the activity ledger (newest first). Credits
+    // only — redemptions/payouts are excluded. `limit` is clamped to [1, 200].
+    async recentCreditsForUser(userId, limit) {
+      const n = Math.max(1, Math.min(200, parseInt(limit, 10) || 200));
+      const { rows } = await pool.query(
+        `select l.id, l.created_at, l.entry_type, l.amount_millicents, l.meta, c.brand
+           from ledger l
+           left join campaigns c on c.id = l.campaign_id
+          where (l.user_id = $1 or l.device_id in (select id from devices where user_id = $1))
+            and l.entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')
+          order by l.created_at desc
+          limit $2`,
+        [userId, n]
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        createdAt: r.created_at,
+        entryType: r.entry_type,
+        amountMillicents: Number(r.amount_millicents),
+        advertiser: r.brand || null,
+        meta: r.meta || {},
+      }));
+    },
+
+    // Which surfaces this account has ever received a credit from, read from the
+    // source tag stamped on impression credits at ingest. Drives the Install
+    // tab's per-service "active" logo (grey → colored on the first credit).
+    async sourcesForUser(userId) {
+      const { rows } = await pool.query(
+        `select distinct meta->>'source' as source
+           from ledger
+          where (user_id = $1 or device_id in (select id from devices where user_id = $1))
+            and entry_type in ('impression_credit','click_credit','points_credit')
+            and meta->>'source' is not null`,
+        [userId]
+      );
+      const seen = new Set(rows.map((r) => r.source));
+      return { chrome: seen.has("chrome"), claude_code: seen.has("claude_code"), desktop: seen.has("desktop") };
+    },
+
+    // ---------- DWELL token mode: reserve attestation ----------
+    // Public /v1/reserve numbers (dwell/docs/04 §D): what the ledger says has
+    // been earmarked + accrued, next to what the keeper says is escrowed. The
+    // three points legs and the allocation are ledger-derived (never stored);
+    // escrowed USDC comes from usdc_reserve_entries (keeper-written).
+    async reserveStatus() {
+      const [led, usdc] = await Promise.all([
+        pool.query(
+          `select
+             coalesce(sum(amount_millicents) filter (where entry_type = 'reserve_allocation'), 0)::bigint as allocated,
+             coalesce(sum(amount_millicents) filter (where entry_type = 'points_credit'), 0)::bigint as viewer,
+             coalesce(sum(amount_millicents) filter (where entry_type = 'referral_points_credit'), 0)::bigint as referrer,
+             coalesce(sum(amount_millicents) filter (where entry_type = 'protocol_points_credit'), 0)::bigint as protocol,
+             coalesce(sum(amount_millicents) filter (where entry_type = 'token_claim_debit'), 0)::bigint as claimed
+           from ledger`
+        ),
+        pool.query(
+          `select coalesce(sum(case when direction = 'escrow' then amount_micro_usdc
+                                    else -amount_micro_usdc end), 0)::bigint as escrowed
+             from usdc_reserve_entries`
+        ),
+      ]);
+      const l = led.rows[0];
+      const accrued = Number(l.viewer) + Number(l.referrer) + Number(l.protocol);
+      return {
+        allocatedMillicents: Number(l.allocated),
+        accruedPointsMillicents: accrued,
+        viewerPointsMillicents: Number(l.viewer),
+        referrerPointsMillicents: Number(l.referrer),
+        protocolPointsMillicents: Number(l.protocol),
+        outstandingPointsMillicents: accrued + Number(l.claimed), // claim debits are negative
+        escrowedMicroUsdc: Number(usdc.rows[0].escrowed),
+      };
+    },
+
+    // Live mode: funded campaign pools + locked rates, from the indexer's
+    // mirror of CampaignFunded events (dwell/docs/04 §D — GET /v1/token/pools).
+    async tokenCampaignPools(limit = 100) {
+      const { rows } = await pool.query(
+        `select campaign_id, usdc_in_micro, dwell_out_wei, to_distributor_wei,
+                to_treasury_wei, burned_wei, locked_rate_wei, tx_hash, funded_at
+           from token_campaign_pools order by funded_at desc limit $1`,
+        [Math.max(1, Math.min(500, parseInt(limit, 10) || 100))]
+      );
+      return rows.map((r) => ({
+        campaignId: r.campaign_id,
+        usdcInMicro: Number(r.usdc_in_micro),
+        dwellOutWei: r.dwell_out_wei,
+        toDistributorWei: r.to_distributor_wei,
+        toTreasuryWei: r.to_treasury_wei,
+        burnedWei: r.burned_wei,
+        lockedRateWei: r.locked_rate_wei,
+        txHash: r.tx_hash,
+        fundedAt: r.funded_at,
+      }));
+    },
+
+    // User-scoped gift redemption (website flow). Re-checks the user's balance
+    // inside the transaction against the ledger so concurrent redeems can't spend
+    // the same credits twice. Returns the redemption id, or null if short.
+    async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, recipientEmail, referralRewardMillicents, referralCap }) {
+      return tx(async (c) => {
+        // Serialize concurrent redeems on this user's balance (see
+        // recordGiftRedemption) so the in-transaction check can't be overdrawn.
+        await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, `user:${userId}`]);
+
+        const bal = await c.query(
+          `select coalesce(sum(amount_millicents), 0)::bigint as balance from ledger
+            where (user_id = $1 or device_id in (select id from devices where user_id = $1))
+              and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','payout_debit','gift_redemption_debit','admin_credit','admin_debit')`,
+          [userId]
+        );
+        const costMillicents = BigInt(amountCents) * 1000n;
+        if (BigInt(bal.rows[0].balance) < costMillicents) return null;
+
+        const { rows } = await c.query(
+          `insert into gift_redemptions (id, user_id, plan, months, amount_cents, recipient_email)
+           values (coalesce($1::uuid, gen_random_uuid()),$2,$3,$4,$5,$6) returning id`,
+          [id || null, userId, plan, months, amountCents, recipientEmail]
+        );
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, user_id, meta)
+           values ('gift_redemption_debit', $1, $2, $3)`,
+          [(-costMillicents).toString(), userId,
+           JSON.stringify({ redemptionId: rows[0].id, plan, months })]
+        );
+        // The $20 referral program is retired — redeeming no longer rewards any
+        // referrer. (maybeRewardReferral is kept defined but uncalled.) We still
+        // return an object with a null reward so the redemption flow keeps a
+        // stable shape for callers that branch on `reward`.
+        return { id: rows[0].id, reward: null };
+      });
+    },
+
+    // ---------- referrals ----------
+    // Return the user's shareable code, minting a unique one on first request.
+    // Lazy creation means existing users are backfilled with no data migration.
+    async getOrCreateReferralCode(userId) {
+      const existing = await pool.query("select referral_code from users where id = $1", [userId]);
+      if (existing.rows[0]?.referral_code) return existing.rows[0].referral_code;
+      for (let i = 0; i < 6; i++) {
+        const code = generateReferralCode();
+        try {
+          const r = await pool.query(
+            "update users set referral_code = $2 where id = $1 and referral_code is null returning referral_code",
+            [userId, code]
+          );
+          if (r.rows[0]) return r.rows[0].referral_code;
+          // a concurrent request set it first — re-read and return that one
+          const re = await pool.query("select referral_code from users where id = $1", [userId]);
+          if (re.rows[0]?.referral_code) return re.rows[0].referral_code;
+        } catch (err) {
+          if (err.code === "23505") continue; // code collided with another user; retry
+          throw err;
+        }
+      }
+      throw new Error("could not allocate referral code");
+    },
+
+    // Record (or re-send) an email invite. Stored lower-cased so the email match
+    // that flips the 'joined'/'rewarded' indicators is case-insensitive. The
+    // self-referral guard ("can't refer your own email") lives in the route,
+    // which knows the caller's email. Returns the invite row.
+    async createReferralInvite(referrerUserId, email, code) {
+      const r = await pool.query(
+        `insert into referral_invites (referrer_user_id, email, code)
+           values ($1, lower($2), $3)
+         on conflict (referrer_user_id, email)
+           do update set sent_at = now(), code = excluded.code
+         returning email, status, sent_at`,
+        [referrerUserId, email, code]
+      );
+      return r.rows[0];
+    },
+    // Pending crew invites (email sent, friend hasn't signed up yet) for the
+    // device-scoped affiliate panel in the extension. Masked emails only — the
+    // full address never leaves the server. Friends who've already joined are
+    // filtered out by the caller (they surface via affiliateCrew instead).
+    async pendingInvitesForUser(userId) {
+      const r = await pool.query(
+        `select email, sent_at from referral_invites
+          where referrer_user_id = $1 and status = 'sent'
+          order by sent_at asc limit 20`,
+        [userId]
+      );
+      return r.rows.map((row) => ({ email: maskEmail(row.email), invitedAt: row.sent_at }));
+    },
+
+    // First-login onboarding gate: true once the user has referred anyone — either
+    // sent at least one invite, or has a friend who joined with their code. Drives
+    // the "refer a friend to start earning" screen the new user must clear before
+    // reaching their dashboard.
+    async hasReferredAnyone(userId) {
+      const r = await pool.query(
+        `select exists(select 1 from referral_invites where referrer_user_id = $1)
+             or exists(select 1 from referrals where referrer_user_id = $1) as referred`,
+        [userId]
+      );
+      return r.rows[0]?.referred === true;
+    },
+
+    // First-login survey: true once the user has answered the "what models /
+    // where do you use them" questions. Drives the needsSurvey gate on
+    // /v1/web/me, shown before the refer-a-friend step.
+    async hasOnboardingSurvey(userId) {
+      const r = await pool.query("select 1 from onboarding_surveys where user_id = $1", [userId]);
+      return r.rowCount > 0;
+    },
+    // Upsert the survey answers (idempotent — re-answering overwrites). Arrays
+    // are stored as jsonb; surfaceOther is the free text for the "other" surface.
+    async saveOnboardingSurvey(userId, { models, surfaces, surfaceOther }) {
+      await pool.query(
+        `insert into onboarding_surveys (user_id, models, surfaces, surface_other)
+           values ($1, $2::jsonb, $3::jsonb, $4)
+         on conflict (user_id) do update
+           set models = excluded.models, surfaces = excluded.surfaces,
+               surface_other = excluded.surface_other, updated_at = now()`,
+        [userId, JSON.stringify(models), JSON.stringify(surfaces), surfaceOther]
+      );
+    },
+
+    // Counts + the dashboard list, one row per friend with their email and the
+    // stage they're at: 'invited' (email sent, not signed up yet) comes from
+    // referral_invites; 'pending'/'rewarded'/'capped'/'cancelled' come from the
+    // referrals table joined to the friend's account. Both lists merge into one
+    // newest-first timeline so the user can see exactly who they've referred.
+    async referralStats(userId) {
+      const stats = await pool.query(
+        `select
+           count(*) filter (where status = 'rewarded')::int as rewarded,
+           count(*) filter (where status = 'pending')::int as pending,
+           count(*) filter (where status = 'capped')::int as capped,
+           coalesce(sum(reward_millicents), 0)::bigint as earned_millicents
+         from referrals where referrer_user_id = $1`,
+        [userId]
+      );
+      const joined = await pool.query(
+        `select u.email, r.status, r.created_at
+           from referrals r join users u on u.id = r.referred_user_id
+          where r.referrer_user_id = $1
+          order by r.created_at desc limit 100`,
+        [userId]
+      );
+      // Only invites still awaiting a signup; once joined, the friend shows up in
+      // `joined` above (matched by email), so this avoids double-listing them.
+      const invited = await pool.query(
+        `select email, sent_at as created_at from referral_invites
+          where referrer_user_id = $1 and status = 'sent'
+          order by sent_at desc limit 100`,
+        [userId]
+      );
+      const s = stats.rows[0];
+      const referrals = [
+        ...invited.rows.map((r) => ({ email: maskEmail(r.email), status: "invited", createdAt: r.created_at })),
+        ...joined.rows.map((r) => ({ email: maskEmail(r.email), status: r.status, createdAt: r.created_at })),
+      ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return {
+        rewardedCount: s.rewarded,
+        pendingCount: s.pending,
+        cappedCount: s.capped,
+        invitedCount: invited.rows.length,
+        creditsEarnedMillicents: Number(s.earned_millicents),
+        referrals,
+      };
+    },
+
+    // ---------- affiliates ----------
+    // Submit an application to join the affiliate program. One per user — a
+    // repeat while an application already exists is a no-op that returns null
+    // (the route turns that into a 409). Socials are validated/normalized by the
+    // route before this is called.
+    async submitAffiliateApplication(userId, socials) {
+      const s = socials || {};
+      const { rows } = await pool.query(
+        `insert into affiliates
+           (user_id, instagram_handle, instagram_followers,
+            linkedin_handle, linkedin_followers, twitter_handle, twitter_followers)
+         values ($1,$2,$3,$4,$5,$6,$7)
+         on conflict (user_id) do nothing
+         returning id, status`,
+        [userId, s.instagram || null, s.instagramFollowers ?? null,
+         s.linkedin || null, s.linkedinFollowers ?? null,
+         s.twitter || null, s.twitterFollowers ?? null]
+      );
+      return rows[0] || null;
+    },
+
+    // The caller's affiliate state: their application (if any) and whether
+    // they're already attributed to an affiliate / have a referrer (which blocks
+    // applying an affiliate code). Approved affiliates also get live stats.
+    async affiliateForUser(userId) {
+      const u = await pool.query("select affiliate_id, referred_by from users where id = $1", [userId]);
+      const attributed = !!u.rows[0]?.affiliate_id;
+      const hasReferrer = !!u.rows[0]?.referred_by;
+      const a = await pool.query(
+        `select id, status, code, instagram_handle, instagram_followers,
+                linkedin_handle, linkedin_followers, twitter_handle, twitter_followers,
+                reward_bps, cap_millicents, cap_people, credited_millicents, created_at, approved_at
+           from affiliates where user_id = $1`,
+        [userId]
+      );
+      if (!a.rows[0]) return { application: null, attributed, hasReferrer };
+      const aff = a.rows[0];
+      let attributedCount = 0;
+      if (aff.status === "approved") {
+        const cnt = await pool.query(
+          "select count(*)::int as n from affiliate_attributions where affiliate_id = $1",
+          [aff.id]
+        );
+        attributedCount = cnt.rows[0].n;
+      }
+      return {
+        attributed,
+        hasReferrer,
+        application: {
+          status: aff.status,
+          code: aff.code,
+          socials: {
+            instagram: aff.instagram_handle, instagramFollowers: aff.instagram_followers,
+            linkedin: aff.linkedin_handle, linkedinFollowers: aff.linkedin_followers,
+            twitter: aff.twitter_handle, twitterFollowers: aff.twitter_followers,
+          },
+          rewardBps: aff.reward_bps,
+          capMillicents: Number(aff.cap_millicents),
+          capPeople: Number(aff.cap_people),
+          creditedMillicents: Number(aff.credited_millicents),
+          attributedCount,
+          createdAt: aff.created_at,
+          approvedAt: aff.approved_at,
+        },
+      };
+    },
+
+    // Retroactively attach an affiliate code to the caller's own account. Only
+    // works when they have no existing attribution (no affiliate, no referrer) —
+    // referral codes, by contrast, can't be applied retroactively. Returns
+    // { ok, reason }.
+    async applyAffiliateCodeForUser(userId, code) {
+      return tx(async (c) => {
+        const u = await c.query("select affiliate_id, referred_by from users where id = $1 for update", [userId]);
+        if (u.rows[0]?.affiliate_id) return { ok: false, reason: "already_affiliated" };
+        if (u.rows[0]?.referred_by) return { ok: false, reason: "has_referrer" };
+        const ok = await applyAffiliateCode(c, userId, code);
+        return { ok, reason: ok ? null : "invalid_code" };
+      });
+    },
+
+    // Admin: every application, pending first, with the applicant's email and
+    // live attributed/credited stats.
+    async listAffiliateApplications() {
+      const { rows } = await pool.query(
+        `select a.id, a.status, a.code, u.email,
+                a.instagram_handle, a.instagram_followers,
+                a.linkedin_handle, a.linkedin_followers,
+                a.twitter_handle, a.twitter_followers,
+                a.reward_bps, a.cap_millicents, a.cap_people, a.credited_millicents,
+                a.review_note, a.created_at, a.approved_at,
+                (select count(*)::int from affiliate_attributions aa where aa.affiliate_id = a.id) as attributed_count
+           from affiliates a join users u on u.id = a.user_id
+          order by case a.status when 'pending' then 0 when 'approved' then 1 else 2 end,
+                   a.created_at desc`
+      );
+      return rows;
+    },
+
+    // Admin: approve an application, minting a shareable code on first approval.
+    // The code shares the referral alphabet but must not collide with an
+    // existing referral or affiliate code (so signup resolution stays
+    // unambiguous). Idempotent — re-approving keeps the same code.
+    async approveAffiliate(affiliateId) {
+      const existing = await pool.query("select id from affiliates where id = $1", [affiliateId]);
+      if (!existing.rows[0]) return null;
+      const code = await mintAffiliateCode(affiliateId);
+      const upd = await pool.query(
+        `update affiliates set status = 'approved', approved_at = coalesce(approved_at, now()),
+            review_note = null where id = $1 returning id`,
+        [affiliateId]
+      );
+      return upd.rows[0] ? { id: affiliateId, code } : null;
+    },
+
+    // Self-serve affiliate enrollment: every signed-in earner is an approved
+    // affiliate (base 10%) with a code — no social application, no admin review.
+    async getOrCreateAffiliate(userId) {
+      return ensureAffiliate(userId);
+    },
+    // Influencer upgrade request: the user keeps their active base 10% while
+    // attaching socials so an admin can grant a higher rate / uncapped earnings /
+    // a custom code. Records the socials on the (auto-created) affiliate row; the
+    // presence of any handle is the "upgrade requested" signal the dashboard reads.
+    async requestAffiliateUpgrade(userId, socials) {
+      await ensureAffiliate(userId);
+      const s = socials || {};
+      await pool.query(
+        `update affiliates set
+           instagram_handle = $2, instagram_followers = $3,
+           linkedin_handle = $4, linkedin_followers = $5,
+           twitter_handle = $6, twitter_followers = $7
+         where user_id = $1`,
+        [userId, s.instagram || null, s.instagramFollowers ?? null,
+         s.linkedin || null, s.linkedinFollowers ?? null,
+         s.twitter || null, s.twitterFollowers ?? null]
+      );
+    },
+
+    // Per-friend crew breakdown for an affiliate: each attributed friend, the
+    // credits they've generated, and the affiliate's 10% cut earned from them.
+    async affiliateCrew(affiliateId, affiliateUserId) {
+      const credited = await pool.query(
+        "select coalesce(sum(amount_millicents), 0)::bigint as c from ledger where entry_type in ('affiliate_credit','referral_points_credit') and user_id = $1",
+        [affiliateUserId]
+      );
+      const { rows } = await pool.query(
+        `select u.email,
+          coalesce((select sum(amount_millicents) from ledger l
+                     where l.entry_type in ('impression_credit','click_credit','points_credit')
+                       and (l.user_id = aa.affiliated_user_id
+                            or l.device_id in (select id from devices where user_id = aa.affiliated_user_id))), 0)::bigint as generated,
+          coalesce((select sum(amount_millicents) from ledger l
+                     where l.entry_type in ('affiliate_credit','referral_points_credit') and l.user_id = $2
+                       and l.meta->>'affiliatedUserId' = aa.affiliated_user_id::text), 0)::bigint as your_cut
+         from affiliate_attributions aa
+         join users u on u.id = aa.affiliated_user_id
+        where aa.affiliate_id = $1
+        order by aa.created_at asc
+        limit 50`,
+        [affiliateId, affiliateUserId]
+      );
+      return {
+        count: rows.length,
+        creditedMillicents: Number(credited.rows[0].c),
+        friends: rows.map((r) => ({
+          name: maskEmail(r.email),
+          generatedUsd: Number(r.generated) / 100000,
+          youUsd: Number(r.your_cut) / 100000,
+        })),
+      };
+    },
+
+    // Admin: reject an application with an optional note.
+    async rejectAffiliate(affiliateId, note) {
+      const { rows } = await pool.query(
+        "update affiliates set status = 'rejected', review_note = $2 where id = $1 returning id",
+        [affiliateId, note || null]
+      );
+      return rows[0] || null;
+    },
+    // Admin grants an influencer upgrade: a custom rate (reward_bps), a raised /
+    // uncapped people cap, and optionally a vanity code. Stays 'approved' so the
+    // cut keeps flowing. rewardBps/capPeople are validated by the route.
+    async grantAffiliateUpgrade(affiliateId, opts) {
+      const ex = await pool.query("select id, code from affiliates where id = $1", [affiliateId]);
+      if (!ex.rows[0]) return { ok: false, error: "not found" };
+      let newCode = null;
+      if (opts.code != null && String(opts.code).trim() !== "") {
+        newCode = String(opts.code).trim().toUpperCase();
+        if (!/^[A-Z0-9]{3,16}$/.test(newCode)) return { ok: false, error: "code must be 3–16 letters or numbers" };
+        if (newCode !== ex.rows[0].code) {
+          const clash = await pool.query(
+            `select 1 from users where upper(referral_code) = $1
+              union all select 1 from affiliates where upper(code) = $1 and id <> $2`,
+            [newCode, affiliateId]
+          );
+          if (clash.rows[0]) return { ok: false, error: "that code is already taken" };
+        }
+      }
+      const upd = await pool.query(
+        `update affiliates set status = 'approved', approved_at = coalesce(approved_at, now()),
+            reward_bps = $2, cap_people = $3, code = coalesce($4, code), review_note = null
+          where id = $1
+          returning id, reward_bps, cap_people, code`,
+        [affiliateId, opts.rewardBps, opts.capPeople, newCode]
+      );
+      return { ok: true, affiliate: upd.rows[0] };
+    },
+
+    async recordPayout(userId, amountCents, transferId) {
+      return tx(async (c) => {
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, user_id, meta)
+           values ('payout_debit', $1, $2, $3)`,
+          [(-BigInt(amountCents) * 1000n).toString(), userId, JSON.stringify({ transferId })]
+        );
+        await c.query(
+          "insert into payouts (user_id, amount_cents, stripe_transfer_id) values ($1,$2,$3)",
+          [userId, amountCents, transferId]
+        );
+      });
+    },
+
+    // ---------- pre-account email capture (launch waitlist) ----------
+    // Bare email from the public landers — no account, no magic link. Normalizes
+    // the email, enforces a soft per-IP daily cap (this endpoint is public), and
+    // is idempotent on (email, kind): a re-submit returns created:false. Distinct
+    // from joinWaitlist below, which is the signed-in per-ad-surface interest list.
+    async addEmailLead({ email, kind = "earn", source = null, ipHash = null, ipDailyCap = 0 }) {
+      const e = String(email || "").trim().toLowerCase();
+      if (ipHash && Number.isFinite(ipDailyCap) && ipDailyCap > 0) {
+        const cap = await pool.query(
+          `select count(*)::int as n from email_leads
+            where ip_hash = $1 and created_at >= date_trunc('day', now())`,
+          [ipHash]
+        );
+        if (cap.rows[0].n >= ipDailyCap) {
+          const err = new Error("daily lead cap exceeded");
+          err.code = "CAP_EXCEEDED";
+          throw err;
+        }
+      }
+      const { rows } = await pool.query(
+        `insert into email_leads (email, kind, source, ip_hash) values ($1, $2, $3, $4)
+         on conflict (email, kind) do nothing returning id`,
+        [e, kind, source, ipHash]
+      );
+      return { created: !!rows[0] };
+    },
+
+    // ---------- waitlists ----------
+    // The surfaces a user can join a waitlist for, read from the enum table so a
+    // new surface is a data change, not a deploy. Ordered for display.
+    async listWaitlistSurfaces() {
+      const { rows } = await pool.query(
+        "select surface, label from waitlist_surfaces order by sort_order asc, surface asc"
+      );
+      return rows;
+    },
+
+    // Record a user's interest in one surface. Idempotent: a repeat signup is a
+    // no-op (the unique (user_id, surface) constraint). Returns true when a new
+    // row was created, false when the user was already on this waitlist.
+    async joinWaitlist(userId, surface) {
+      const { rows } = await pool.query(
+        `insert into waitlist_signups (user_id, surface) values ($1, $2)
+         on conflict (user_id, surface) do nothing returning id`,
+        [userId, surface]
+      );
+      return !!rows[0];
+    },
+
+    // The surfaces this user has already joined, oldest first.
+    async waitlistsForUser(userId) {
+      const { rows } = await pool.query(
+        "select surface, created_at from waitlist_signups where user_id = $1 order by created_at asc",
+        [userId]
+      );
+      return rows;
+    },
+  };
+}
+
+module.exports = { createRepo, sha256 };

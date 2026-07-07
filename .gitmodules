@@ -1,0 +1,6 @@
+[submodule "dwell/contracts/lib/openzeppelin-contracts"]
+	path = dwell/contracts/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "dwell/contracts/lib/forge-std"]
+	path = dwell/contracts/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std

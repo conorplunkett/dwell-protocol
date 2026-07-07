@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- DWELL brand mark: the eight-dot clock sweep (web/assets/logo.svg) on a
+       white chip. Colors here are the one sanctioned duplication of
+       theme.css values, since SVG favicons cannot read CSS custom
+       properties from the page. Keep in sync with theme.css accent red. -->
+  <rect width="64" height="64" rx="17" fill="#ffffff"/>
+  <g transform="translate(8,8) scale(0.24)">
+    <circle cx="100" cy="35" r="15" fill="#ff0000" fill-opacity="1"/>
+    <circle cx="145.96" cy="54.04" r="15" fill="#ff0000" fill-opacity=".08"/>
+    <circle cx="165" cy="100" r="15" fill="#ff0000" fill-opacity=".22"/>
+    <circle cx="145.96" cy="145.96" r="15" fill="#ff0000" fill-opacity=".38"/>
+    <circle cx="100" cy="165" r="15" fill="#ff0000" fill-opacity=".55"/>
+    <circle cx="54.04" cy="145.96" r="15" fill="#ff0000" fill-opacity=".72"/>
+    <circle cx="35" cy="100" r="15" fill="#ff0000" fill-opacity=".88"/>
+    <circle cx="54.04" cy="54.04" r="15" fill="#ff0000" fill-opacity=".95"/>
+  </g>
+</svg>

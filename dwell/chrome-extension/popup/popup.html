@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>DWELL</title>
+</head>
+<body>
+  <!-- sticky header — brand stays visible while the popup scrolls -->
+  <header class="top">
+    <div class="pbrand">
+      <span class="plogo">F$</span>
+      <span class="pname">DWELL<span class="dim">.fyi</span></span>
+    </div>
+    <label class="switch" title="Enable / disable earning">
+      <input type="checkbox" id="enabled" />
+      <span class="slider"></span>
+    </label>
+  </header>
+
+  <!-- Out-of-inventory notice — shown only when the live auction has nothing to
+       serve (real ads paused, not Test Mode). Hidden by default so there's no
+       flash before the first /v1/ads check resolves; see refreshBoard() in
+       popup.js. Text mirrors the web dashboard's #inventory-notice. -->
+  <div class="notice" id="inventory-notice" hidden>
+    <span class="notice-ico" aria-hidden="true">⏳</span>
+    <span class="notice-text">Out of ad inventory right now - they will be back tomorrow.</span>
+  </div>
+
+  <!-- HERO — the fuel ring is the product: credits earned toward a free month -->
+  <section class="hero">
+    <div class="ring">
+      <svg width="152" height="152" viewBox="0 0 152 152" aria-hidden="true">
+        <defs>
+          <linearGradient id="fr" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="var(--accent-grad-a)" />
+            <stop offset="1" stop-color="var(--accent-grad-b)" />
+          </linearGradient>
+        </defs>
+        <circle class="ring-track" cx="76" cy="76" r="69" fill="none" stroke-width="14" />
+        <circle id="ring-arc" class="ring-arc" cx="76" cy="76" r="69" fill="none" stroke-width="14"
+                stroke-linecap="round" stroke-dasharray="433.5" stroke-dashoffset="433.5"
+                transform="rotate(-90 76 76)" />
+        <circle class="ring-spin" cx="76" cy="76" r="81" fill="none" stroke-width="3.5"
+                stroke-dasharray="0.5 12" stroke-linecap="round" />
+      </svg>
+      <div class="ring-center">
+        <div class="amt" id="earnings">$0.00</div>
+        <div class="goal" id="goal">of $20</div>
+      </div>
+    </div>
+    <div class="tagline" id="progress"><b>0%</b> toward a free month of Claude</div>
+
+    <!-- the little Claude critter, chilling on top of the redeem button -->
+    <div class="cta-guy">
+      <div class="claude-guy" id="cta-claude-guy" aria-hidden="true">
+        <svg class="cg-sprite" width="42" height="36" viewBox="0 0 14 12" shape-rendering="crispEdges">
+          <g class="cg-spark">
+            <rect x="10" y="0" width="1" height="1" fill="#15181d" />
+            <rect x="11" y="0" width="1" height="1" fill="#f3f5f8" />
+            <rect x="10" y="1" width="1" height="1" fill="#f3f5f8" />
+            <rect x="11" y="1" width="1" height="1" fill="#15181d" />
+          </g>
+          <rect x="3" y="2" width="1" height="1" fill="#d97757" />
+          <rect x="2" y="3" width="10" height="5" fill="#d97757" />
+          <rect x="1" y="4" width="1" height="3" fill="#d97757" />
+          <rect x="12" y="4" width="1" height="2" fill="#b85c3e" />
+          <g class="cg-eye">
+            <rect x="3" y="4" width="2" height="2" fill="#f3f5f8" />
+            <rect x="3" y="5" width="1" height="1" fill="#15181d" />
+          </g>
+          <rect x="6" y="6" width="1" height="2" fill="#b85c3e" />
+          <rect x="8" y="6" width="1" height="2" fill="#b85c3e" />
+          <rect x="10" y="6" width="1" height="2" fill="#b85c3e" />
+          <rect x="3" y="8" width="1" height="2" fill="#b85c3e" />
+          <rect x="5" y="8" width="1" height="2" fill="#b85c3e" />
+          <rect x="8" y="8" width="1" height="2" fill="#b85c3e" />
+          <rect x="10" y="8" width="1" height="2" fill="#b85c3e" />
+        </svg>
+      </div>
+    </div>
+    <a class="cta" id="redeem-cta" href="https://dwell-protocol.vercel.app/redeem" target="_blank" rel="noopener">Redeem for Claude →</a>
+  </section>
+
+  <!-- CREW — invite up to 10 friends; earn 10% of their credits, forever -->
+  <section class="sec" id="crew">
+    <div class="sec-head">
+      <span class="lbl" id="crew-label">Your crew</span>
+      <span class="sum" id="crew-sum" hidden></span>
+    </div>
+
+    <!-- linked: 10 slots (joined friends, pending invites, and one invite form),
+         rendered by popup.js into #crew-slots -->
+    <div id="crew-linked" hidden>
+      <p class="crew-intro">Invite up to <b>10 friends</b> — earn <b id="crew-pct">10%</b> of every credit they make, forever.</p>
+      <div id="crew-slots"></div>
+    </div>
+
+    <!-- anonymous: value prop + sign-in. Opens the dwell-protocol.vercel.app login page; once
+         signed in there, the device auto-links and this panel fills in. -->
+    <div id="crew-signedout">
+      <p class="crew-empty">Earn <b>10%</b> of every credit your friends make — forever.</p>
+      <button class="invite" id="signin-btn"><span class="plus">+</span>Sign in to earn with your friends</button>
+    </div>
+  </section>
+
+  <!-- STATS — ads watched + average per day -->
+  <section class="sec">
+    <div class="stats">
+      <div class="stat"><div class="n" id="adviews">0</div><div class="k">ads watched</div></div>
+      <div class="stat"><div class="n" id="perday">$0.00</div><div class="k">per day</div></div>
+    </div>
+  </section>
+
+  <!-- TOP ADS — the live bid market, top of inventory -->
+  <section class="sec">
+    <div class="sec-head"><span class="lbl">Top ads · live bid market</span></div>
+    <ol class="board" id="board"></ol>
+  </section>
+
+  <!-- the critter again, pointing down at the "place your own ad" link -->
+  <div class="foot-guy">
+    <div class="claude-guy cg-point" aria-hidden="true">
+      <svg class="cg-sprite" width="42" height="36" viewBox="0 0 14 12" shape-rendering="crispEdges">
+        <g class="cg-spark">
+          <rect x="10" y="0" width="1" height="1" fill="#15181d" />
+          <rect x="11" y="0" width="1" height="1" fill="#f3f5f8" />
+          <rect x="10" y="1" width="1" height="1" fill="#f3f5f8" />
+          <rect x="11" y="1" width="1" height="1" fill="#15181d" />
+        </g>
+        <rect x="3" y="2" width="1" height="1" fill="#d97757" />
+        <rect x="2" y="3" width="10" height="5" fill="#d97757" />
+        <rect x="1" y="4" width="1" height="3" fill="#d97757" />
+        <rect x="12" y="4" width="1" height="2" fill="#b85c3e" />
+        <g class="cg-eye">
+          <rect x="3" y="4" width="2" height="2" fill="#f3f5f8" />
+          <rect x="3" y="5" width="1" height="1" fill="#15181d" />
+        </g>
+        <rect x="6" y="6" width="1" height="2" fill="#b85c3e" />
+        <rect x="8" y="6" width="1" height="2" fill="#b85c3e" />
+        <rect x="10" y="6" width="1" height="2" fill="#b85c3e" />
+        <rect x="5" y="8" width="1" height="2" fill="#b85c3e" />
+        <rect x="8" y="8" width="1" height="2" fill="#b85c3e" />
+        <rect x="10" y="8" width="1" height="2" fill="#b85c3e" />
+        <!-- front arm pointing straight down at the link below -->
+        <g class="cg-arm">
+          <rect x="2" y="8" width="1" height="2" fill="#d97757" />
+          <rect x="2" y="10" width="1" height="2" fill="#b85c3e" />
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- which dwell-protocol.vercel.app account this device is linked to -->
+  <div class="account-status" id="account-status">
+    <span class="acct-dot" id="acct-dot" aria-hidden="true"></span>
+    <span class="acct-text" id="acct-text">No account connected</span>
+  </div>
+
+  <footer class="foot">
+    <a href="https://dwell-protocol.vercel.app" target="_blank" rel="noopener">dwell-protocol.vercel.app</a>
+    <a class="r" href="https://dwell-protocol.vercel.app/#advertisers" target="_blank" rel="noopener">Place your own ad →</a>
+  </footer>
+
+  <!-- Developer tools — kept subtle, collapsed by default. -->
+  <details class="devtools">
+    <summary>Developer tools</summary>
+
+    <div class="testrow">
+      <div class="testrow-l">
+        <span class="testrow-title">Test mode <span class="pill" id="test-pill" hidden>ON</span></span>
+        <span class="testrow-sub">Show a mock ad on the page right now.</span>
+      </div>
+      <label class="switch" title="Toggle test mode">
+        <input type="checkbox" id="testmode" />
+        <span class="slider"></span>
+      </label>
+    </div>
+    <p class="hint" id="test-hint" hidden>Mock ad is live on any supported tab. <span id="test-counts"></span></p>
+
+    <button class="reset" id="reset">Reset earnings</button>
+  </details>
+
+  <script src="../src/ads.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

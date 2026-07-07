@@ -1,0 +1,147 @@
+/* DWELL — injected sponsored bar. Deliberately understated. */
+.bb-bar {
+  /* Overlay / font tokens — mirror of theme.css (--ov-* and fonts). theme.css is
+     not loaded on third-party pages, so the bar re-declares the tokens it uses
+     here, scoped to itself (they inherit to .bb-chip / .bb-line / .bb-tag).
+     Keep these in sync with theme.css — see AGENTS.md ▸ Design System. */
+  --ov-bar-bg: rgba(15, 15, 15, 0.92);
+  --ov-bar-bg-hover: rgba(26, 26, 26, 0.96);
+  --ov-bar-border: rgba(255, 255, 255, 0.08);
+  --ov-text: #f1f1f1;
+  --ov-line: #ffffff;
+  --ov-chip-bg: #ff0000;
+  --ov-chip-ink: #ffffff;
+  --ov-tag-bg: rgba(255, 0, 0, 0.2);
+  --ov-tag-text: #ff9d94;
+  --ov-tag-bg-test: rgba(255, 0, 0, 0.32);
+  --ov-tag-text-test: #ffb4a8;
+  --ov-test-border: rgba(255, 0, 0, 0.4);
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "Sora", system-ui, -apple-system, sans-serif;
+
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 2147483000;
+  display: none;
+  align-items: center;
+  gap: 9px;
+  max-width: min(560px, 92vw);
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: var(--ov-bar-bg);
+  color: var(--ov-text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1;
+  box-shadow: 0 6px 20px -12px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--ov-bar-border);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  user-select: none;
+}
+.bb-bar.bb-show {
+  display: flex;
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+/* Inline mode — anchored right where the assistant's reply is streaming
+   ("where the thinking icon is"), flowing with the message instead of
+   floating over the composer. */
+.bb-bar.bb-inline {
+  position: static;
+  transform: none;
+  left: auto;
+  bottom: auto;
+  width: fit-content;
+  max-width: 100%;
+  /* hard-left: hosts vary (flex / grid / text-align), pin against all of them */
+  margin: 10px auto 4px 0;
+  align-self: flex-start;
+  justify-self: start;
+  text-align: left;
+
+  /* Once anchored, the box STAYS in the layout and just fades its opacity, so
+     the page never reflows as the ad appears/disappears (no text jumping).
+     Hidden state: invisible + non-interactive, fades out over 2s. */
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 2s ease, visibility 0s linear 2s;
+}
+.bb-bar.bb-inline.bb-show {
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  /* fade IN quickly; only the fade-out is the slow 2s drift */
+  transition: opacity 0.25s ease, visibility 0s;
+}
+.bb-bar:hover {
+  background: var(--ov-bar-bg-hover);
+}
+.bb-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-family: var(--sans);
+  font-weight: 800;
+  font-size: 11px;
+  background: var(--ov-chip-bg);
+  color: var(--ov-chip-ink);
+  flex: 0 0 auto;
+}
+.bb-name {
+  color: var(--ov-text);
+  font-weight: 700;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+.bb-line {
+  color: var(--ov-line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+  text-decoration: none;
+}
+.bb-bar:hover .bb-line {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.bb-tag {
+  margin-left: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--ov-tag-bg);
+  color: var(--ov-tag-text);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  flex: 0 0 auto;
+}
+/* Test Mode — identifiable via the badge, border kept subtle. */
+.bb-bar.bb-test {
+  border-color: var(--ov-test-border);
+}
+.bb-bar.bb-test .bb-tag {
+  background: var(--ov-tag-bg-test);
+  color: var(--ov-tag-text-test);
+  font-weight: 700;
+}
+
+@media (max-width: 520px) {
+  .bb-tag {
+    display: none;
+  }
+  .bb-line {
+    max-width: 200px;
+  }
+}
