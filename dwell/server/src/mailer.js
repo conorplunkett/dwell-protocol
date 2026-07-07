@@ -45,37 +45,55 @@ function createMailer(config) {
 
   // ── Branded shell for user-facing emails (sign-in, verify, invites,
   // redemption, reward). Table layout + inline styles so it renders across mail
-  // clients; palette mirrors theme.css (Claude coral on cream). The advertiser
+  // clients; palette mirrors theme.css (DWELL red on white). The advertiser
   // and admin notices below keep their original plain layout on purpose. ──
   const FONT = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
   const site = config.siteUrl || "https://dwellprotocol.com";
+
+  // DWELL eight-dot brand mark (assets/logo.svg) rebuilt as an email-safe table:
+  // eight red dots on a clock face, opacity swept clockwise from solid at 12
+  // o'clock. Mail clients strip SVG and data-URI images (Gmail especially), so
+  // each dot is drawn as a <div> whose fill is red pre-blended onto white at the
+  // mark's opacity stop — no rgba/opacity support needed, and it degrades to
+  // solid dots in Outlook. The 3×3 grid's centre cell is empty.
+  function logoMark() {
+    const dot = (c) => `<td width="18" height="18" align="center" valign="middle" style="padding:0;line-height:0;font-size:0;">`
+      + `<div style="width:12px;height:12px;background:${c};border-radius:50%;line-height:12px;font-size:0;">&nbsp;</div></td>`;
+    const gap = `<td width="18" height="18" style="padding:0;line-height:0;font-size:0;">&nbsp;</td>`;
+    return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">`
+      + `<tr>${dot("#ff0d0d")}${dot("#ff0000")}${dot("#ffebeb")}</tr>`
+      + `<tr>${dot("#ff1f1f")}${gap}${dot("#ffc7c7")}</tr>`
+      + `<tr>${dot("#ff4747")}${dot("#ff7373")}${dot("#ff9e9e")}</tr>`
+      + `</table>`;
+  }
   function button(href, label) {
     return `<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:26px auto 6px;"><tr>`
-      + `<td align="center" bgcolor="#d97757" style="border-radius:10px;background:#d97757;background:linear-gradient(180deg,#e08a6a,#cf6b4a);">`
-      + `<a href="${href}" style="display:inline-block;padding:13px 28px;font-family:${FONT};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;">${label}</a>`
+      + `<td align="center" bgcolor="#ff0000" style="border-radius:8px;background:#ff0000;background:linear-gradient(180deg,#ff2323,#c00100);">`
+      + `<a href="${href}" style="display:inline-block;padding:13px 30px;font-family:${FONT};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">${label}</a>`
       + `</td></tr></table>`;
   }
   function shell({ preheader = "", hero = "", heading = "", body = "", cta = null, note = "" }) {
     const btn = cta ? button(cta.href, cta.label) : "";
-    const foot = note ? `<p style="margin:18px 0 0;font-family:${FONT};font-size:13px;line-height:1.55;color:#9b988f;">${note}</p>` : "";
+    const foot = note ? `<p style="margin:18px 0 0;font-family:${FONT};font-size:13px;line-height:1.55;color:#909090;">${note}</p>` : "";
     return `<!doctype html><html lang="en"><head><meta charset="utf-8">`
       + `<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"></head>`
-      + `<body style="margin:0;padding:0;background:#faf9f5;">`
-      + `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#faf9f5;font-size:1px;line-height:1px;">${preheader}</div>`
-      + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#faf9f5;"><tr><td align="center" style="padding:30px 16px;">`
+      + `<body style="margin:0;padding:0;background:#f9f9f9;">`
+      + `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f9f9f9;font-size:1px;line-height:1px;">${preheader}</div>`
+      + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9f9f9;"><tr><td align="center" style="padding:30px 16px;">`
       + `<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="width:480px;max-width:100%;">`
-      + `<tr><td align="center" style="padding:2px 0 22px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr>`
-      + `<td width="44" height="44" align="center" valign="middle" bgcolor="#d97757" style="width:44px;height:44px;border-radius:11px;background:#d97757;background:linear-gradient(180deg,#e08a6a,#cf6b4a);font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:20px;font-weight:800;color:#ffffff;">F$</td>`
+      + `<tr><td align="center" style="padding:2px 0 24px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr>`
+      + `<td valign="middle" style="padding-right:11px;">${logoMark()}</td>`
+      + `<td valign="middle" style="font-family:${FONT};font-size:22px;font-weight:800;letter-spacing:-0.02em;color:#0f0f0f;">DWELL</td>`
       + `</tr></table></td></tr>`
-      + `<tr><td style="background:#ffffff;border:1px solid #e6e2d8;border-radius:16px;padding:34px 32px;">`
+      + `<tr><td style="background:#ffffff;border:1px solid #eeeeee;border-radius:12px;padding:34px 32px;">`
       + (hero ? `<div style="text-align:center;font-size:40px;line-height:1;margin:0 0 12px;">${hero}</div>` : "")
-      + (heading ? `<h1 style="margin:0 0 16px;text-align:center;font-family:${FONT};font-size:21px;font-weight:800;letter-spacing:-0.02em;color:#1f1e1d;">${heading}</h1>` : "")
-      + `<div style="font-family:${FONT};font-size:15px;line-height:1.6;color:#3d3b37;">${body}</div>${btn}${foot}`
+      + (heading ? `<h1 style="margin:0 0 16px;text-align:center;font-family:${FONT};font-size:21px;font-weight:800;letter-spacing:-0.02em;color:#0f0f0f;">${heading}</h1>` : "")
+      + `<div style="font-family:${FONT};font-size:15px;line-height:1.6;color:#282828;">${body}</div>${btn}${foot}`
       + `</td></tr>`
-      + `<tr><td align="center" style="padding:22px 10px 6px;font-family:${FONT};font-size:12px;line-height:1.7;color:#9b988f;">`
-      + `<a href="${site}" style="color:#c15f3c;text-decoration:none;font-weight:700;">dwellprotocol.com</a>`
-      + `&nbsp;·&nbsp;<a href="${site}/terms" style="color:#9b988f;text-decoration:underline;">Terms</a>`
-      + `&nbsp;·&nbsp;<a href="${site}/privacy" style="color:#9b988f;text-decoration:underline;">Privacy</a>`
+      + `<tr><td align="center" style="padding:22px 10px 6px;font-family:${FONT};font-size:12px;line-height:1.7;color:#909090;">`
+      + `<a href="${site}" style="color:#bc0100;text-decoration:none;font-weight:700;">dwellprotocol.com</a>`
+      + `&nbsp;·&nbsp;<a href="${site}/terms" style="color:#909090;text-decoration:underline;">Terms</a>`
+      + `&nbsp;·&nbsp;<a href="${site}/privacy" style="color:#909090;text-decoration:underline;">Privacy</a>`
       + `<br>Earn credits while you use Claude, ChatGPT &amp; Gemini.`
       + `</td></tr></table></td></tr></table></body></html>`;
   }
@@ -84,9 +102,9 @@ function createMailer(config) {
   // user-email tables, with hairline row separators. Falsy rows are dropped.
   function detail(rows) {
     const cells = rows.filter(Boolean).map(([k, v], i) =>
-      `<tr><td style="padding:8px 16px;font-family:${FONT};font-size:13px;color:#6b6963;${i ? "border-top:1px solid #efeae0;" : ""}">${k}</td>`
-      + `<td style="padding:8px 16px;font-family:${FONT};font-size:13px;font-weight:600;color:#1f1e1d;text-align:right;${i ? "border-top:1px solid #efeae0;" : ""}">${v}</td></tr>`).join("");
-    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 2px;background:#faf9f5;border:1px solid #e6e2d8;border-radius:12px;">${cells}</table>`;
+      `<tr><td style="padding:8px 16px;font-family:${FONT};font-size:13px;color:#606060;${i ? "border-top:1px solid #eeeeee;" : ""}">${k}</td>`
+      + `<td style="padding:8px 16px;font-family:${FONT};font-size:13px;font-weight:600;color:#0f0f0f;text-align:right;${i ? "border-top:1px solid #eeeeee;" : ""}">${v}</td></tr>`).join("");
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 2px;background:#f9f9f9;border:1px solid #eeeeee;border-radius:12px;">${cells}</table>`;
   }
 
   async function sendVerifyEmail(to, link) {
@@ -146,7 +164,7 @@ function createMailer(config) {
           ["Refunded", `US$${((pricePerBlockCents * blocks) / 100).toFixed(2)}`],
           ["Campaign", campaignId],
         ])
-        + (note ? `<p style="margin:14px 0 0;font-family:${FONT};font-size:14px;line-height:1.5;color:#3d3b37;"><strong style="color:#1f1e1d;">Reviewer note:</strong> ${note}</p>` : ""),
+        + (note ? `<p style="margin:14px 0 0;font-family:${FONT};font-size:14px;line-height:1.5;color:#282828;"><strong style="color:#0f0f0f;">Reviewer note:</strong> ${note}</p>` : ""),
       note: "The refund returns to your original payment method; Stripe will email a separate confirmation. You're welcome to submit a new campaign any time.",
     }));
   }
@@ -211,7 +229,7 @@ function createMailer(config) {
     await send(to, `${inviterEmail} invited you to DWELL — free Claude credits`, shell({
       preheader: `${inviterEmail} invited you to DWELL — earn free Claude credits.`,
       hero: "🎁", heading: "You're invited to DWELL",
-      body: `<p style="margin:0 0 14px;"><strong style="color:#1f1e1d;">${inviterEmail}</strong> is earning free Claude credits with DWELL and wants you in.</p>`
+      body: `<p style="margin:0 0 14px;"><strong style="color:#0f0f0f;">${inviterEmail}</strong> is earning free Claude credits with DWELL and wants you in.</p>`
         + `<p style="margin:0 0 14px;">Earn Claude credits as you use ChatGPT, Claude or Gemini — cash out anytime for gift cards.</p>`,
       cta: { href: link, label: "Accept the invite" },
       note: `When you sign up with this link and redeem your first Claude gift card, ${inviterEmail} earns a one-time $${Math.round(rewardUsd)} bonus — at no cost to you.`,
@@ -225,7 +243,7 @@ function createMailer(config) {
     await send(to, `${inviterEmail} added you to their DWELL crew`, shell({
       preheader: `${inviterEmail} added you to their DWELL crew — earn free Claude credits.`,
       hero: "🤝", heading: "Join your friend's DWELL crew",
-      body: `<p style="margin:0 0 14px;"><strong style="color:#1f1e1d;">${inviterEmail}</strong> is earning free money while they use AI, and added you to their crew.</p>`
+      body: `<p style="margin:0 0 14px;"><strong style="color:#0f0f0f;">${inviterEmail}</strong> is earning free money while they use AI, and added you to their crew.</p>`
         + `<p style="margin:0 0 14px;">Earn Claude credits as you use ChatGPT, Claude or Gemini.</p>`,
       cta: { href: link, label: "Join the crew" },
       note: `${inviterEmail} earns an extra ${Math.round(rewardPct)}% on top — at no cost to you.`,
@@ -239,8 +257,8 @@ function createMailer(config) {
       preheader: `We got your redemption — ${months} month${months > 1 ? "s" : ""} of ${planName}.`,
       hero: "🧾", heading: "Your redemption is in",
       body: `<p style="margin:0 0 16px;">Nice work — you've cashed in your DWELL credits for a Claude gift card. Here's what's on the way:</p>`
-        + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#faf9f5;border:1px solid #e6e2d8;border-radius:12px;"><tr>`
-        + `<td style="padding:14px 16px;font-family:${FONT};font-size:14px;line-height:1.5;color:#3d3b37;"><strong style="color:#1f1e1d;">${planName}</strong> · ${months} month${months > 1 ? "s" : ""}<br><span style="color:#6b6963;">Value: US$${amountUsd.toFixed(2)} in Claude credits</span></td>`
+        + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9f9f9;border:1px solid #eeeeee;border-radius:12px;"><tr>`
+        + `<td style="padding:14px 16px;font-family:${FONT};font-size:14px;line-height:1.5;color:#282828;"><strong style="color:#0f0f0f;">${planName}</strong> · ${months} month${months > 1 ? "s" : ""}<br><span style="color:#606060;">Value: US$${amountUsd.toFixed(2)} in Claude credits</span></td>`
         + `</tr></table>`,
       note: "We fulfill gift cards within 48 hours — keep an eye on your inbox for the Claude gift card.",
     }));
@@ -252,7 +270,7 @@ function createMailer(config) {
     await send(to, `You earned $${Math.round(rewardUsd)} in Claude credits 🎉`, shell({
       preheader: `You earned $${Math.round(rewardUsd)} in Claude credits from a referral.`,
       hero: "🎉", heading: `You earned $${Math.round(rewardUsd)} in credits!`,
-      body: `<p style="margin:0 0 14px;">A friend you referred just redeemed their first Claude gift card on DWELL — so we've added a one-time <strong style="color:#1f1e1d;">$${Math.round(rewardUsd)}</strong> bonus to your balance. 🙌</p>`
+      body: `<p style="margin:0 0 14px;">A friend you referred just redeemed their first Claude gift card on DWELL — so we've added a one-time <strong style="color:#0f0f0f;">$${Math.round(rewardUsd)}</strong> bonus to your balance. 🙌</p>`
         + `<p style="margin:0 0 14px;">Keep inviting friends to stack up more credits.</p>`,
       cta: { href: link, label: "View your dashboard" },
       note: "Credits never expire — redeem them for Claude, ChatGPT or Gemini gift cards anytime.",
@@ -266,8 +284,7 @@ function createMailer(config) {
     await send(to, "You're on the DWELL waitlist 🎉", shell({
       preheader: "You're on the list — we'll email you the moment DWELL is live.",
       hero: "🎉", heading: "You're on the waitlist",
-      body: `<p style="margin:0 0 14px;">Thanks for joining DWELL — you're on the list. We'll email you the moment you can install it and start earning Claude credits while you use ChatGPT, Claude &amp; Gemini.</p>`
-        + `<p style="margin:0;">The Chrome extension is in review right now, with the command line and desktop apps close behind.</p>`,
+      body: `<p style="margin:0;">Thanks for joining DWELL — you're on the list. We'll email you the moment you can install it and start earning Claude credits while you use ChatGPT, Claude &amp; Gemini.</p>`,
       note: "You're getting this because you joined the waitlist at dwellprotocol.com. Didn't sign up? You can safely ignore this email.",
     }));
   }
