@@ -147,7 +147,7 @@ a { color: inherit; text-decoration: none; }
 .ast { color: var(--accent); display: inline-block; animation: spin 1.1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .claude-guy {
-  position: absolute; top: -34px; right: 24px; z-index: 0;
+  position: absolute; top: -28px; right: 26px; z-index: 0;
   transition: right 1.2s cubic-bezier(.5, 1.5, .4, 1), top .6s ease;
 }
 .claude-guy.cg-duck { top: 2px; }
