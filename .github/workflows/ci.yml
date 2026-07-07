@@ -107,3 +107,102 @@ jobs:
           node-version: 20
       - name: Syntax check site JS
         run: node -c web/script.js
+
+  # ── Dwell Protocol (the live product, dwell/) ──────────────────────────────
+  # The root jobs above cover the frozen FreeAI reference tree; the jobs below
+  # are the gates for the dwell/ tree that actually ships.
+
+  dwell-server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dwell/server
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: dwell
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dwell
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - name: End-to-end tests (real Postgres, fake Stripe)
+        run: npm test
+
+  dwell-extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dwell/chrome-extension
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Lint (syntax)
+        run: npm run lint
+      - name: Test (headless DOM harness)
+        run: npm test
+
+  dwell-terminal:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dwell/terminal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Terminal client tests
+        run: npm test
+
+  dwell-contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dwell/contracts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Build
+        run: forge build
+      - name: Test
+        run: forge test -vv
+
+  dwell-site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax check site JS
+        run: |
+          node -c dwell/web/script.js
+          node -c dwell/web/portal.js
+      - name: Copy rules (banned language, dwell/docs/05-legal-structure.md)
+        run: |
+          ! grep -rin -E 'moon|price will|appreciat|going up|invest' dwell/web
+      - name: Brand separation (no references to the sibling product)
+        run: |
+          ! grep -rIil freeai dwell/
+      - name: Theme mirror (popup theme.css is a byte-copy of web/theme.css)
+        run: cmp dwell/web/theme.css dwell/chrome-extension/popup/theme.css
