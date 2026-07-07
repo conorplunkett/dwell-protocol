@@ -1356,6 +1356,82 @@ function createRepo(pool) {
       };
     },
 
+    // ---------- DWELL token mode: launch snapshot + fixed-rate conversion ----------
+    // The launch invariant (dwell-protocol docs/01 "Conversion at the raise"):
+    // the fixed points→DWELL rate applies ONLY to points earned before the
+    // snapshot taken when the raise opens; every later view earns at its
+    // campaign's locked rate instead. The snapshot is set exactly once, and
+    // tokenConversion below is the sole input to the airdrop Merkle tree —
+    // earn credits are time-fenced to the snapshot instant while debits always
+    // count, so neither a post-snapshot view nor a post-snapshot redemption
+    // can inflate a fixed-rate claim.
+    async tokenSnapshotAt() {
+      const { rows } = await pool.query("select value from settings where key = 'token_snapshot_at'");
+      return rows.length ? String(rows[0].value) : null;
+    },
+
+    // Set-once; the timestamp is the DATABASE clock (now()), the same clock
+    // that stamps ledger rows, so the fence is exact under app/DB clock skew.
+    async takeTokenSnapshot() {
+      const ins = await pool.query(
+        `insert into settings (key, value, updated_at)
+         values ('token_snapshot_at', to_jsonb(now()::text), now())
+         on conflict (key) do nothing
+         returning value`
+      );
+      if (ins.rows.length) return { taken: true, snapshotAt: String(ins.rows[0].value) };
+      const cur = await pool.query("select value from settings where key = 'token_snapshot_at'");
+      return { taken: false, snapshotAt: String(cur.rows[0].value) };
+    },
+
+    // Per-account net convertible points: user-side earn credits at or before
+    // the snapshot, minus every debit regardless of time. Device credits roll
+    // up to the linked user; unlinked devices export as 'device:<id>' and need
+    // an account link before they can claim. The protocol leg never converts —
+    // the treasury takes no airdrop.
+    async tokenConversion({ pointsToDwell, capPoints }) {
+      const snapshotAt = await this.tokenSnapshotAt();
+      if (!snapshotAt) return null;
+      const { rows } = await pool.query(
+        `select coalesce(u.id::text, 'device:' || l.device_id::text) as account,
+                max(u.email) as email, max(u.wallet_address) as wallet_address,
+                sum(case
+                      when l.entry_type in ('points_credit','referral_points_credit','admin_credit')
+                        then case when l.created_at <= $1::timestamptz then l.amount_millicents else 0 end
+                      else l.amount_millicents
+                    end)::bigint as points
+           from ledger l
+           left join devices d on d.id = l.device_id
+           left join users u on u.id = coalesce(l.user_id, d.user_id)
+          where l.entry_type in ('points_credit','referral_points_credit','admin_credit',
+                                 'admin_debit','payout_debit','gift_redemption_debit','token_claim_debit')
+          group by coalesce(u.id::text, 'device:' || l.device_id::text)
+         having sum(case
+                      when l.entry_type in ('points_credit','referral_points_credit','admin_credit')
+                        then case when l.created_at <= $1::timestamptz then l.amount_millicents else 0 end
+                      else l.amount_millicents
+                    end) > 0
+          order by points desc`,
+        [snapshotAt]
+      );
+      const totalPoints = rows.reduce((s, r) => s + Number(r.points), 0);
+      return {
+        snapshotAt,
+        pointsToDwell,
+        capPoints: capPoints ?? null,
+        totalPoints,
+        totalDwell: totalPoints * pointsToDwell,
+        overCap: capPoints != null ? totalPoints > capPoints : false,
+        accounts: rows.map((r) => ({
+          account: r.account,
+          email: r.email || undefined,
+          walletAddress: r.wallet_address || undefined,
+          points: Number(r.points),
+          dwell: Number(r.points) * pointsToDwell,
+        })),
+      };
+    },
+
     // Live mode: funded campaign pools + locked rates, from the indexer's
     // mirror of CampaignFunded events (dwell-protocol docs/04 §D — GET /v1/token/pools).
     async tokenCampaignPools(limit = 100) {

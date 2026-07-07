@@ -305,11 +305,13 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
       ? json(res, 501, { error: "not implemented — ships with the TGE tooling" })
       : json(res, 409, { error: "live mode only — points phase is accrual-only" });
 
-  // Public reserve attestation: escrowed USDC vs. outstanding points.
+  // Public accounting feed: token-side earmark vs. outstanding points. Also
+  // reports the launch snapshot instant once taken — the public fence for the
+  // fixed-rate conversion.
   route("GET", "/v1/reserve", async (req, res) => {
     if (!config.tokenMode) return tokenModeOff(res);
-    const r = await repo.reserveStatus();
-    json(res, 200, { mode: config.tokenMode, ...r, updatedAt: new Date().toISOString() });
+    const [r, snapshotAt] = await Promise.all([repo.reserveStatus(), repo.tokenSnapshotAt()]);
+    json(res, 200, { mode: config.tokenMode, ...r, snapshotAt, updatedAt: new Date().toISOString() });
   });
 
   // Public: funded campaign pools + locked rates (live mode fills this via the
@@ -354,6 +356,32 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     if (!config.tokenMode) return tokenModeOff(res);
     if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
     return liveOnly(res);
+  });
+
+  // Launch snapshot — freezes the fixed-rate conversion set the instant the
+  // raise opens. Set-once: repeat calls 409 with the original timestamp, so
+  // no view earned after that instant can ever convert at the fixed rate
+  // (the launch invariant, dwell-protocol docs/01).
+  route("POST", "/v1/admin/token/snapshot", async (req, res, body, rawBody, query) => {
+    if (!config.tokenMode) return tokenModeOff(res);
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    const r = await repo.takeTokenSnapshot();
+    if (!r.taken) return json(res, 409, { error: "snapshot already taken", snapshotAt: r.snapshotAt });
+    json(res, 200, { snapshotAt: r.snapshotAt });
+  });
+
+  // Fixed-rate conversion export — the ONLY input to the airdrop Merkle tree.
+  // 409 until the snapshot exists; flags overCap when the convertible total
+  // exceeds the airdrop bucket.
+  route("GET", "/v1/admin/token/conversion", async (req, res, body, rawBody, query) => {
+    if (!config.tokenMode) return tokenModeOff(res);
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    const r = await repo.tokenConversion({
+      pointsToDwell: config.pointsToDwell ?? 12,
+      capPoints: config.airdropPointsCap ?? 8_333_333,
+    });
+    if (!r) return json(res, 409, { error: "no snapshot taken yet — POST /v1/admin/token/snapshot first" });
+    json(res, 200, r);
   });
 
   // ---------- pre-account email capture (launch waitlist) ----------

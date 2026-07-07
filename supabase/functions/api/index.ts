@@ -89,6 +89,8 @@ function loadConfig() {
     viewerShareBps: parseInt(env("VIEWER_SHARE_BPS", "6000"), 10), // viewer's share of the reserve tranche
     referrerShareBps: parseInt(env("REFERRER_SHARE_BPS", "1000"), 10), // referrer's share (falls to protocol when unreferred)
     reserveTrancheBps: parseInt(env("RESERVE_TRANCHE_BPS", "9000"), 10), // slice of gross routed to the token side
+    pointsToDwell: parseInt(env("POINTS_TO_DWELL", "12"), 10), // fixed launch conversion: DWELL per point (1,000 points = 12,000 DWELL) — applies ONLY to pre-snapshot points
+    airdropPointsCap: parseInt(env("AIRDROP_POINTS_CAP", "8333333"), 10), // 100M-token airdrop ÷ POINTS_TO_DWELL — the fixed-rate conversion must fit inside it
 
     // ---- brand — the DWELL deployment bills and writes copy under its own name ----
     brandName: env("BRAND_NAME", "FreeAI"),
@@ -1538,6 +1540,80 @@ function createRepo(pool: any) {
       };
     },
 
+    // ---------- DWELL token mode: launch snapshot + fixed-rate conversion ----------
+    // The launch invariant (dwell-protocol docs/01 "Conversion at the raise"):
+    // the fixed points→DWELL rate applies ONLY to points earned before the
+    // snapshot taken when the raise opens; every later view earns at its
+    // campaign's locked rate instead. Set-once; earn credits are time-fenced
+    // to the snapshot instant while debits always count, so neither a
+    // post-snapshot view nor a post-snapshot redemption can inflate a
+    // fixed-rate claim. Mirrors server/src/repo.js.
+    async tokenSnapshotAt() {
+      const { rows } = await pool.query("select value from settings where key = 'token_snapshot_at'");
+      return rows.length ? String(rows[0].value) : null;
+    },
+
+    // Set-once; the timestamp is the DATABASE clock (now()), the same clock
+    // that stamps ledger rows, so the fence is exact under app/DB clock skew.
+    async takeTokenSnapshot() {
+      const ins = await pool.query(
+        `insert into settings (key, value, updated_at)
+         values ('token_snapshot_at', to_jsonb(now()::text), now())
+         on conflict (key) do nothing
+         returning value`
+      );
+      if (ins.rows.length) return { taken: true, snapshotAt: String(ins.rows[0].value) };
+      const cur = await pool.query("select value from settings where key = 'token_snapshot_at'");
+      return { taken: false, snapshotAt: String(cur.rows[0].value) };
+    },
+
+    // Per-account net convertible points: user-side earn credits at or before
+    // the snapshot, minus every debit regardless of time. Device credits roll
+    // up to the linked user; unlinked devices export as 'device:<id>'. The
+    // protocol leg never converts — the treasury takes no airdrop.
+    async tokenConversion({ pointsToDwell, capPoints }: { pointsToDwell: number; capPoints?: number | null }) {
+      const snapshotAt = await this.tokenSnapshotAt();
+      if (!snapshotAt) return null;
+      const { rows } = await pool.query(
+        `select coalesce(u.id::text, 'device:' || l.device_id::text) as account,
+                max(u.email) as email, max(u.wallet_address) as wallet_address,
+                sum(case
+                      when l.entry_type in ('points_credit','referral_points_credit','admin_credit')
+                        then case when l.created_at <= $1::timestamptz then l.amount_millicents else 0 end
+                      else l.amount_millicents
+                    end)::bigint as points
+           from ledger l
+           left join devices d on d.id = l.device_id
+           left join users u on u.id = coalesce(l.user_id, d.user_id)
+          where l.entry_type in ('points_credit','referral_points_credit','admin_credit',
+                                 'admin_debit','payout_debit','gift_redemption_debit','token_claim_debit')
+          group by coalesce(u.id::text, 'device:' || l.device_id::text)
+         having sum(case
+                      when l.entry_type in ('points_credit','referral_points_credit','admin_credit')
+                        then case when l.created_at <= $1::timestamptz then l.amount_millicents else 0 end
+                      else l.amount_millicents
+                    end) > 0
+          order by points desc`,
+        [snapshotAt]
+      );
+      const totalPoints = rows.reduce((s: number, r: any) => s + Number(r.points), 0);
+      return {
+        snapshotAt,
+        pointsToDwell,
+        capPoints: capPoints ?? null,
+        totalPoints,
+        totalDwell: totalPoints * pointsToDwell,
+        overCap: capPoints != null ? totalPoints > capPoints : false,
+        accounts: rows.map((r: any) => ({
+          account: r.account,
+          email: r.email || undefined,
+          walletAddress: r.wallet_address || undefined,
+          points: Number(r.points),
+          dwell: Number(r.points) * pointsToDwell,
+        })),
+      };
+    },
+
     // Live mode: funded campaign pools + locked rates, from the indexer's
     // mirror of CampaignFunded events (dwell-protocol docs/04 §D — GET /v1/token/pools).
     async tokenCampaignPools(limit: any = 100) {
@@ -2700,11 +2776,13 @@ const liveOnly = () =>
     ? json(501, { error: "not implemented — ships with the TGE tooling" })
     : json(409, { error: "live mode only — points phase is accrual-only" });
 
-// Public reserve attestation: escrowed USDC vs. outstanding points.
+// Public accounting feed: token-side earmark vs. outstanding points. Also
+// reports the launch snapshot instant once taken — the public fence for the
+// fixed-rate conversion.
 route("GET", "/v1/reserve", async () => {
   if (!config.tokenMode) return tokenModeOff();
-  const r = await repo.reserveStatus();
-  return json(200, { mode: config.tokenMode, ...r, updatedAt: new Date().toISOString() });
+  const [r, snapshotAt] = await Promise.all([repo.reserveStatus(), repo.tokenSnapshotAt()]);
+  return json(200, { mode: config.tokenMode, ...r, snapshotAt, updatedAt: new Date().toISOString() });
 });
 
 // Public: funded campaign pools + locked rates (live mode fills this via the
@@ -2749,6 +2827,32 @@ route("POST", "/v1/admin/epochs/publish-root", async (ctx: any) => {
   if (!config.tokenMode) return tokenModeOff();
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   return liveOnly();
+});
+
+// Launch snapshot — freezes the fixed-rate conversion set the instant the
+// raise opens. Set-once: repeat calls 409 with the original timestamp, so no
+// view earned after that instant can ever convert at the fixed rate (the
+// launch invariant, dwell-protocol docs/01). Mirrors server/src/app.js.
+route("POST", "/v1/admin/token/snapshot", async (ctx: any) => {
+  if (!config.tokenMode) return tokenModeOff();
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const r = await repo.takeTokenSnapshot();
+  if (!r.taken) return json(409, { error: "snapshot already taken", snapshotAt: r.snapshotAt });
+  return json(200, { snapshotAt: r.snapshotAt });
+});
+
+// Fixed-rate conversion export — the ONLY input to the airdrop Merkle tree.
+// 409 until the snapshot exists; flags overCap when the convertible total
+// exceeds the airdrop bucket.
+route("GET", "/v1/admin/token/conversion", async (ctx: any) => {
+  if (!config.tokenMode) return tokenModeOff();
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const r = await repo.tokenConversion({
+    pointsToDwell: config.pointsToDwell ?? 12,
+    capPoints: config.airdropPointsCap ?? 8_333_333,
+  });
+  if (!r) return json(409, { error: "no snapshot taken yet — POST /v1/admin/token/snapshot first" });
+  return json(200, r);
 });
 
 // ── advertiser checkout ──
