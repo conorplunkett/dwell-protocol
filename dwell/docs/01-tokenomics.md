@@ -17,9 +17,9 @@ No minting, no emissions schedule, no oracle.
 | Chain | Solana (SPL token, minted by star.fun) |
 | Supply | 1,000,000,000 — fixed, no mint authority after launch |
 | Equity | The 1B tokens collectively represent **8.3% of the company** |
-| Launch | star.fun curated raise: **$50K target at a $1M company valuation** |
+| Launch | star.fun curated raise at a **$1M company valuation**; total target ~$115K: ~$50K founder proceeds, ~$65K pool liquidity, ~$7.5K BVI setup ✎ exact split from star |
 | Raise mechanics | 5-day deposit window; full refund if the target isn't met |
-| Launch price | Implied ≈ **$0.000083/DWELL** ($50K against the 600M-token liquidity seed; token FDV ≈ $83K = 8.3% of $1M) ✎ final price set by the pool at launch |
+| Points conversion price | Fixed at the $1M valuation: **$0.0000833/DWELL** (1B tokens = 8.3% of $1M = $83.3K) — set in advance, independent of where the pool opens |
 
 The EVM contracts in `../contracts` remain the reference implementation; on
 Solana the same roles are filled by a Jupiter buy-keeper, a Merkle distributor,
@@ -107,9 +107,9 @@ Points sit on the existing append-only millicent ledger:
 When the raise opens, the points ledger is snapshotted (snapshot time
 announced at the snapshot, not before):
 
-1. Points convert **at the launch price**: at the implied ≈$0.000083/DWELL,
-   **1,000 points = $1.00 ≈ 12,000 DWELL**. Early users get the same price the
-   pool opens at — they earned their allocation by watching ads.
+1. Points convert at a **fixed price set by the $1M valuation**:
+   $0.0000833/DWELL, so **1,000 points = $1.00 = 12,000 DWELL** — announced in
+   advance and independent of where the pool opens.
 2. Converted tokens come from the **10% ad-rewards airdrop**, so conversion is
    instant at token launch — no waiting on market buys.
 3. Claims go through a Solana Merkle distributor, gated on wallet-linked
@@ -118,9 +118,10 @@ announced at the snapshot, not before):
 5. Once the pool is live, new campaigns switch to live buy-and-distribute at
    campaign-locked rates.
 
-Capacity note: at the implied launch price the 100M-token airdrop covers
-~$8.3K of converted point value; outstanding points at the snapshot must stay
-under that, with the rest of the bucket left for launch boosts.
+Capacity note: at the fixed rate the 100M-token airdrop covers **$8,333** of
+converted point value (100M ÷ 12,000 per $1); outstanding points at the
+snapshot must stay under that, with the rest of the bucket left for launch
+boosts. Plenty for a day-one seed — track the ledger total against it.
 
 ## Business / owner P&L
 
