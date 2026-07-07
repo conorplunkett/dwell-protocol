@@ -196,14 +196,14 @@ through `/v1/go/:token`, which records the click (clicks are tracked, not paid).
 **CI** builds the Swift app on a `macos-14` runner on every push/PR, packages
 it with `packaging/bundle.sh`, and uploads `SponsorOverlay.zip` + `.dmg` as the
 `SponsorOverlay-macos` artifact. Download it from the Actions run, open the dmg
-(or unzip), clear quarantine (`xattr -dr com.apple.quarantine dwellprotocol.com.app`),
+(or unzip), clear quarantine (`xattr -dr com.apple.quarantine Dwell.app`),
 and open. The CI build is **ad-hoc signed**, so it only runs on the machine that
 built it (or after clearing quarantine) — a notarized build needs a Developer ID cert.
 
 ## Packaging & distribution
 
-`packaging/bundle.sh` wraps the SwiftPM executable into `dwellprotocol.com.app` (the
-user-facing name, so Finder + Login Items read "dwellprotocol.com"; the executable and
+`packaging/bundle.sh` wraps the SwiftPM executable into `Dwell.app` (the
+user-facing name, so Finder + Login Items read "Dwell"; the executable and
 the zip/dmg keep the internal `SponsorOverlay` name), menu-bar-only via
 `LSUIElement`, code-signs it, and produces both a `.zip` and a
 drag-to-Applications `.dmg`:
@@ -211,7 +211,7 @@ drag-to-Applications `.dmg`:
 ```sh
 cd desktop/macos/SponsorOverlay
 ./packaging/bundle.sh                  # ad-hoc signed, for local use
-# -> build/dwellprotocol.com.app, build/SponsorOverlay.zip, build/SponsorOverlay.dmg
+# -> build/Dwell.app, build/SponsorOverlay.zip, build/SponsorOverlay.dmg
 ```
 
 The app carries an icon (`AppIcon.icns`, built from `packaging/assets/AppIcon-1024.png`

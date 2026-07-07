@@ -1,4 +1,4 @@
-/* Dwell Protocol — macOS desktop onboarding.
+/* Dwell — macOS desktop onboarding.
  *
  * A faithful vanilla-JS port of the Claude Design handoff (onboarding/Onboarding.jsx).
  * Same 5 steps, same DOM/classes, same animations (spinner, ad cross-fade, earnings
@@ -8,8 +8,8 @@
  *     the app polls the real permission and pushes it back via dwellBridge.setPermission,
  *     which gates "Continue" exactly like the mock's perm === "ok".
  *   • "Launch at login" registers/unregisters the app (SMAppService) through the bridge.
- *   • Step 4 sign-in opens DWELL's real web sign-in in the browser.
- *   • "Open DWELL" closes the window.
+ *   • Step 4 sign-in opens Dwell's real web sign-in in the browser.
+ *   • "Open Dwell" closes the window.
  *
  * Swift ↔ JS bridge:
  *   JS → app: window.webkit.messageHandlers.dwell.postMessage({ action, ... })
@@ -21,11 +21,11 @@
   "use strict";
 
   var STEPS = [
-    { t: "Welcome",      s: "what DWELL is" },
-    { t: "How it works", s: "the 10-second tour" },
-    { t: "Grant access", s: "access + login" },
-    { t: "Save dwells",  s: "connect account" },
-    { t: "All set",      s: "start earning" },
+    { t: "Welcome" },
+    { t: "How it works" },
+    { t: "Grant access" },
+    { t: "Save dwells" },
+    { t: "All set" },
   ];
 
   // Rotating sponsor lines for the live demo pill.
@@ -35,7 +35,7 @@
     { chip: "△", color: "#000", ink: "#fff",   brand: "Vercel", line: "ship your agent to prod" },
   ];
 
-  var NEXT_LABEL = ["Get started", "Continue", "Continue", "Continue", "Open DWELL"];
+  var NEXT_LABEL = ["Get started", "Continue", "Continue", "Continue", "Open Dwell"];
   var LAST = STEPS.length - 1;
 
   // ── State ──
@@ -88,6 +88,20 @@
   var LAUNCH_SVG =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M12 2v9" /><path d="M6.4 6.4a9 9 0 1 0 11.2 0" /></svg>';
+  // The Dwell brand mark — the eight-dot clock sweep from web/assets/logo.svg,
+  // identical to the app icon: a solid accent-red dot at 12 o'clock fading
+  // clockwise through opacity. Duplicated here (like the favicon) because the
+  // onboarding bundle is self-contained.
+  var DOT_MARK_SVG =
+    '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    '<circle cx="100" cy="35" r="15" fill="#ff0000" fill-opacity="1"/>' +
+    '<circle cx="145.96" cy="54.04" r="15" fill="#ff0000" fill-opacity=".08"/>' +
+    '<circle cx="165" cy="100" r="15" fill="#ff0000" fill-opacity=".22"/>' +
+    '<circle cx="145.96" cy="145.96" r="15" fill="#ff0000" fill-opacity=".38"/>' +
+    '<circle cx="100" cy="165" r="15" fill="#ff0000" fill-opacity=".55"/>' +
+    '<circle cx="54.04" cy="145.96" r="15" fill="#ff0000" fill-opacity=".72"/>' +
+    '<circle cx="35" cy="100" r="15" fill="#ff0000" fill-opacity=".88"/>' +
+    '<circle cx="54.04" cy="54.04" r="15" fill="#ff0000" fill-opacity=".95"/></svg>';
   // The actual menu-bar mark, as a wireframe: a hollow rounded chip with the
   // mono "D$" inside — mirrors makeStatusIcon() in main.swift. Inherits the
   // surrounding text colour via currentColor.
@@ -108,17 +122,16 @@
     return '' +
       '<div class="fade welcome">' +
         '<div class="markwrap">' +
-          '<div class="bigmark">D$</div>' +
+          '<div class="bigmark">' + DOT_MARK_SVG + '</div>' +
           '<div class="mark-meta">' +
-            '<div class="nm">Dwell<span style="color:var(--gray-2);font-weight:600"> Protocol</span></div>' +
+            '<div class="nm">Dwell</div>' +
             '<div class="vr">v1.0 · macOS</div>' +
           '</div>' +
         '</div>' +
         '<span class="eyebrow">Get paid for the wait</span>' +
-        '<h1 class="h-title">Earn dwells while you work.</h1>' +
-        '<p class="h-sub">DWELL shows <b>one</b> sponsored line while your AI assistant is thinking — and you receive <b>60%</b> of each campaign\'s pool (90% of every ad dollar), paid in dwells. <b>1,000 dwells = $1.00</b> of earned ad value.</p>' +
+        '<h1 class="h-title">Earn crypto while you work.</h1>' +
+        '<p class="h-sub">Dwell shows <b>one</b> sponsored line while your AI assistant is thinking — and you receive <b>60%</b> of each campaign\'s pool (90% of every ad dollar), paid in dwells.</p>' +
         '<ul class="bullets">' +
-          '<li><span class="tick">✓</span><div>Lives quietly in your menu bar. <b>No new app to open.</b></div></li>' +
           '<li><span class="tick">✓</span><div>Works with <b>ChatGPT, Claude &amp; Claude Code</b> out of the box.</div></li>' +
           '<li><span class="tick">✓</span><div>Reads <b>none</b> of your prompts. Setup takes under a minute.</div></li>' +
         '</ul>' +
@@ -140,12 +153,10 @@
           '</div>' +
           '<div class="how-col">' +
             '<ul class="how-list">' +
-              '<li><span class="how-num">1</span><div><div class="ht">Keep DWELL running</div>' +
+              '<li><span class="how-num">1</span><div><div class="ht">Keep Dwell running</div>' +
                 '<div class="hs">Lives in your menu bar as the <b>D$</b> icon, watching for the "thinking" moment.</div></div></li>' +
-              '<li><span class="how-num">2</span><div><div class="ht">Your assistant thinks</div>' +
-                '<div class="hs">One calm line, labeled <span style="font-family:var(--mono);font-size:11px;color:var(--accent-d)">ad·</span>, slips in beside the spinner.</div></div></li>' +
-              '<li><span class="how-num">3</span><div><div class="ht">You earn dwells</div>' +
-                '<div class="hs">You receive 60% of each campaign\'s pool (90% of every ad dollar). Redeem for $DWELL at launch, Claude gift cards, or cash via Stripe (10% protocol fee on gift cards and cash).</div></div></li>' +
+              '<li><span class="how-num">2</span><div><div class="ht">Your assistant thinks</div></div></li>' +
+              '<li><span class="how-num">3</span><div><div class="ht">You earn dwells</div></div></li>' +
             '</ul>' +
           '</div>' +
         '</div>' +
@@ -167,13 +178,13 @@
     return '' +
       '<div class="fade">' +
         '<span class="eyebrow">Two quick toggles</span>' +
-        '<h1 class="h-title">Let DWELL see the spinner.</h1>' +
-        '<p class="h-sub">macOS <b>Accessibility</b> access lets DWELL tell when your assistant starts thinking, so it can place the line correctly.<br><b>It never reads your screen or prompts.</b></p>' +
+        '<h1 class="h-title">Let Dwell see the spinner.</h1>' +
+        '<p class="h-sub">macOS <b>Accessibility</b> access lets Dwell tell when your assistant starts thinking, so it can place the line correctly.<br><b>It never reads your screen or prompts.</b></p>' +
         '<div class="perm-card">' +
           '<div class="perm-icon">' + PERM_SVG + '</div>' +
           '<div class="perm-main">' +
             '<div class="pt">Accessibility access</div>' +
-            '<div class="ps">Required to position the line. Toggle DWELL on under Privacy &amp; Security ▸ Accessibility.</div>' +
+            '<div class="ps">Required to position the line. Toggle Dwell on under Privacy &amp; Security ▸ Accessibility.</div>' +
             '<div class="perm-row">' +
               permBadge() +
               // Status indicator mirroring the launch card's switch — reflects the
@@ -188,7 +199,7 @@
           '<div class="perm-icon">' + LAUNCH_SVG + '</div>' +
           '<div class="perm-main">' +
             '<div class="pt">Launch at login</div>' +
-            '<div class="ps">Start earning automatically every time you sign in — required so DWELL keeps running.</div>' +
+            '<div class="ps">Start earning automatically every time you sign in — required so Dwell keeps running.</div>' +
             '<div class="perm-row">' +
               launchBadge() +
               '<label class="switch"><input type="checkbox" data-act="launch"' + (launch ? " checked" : "") + '><span class="slider"></span></label>' +
@@ -247,7 +258,7 @@
           ringHTML() +
           '<div class="done-copy">' +
             '<span class="eyebrow">You\'re all set</span>' +
-            '<h1 class="h-title">DWELL is earning.</h1>' +
+            '<h1 class="h-title">Dwell is earning.</h1>' +
             '<ul class="done-list">' +
               '<li><span class="tick">✓</span>Running in your menu bar</li>' +
               '<li><span class="tick">✓</span>Accessibility granted · launches at login</li>' +
@@ -255,7 +266,7 @@
             '</ul>' +
           '</div>' +
         '</div>' +
-        '<div class="callout">Find DWELL as the ' + MENUBAR_WIRE_SVG + ' icon.</div>' +
+        '<div class="callout">Find Dwell as the ' + MENUBAR_WIRE_SVG + ' icon.</div>' +
       '</div>';
   }
 
@@ -301,13 +312,12 @@
       var dot = done ? "✓" : (i + 1);
       var attr = visited ? ' data-step="' + i + '"' : "";
       return '<li class="' + cls.trim() + '"' + attr + '><span class="step-dot">' + dot + '</span>' +
-        '<span class="step-txt"><span class="t">' + esc(st.t) + '</span><span class="s">' + esc(st.s) + '</span></span></li>';
+        '<span class="step-txt"><span class="t">' + esc(st.t) + '</span></span></li>';
     }).join("");
     return '' +
       '<div class="rail">' +
-        '<div class="rail-brand"><span class="logo">D$</span><span class="wm">Dwell<span class="dim"> Protocol</span></span></div>' +
+        '<div class="rail-brand"><span class="logo">' + DOT_MARK_SVG + '</span><span class="wm">Dwell</span></div>' +
         '<ul class="steps">' + items + '</ul>' +
-        '<div class="rail-foot"><div class="split">You receive <b>60%</b> of each campaign\'s pool — 90% of every ad dollar.</div></div>' +
       '</div>';
   }
 
