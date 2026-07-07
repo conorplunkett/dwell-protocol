@@ -12,7 +12,7 @@ Phase 1 (now)                    Phase 2 (TGE)
 ─────────────                    ─────────────
 Florida LLC (opco)               Florida LLC or DE C-corp (opco)
  · runs the ad marketplace        · unchanged
- · holds the USDC reserve        US issuer subsidiary
+ · earmarks the 90% tranche      US issuer subsidiary
  · points on the ledger           · deploys + owns DWELL contracts
                                   · holds token allocations (treasury, team vesting)
                                   · operates CampaignFunder buys
@@ -97,10 +97,11 @@ Florida LLC (opco)               Florida LLC or DE C-corp (opco)
   "invest," "returns," "passive income," APY-anything.
 - The earn framing is compensation: "get paid for your attention."
 
-**Points phase:** points are described as what they are — a dollar-denominated
-earned balance, 1:1 backed by the escrowed reserve, convertible at TGE under
-published rules. No token ticker hype, no countdowns framed as buying
-opportunities (there is nothing to buy — ever).
+**Points phase:** points are described as what they are — a token-denominated
+earned balance (1,000 points = 12,000 DWELL at launch) with **no dollar peg
+and no cash reserve behind it**; value floats with the market and dollar
+figures are always presented as estimates. No token ticker hype, no
+countdowns framed as buying opportunities (there is nothing to buy — ever).
 
 **Live phase:** claims, locked rates, and pool splits are shown as data
 (amounts, tx links). The cash-out path is presented as the stability option,

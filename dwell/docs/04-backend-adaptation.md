@@ -46,21 +46,21 @@ pattern the existing migrations use):
 | `points_credit` | + device | Viewer's 60% of the campaign's 90% tranche, in millicents (points). Successor to `impression_credit`. |
 | `referral_points_credit` | + user | Referrer's 10%. Successor to `affiliate_credit`, but carved out of the pool, not platform-funded. |
 | `protocol_points_credit` | + platform | Protocol's cut: 30% (40% when unreferred — the unclaimed referrer leg joins it). Held, never sold. Successor to `platform_fee`. |
-| `reserve_allocation` | + platform | The campaign's 90% tranche earmarked into the USDC reserve at payment (points mode). Accounting mirror of `campaign_credit`. |
+| `reserve_allocation` | + platform | The campaign's 90% tranche earmarked to the token side at payment (points mode) — a ledger earmark, not a custodied cash reserve. Accounting mirror of `campaign_credit`. |
 | `token_claim_debit` | − user | Live mode: points/DWELL entitlement moved into an onchain Merkle root. `meta: {epoch, dwell_wei, root}`. |
 
 Invariants (extend the existing balance rules):
 
 - Balances remain `SUM(ledger)`, never stored (unchanged).
-- Points mode: `SUM(reserve_allocation)` = USDC reserve balance (daily
-  attestation job; drift halts campaign approvals).
+- Points mode: `SUM(reserve_allocation)` = the token-side earmark total
+  (daily reconciliation job; drift halts campaign approvals).
 - Per campaign: `points_credit + referral_points_credit +
   protocol_points_credit` ≤ its `reserve_allocation` (equality when exhausted).
 
 ### New tables
 
 ```sql
--- Points mode: one row per escrow movement; feeds the public reserve page.
+-- Points mode: one row per earmark movement; feeds the public accounting page.
 create table usdc_reserve_entries (
   id uuid primary key default gen_random_uuid(),
   campaign_id uuid references campaigns(id),
@@ -166,7 +166,7 @@ reward computation moves.
 | `DWELL_TOKEN_ADDRESS` / `REWARDS_DISTRIBUTOR_ADDRESS` / `CAMPAIGN_FUNDER_ADDRESS` | — | Base contract addresses (live) |
 | `BASE_RPC_URL` | — | Base JSON-RPC endpoint |
 | `ZEROX_API_KEY` | — | 0x Swap API (quotes + routes) |
-| `COINBASE_API_KEY` / `COINBASE_API_SECRET` | — | Advanced Trade: USD→USDC, reserve custody |
+| `COINBASE_API_KEY` / `COINBASE_API_SECRET` | — | Advanced Trade: USD→USDC for live-phase campaign buys |
 | `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | — | Embedded wallets (email-based, exportable) |
 | `ROOT_SETTER_PRIVATE_KEY` / `KEEPER_PRIVATE_KEY` | — | **Keeper-process env only — never the Edge Function.** |
 
@@ -179,7 +179,7 @@ Startup assert: `VIEWER_SHARE_BPS + REFERRER_SHARE_BPS ≤ 10000`.
 | `POST /v1/web/wallet` | web session | Link/replace wallet. Privy: verified server-side via Privy API. External: verify an EIP-191 signature over a server nonce. Live mode only. |
 | `GET /v1/web/points/summary` | web session | Points balance, USD equivalent, today/month/lifetime — portal balance card. |
 | `GET /v1/web/token/claim-proof` | web session | Latest `(cumulativeAmount, proof[])` for the user's wallet from `token_rewards`. Live mode only. |
-| `GET /v1/reserve` | public | Reserve attestation: escrowed USDC vs. outstanding points. |
+| `GET /v1/reserve` | public | Accounting feed: token-side earmark total vs. outstanding points. |
 | `GET /v1/token/pools` | public | Funded campaign pools + locked rates (from `token_campaign_pools`). |
 | `POST /v1/admin/epochs/publish-root` | admin key | Trigger the root publisher out-of-band (normally cron). |
 
@@ -193,9 +193,9 @@ These need signing keys and third-party APIs, so they run as a separate cron'd
 process colocated with `server/` conventions — **not** inside the Edge Function.
 
 1. **Fiat sweeper** — on `checkout.session.completed`: compute the tranche;
-   points mode → Stripe payout → Coinbase USD→USDC → reserve account, write
-   `usdc_reserve_entries` + `reserve_allocation`; live mode → USDC to Base →
-   `CampaignFunder.swapAndFund(campaignId, tranche, minOut, zeroExCalldata)`.
+   points mode → funds stay in the company account; write the ledger earmark
+   (`usdc_reserve_entries` + `reserve_allocation`); live mode → USDC to the
+   funder → `swapAndFund(campaignId, tranche, minOut, swapCalldata)`.
 2. **Root publisher** (live, weekly): snapshot accrued DWELL per wallet (+ the
    treasury shortfall leaf) → build cumulative tree (leaf =
    `keccak256(bytes.concat(keccak256(abi.encode(address, cumulative))))`,
@@ -207,8 +207,8 @@ process colocated with `server/` conventions — **not** inside the Edge Functio
 
 | Phase | `TOKEN_MODE` | What users see | What runs |
 |---|---|---|---|
-| Points (launch) | `points` | Points balance, reserve page, referral 10% | Ledger + reserve escrow only — no chain, no wallets |
-| TGE window | `points` | "Token launch in progress" banner | Contracts deploy, liquidity seeds, reserve executes TWAP buys, points snapshot → first root |
+| Points (launch) | `points` | Points balance, accounting page, referral 10% | Ledger earmark only — no chain, no wallets |
+| TGE window | `points` | "Token launch in progress" banner | Token launches via the raise; points snapshot → fixed-rate conversion from the airdrop → first root |
 | Live | `live` | Wallet linking, claims, cash-out via partners | Everything above + keeper jobs 2–3 |
 
 Anti-fraud note: the existing caps (`DAILY_IMPRESSION_CAP`,

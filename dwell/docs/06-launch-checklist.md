@@ -93,12 +93,12 @@ both brands.
        reserve earmark at payment, `/v1/reserve` + points summary; the
        live-mode §D surfaces are staged 409/501 stubs until the TGE
        tooling ships. 54-check suite green, both splits covered.)*
-3. [ ] Coinbase business account opened (DWELL's own); reserve account
-       segregated; withdrawal addresses locked; API keys IP-allowlisted.
-4. [ ] Fiat sweeper (keeper job 1) running against Stripe test mode →
-       Coinbase sandbox; `usdc_reserve_entries` reconcile to the cent.
-5. [ ] Public reserve page live (`GET /v1/reserve` + portal strip): escrowed
-       USDC vs. outstanding points, updated daily.
+3. [ ] Coinbase business account opened (DWELL's own) for live-phase USD→USDC
+       conversion; withdrawal addresses locked; API keys IP-allowlisted.
+4. [ ] Fiat sweeper (keeper job 1) running against Stripe test mode;
+       `usdc_reserve_entries` (ledger earmark rows) reconcile to the cent.
+5. [ ] Public accounting page live (`GET /v1/reserve` + portal strip):
+       token-side earmark total vs. outstanding points, updated daily.
 6. [ ] **DWELL site rebuilt from the DWELL UI elements**: portal and admin
        reuse `web/`'s markup/components verbatim with the DWELL `theme.css`
        tokens and copy swapped (the design system is already fully
@@ -145,10 +145,10 @@ both brands.
        verified on BaseScan; `setSwapTarget` + `setKeeper` from the Safe;
        Distributor funded for epoch 1 only.
 6. [ ] **Liquidity seed**: DWELL/USDC pool on Aerodrome; depth published.
-7. [ ] **Reserve conversion**: the points reserve executes its published TWAP
-       buy schedule; every fill recorded in `usdc_reserve_entries`
-       (`tge_buy`); outstanding points convert pro-rata at the aggregate
-       execution price; conversion math published before it runs.
+7. [ ] **Points conversion**: snapshot taken when the raise opens; points
+       convert at the fixed $1M-valuation rate (1,000 points = 12,000 DWELL)
+       from the 10% airdrop bucket; conversion math published before it runs;
+       outstanding points at snapshot verified under the 8.33M-point cap.
 8. [ ] First cumulative root published (includes converted points + the
        treasury shortfall leaf); spot-check N wallets' proofs against the
        contract before announcing.
@@ -158,8 +158,8 @@ both brands.
 10. [ ] **W-9 / 1099 pipeline live** ($2K threshold alerting) before the
         first claim window opens.
 11. [ ] `TOKEN_MODE=live`; wallet linking + claims + cash-out tab enabled;
-        campaign funding switches from escrow to `swapAndFund`.
-12. [ ] Monitoring: CampaignFunded/Claimed indexer lag, root cadence, reserve
+        campaign funding switches from ledger earmark to `swapAndFund`.
+12. [ ] Monitoring: CampaignFunded/Claimed indexer lag, root cadence, earmark
         drift alarm, pool depth, failed-swap alerts — all paging.
 
 ## Client surfaces (post-demo, pre- or during points launch)
@@ -196,7 +196,8 @@ millicent balance *is* the points number).
       notarized under DWELL's own Apple Developer account; DMG on DWELL's
       own GitHub releases; wire `/download/mac` in the DWELL site's
       `vercel.json` when it exists.
-- [ ] All DWELL clients display "points" with the 1,000 = $1.00 legend.
+- [ ] All DWELL clients display "points" with the 1,000 points = 12,000
+      $DWELL legend (value floats with the market — no dollar peg anywhere).
 
 ## Standing rules after launch
 

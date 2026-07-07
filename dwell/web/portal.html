@@ -23,7 +23,7 @@
        portal.js never calls it — every view renders from seeded mock data. -->
   <meta name="dwell-api" content="https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/dwell-api" />
   <title>DWELL — Portal</title>
-  <meta name="description" content="Sign in to see your DWELL points — earned ad value from the sponsored line. 1,000 points = $1.00 of earned ad value." />
+  <meta name="description" content="Sign in to see your DWELL points — earned ad value from the sponsored line. 1,000 points convert to 12,000 $DWELL at token launch." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -62,14 +62,14 @@
         <h1 class="portal-h1">Sign in to see your DWELL points.</h1>
         <p class="portal-lead">
           Your private dashboard shows points credited while your AI assistant
-          was thinking, their earned ad value, and recent activity.
-          1,000 points = $1.00 of earned ad value.
+          was thinking and recent activity.
+          1,000 points convert to 12,000 $DWELL at token launch.
         </p>
       </div>
 
       <footer class="portal-footer">
         <span>DWELL portal</span>
-        <span>1,000 points = $1.00 of earned ad value</span>
+        <span>1,000 points convert to 12,000 $DWELL at token launch</span>
       </footer>
     </div>
 
@@ -167,7 +167,7 @@
 
       <footer class="portal-footer">
         <span>DWELL portal</span>
-        <span>1,000 points = $1.00 of earned ad value</span>
+        <span>1,000 points convert to 12,000 $DWELL at token launch</span>
       </footer>
     </div>
 
@@ -255,7 +255,7 @@
 
       <footer class="portal-footer">
         <span>DWELL portal</span>
-        <span>1,000 points = $1.00 of earned ad value</span>
+        <span>1,000 points convert to 12,000 $DWELL at token launch</span>
       </footer>
     </div>
 
@@ -373,7 +373,7 @@
         <p class="portal-copy">
           Each sponsored line you watch while your AI assistant thinks credits
           you the viewer's 60% share of that campaign's pool in DWELL points.
-          1,000 points = $1.00 of earned ad value.
+          1,000 points convert to 12,000 $DWELL at token launch.
         </p>
 
         <div class="earn-stats">
@@ -480,9 +480,10 @@
 
         <h2>Cash out</h2>
         <p class="portal-copy">
-          DWELL points are earned ad value — 1,000 points = $1.00. Cashing out
-          opens at token launch; until then your points accrue here and stay
-          recorded on the ledger.
+          DWELL points convert to $DWELL at token launch at a fixed,
+          pre-announced rate — 1,000 points = 12,000 $DWELL. Their value floats
+          with the market. Cashing out opens at token launch; until then your
+          points accrue here and stay recorded on the ledger.
         </p>
 
         <!-- (a) Points summary card — same stat tiles as the Earnings tab. -->
@@ -493,14 +494,14 @@
             <span class="es-sub">DWELL points</span>
           </div>
           <div class="earn-stat">
-            <span class="es-label">Earned ad value</span>
+            <span class="es-label">Ad value watched</span>
             <span class="es-num" id="co-sum-usd">$0.00</span>
-            <span class="es-sub">1,000 points = $1.00</span>
+            <span class="es-sub">earn basis — not a cash balance</span>
           </div>
           <div class="earn-stat">
-            <span class="es-label">Rate</span>
-            <span class="es-num">1,000 = $1</span>
-            <span class="es-sub">points per earned dollar</span>
+            <span class="es-label">Converts to</span>
+            <span class="es-num">×12</span>
+            <span class="es-sub">$DWELL per point at launch</span>
           </div>
         </div>
 
@@ -511,14 +512,14 @@
             <span class="lp-badge">Available at token launch</span>
           </div>
           <ol class="lp-steps">
-            <li><strong>Claim DWELL to your wallet.</strong> Your points convert to
-              DWELL tokens under the published rules; the claim happens onchain, on
+            <li><strong>Claim $DWELL to your wallet.</strong> Your points convert to
+              DWELL tokens at the published rate; the claim happens onchain, on
               Solana — into an email-based wallet created for you, or one you
               connect yourself.</li>
-            <li><strong>Swap to USDC.</strong> One step inside the portal swaps
-              claimed DWELL for USDC.</li>
-            <li><strong>Withdraw.</strong> Move USDC to your bank account through a
-              licensed partner.</li>
+            <li><strong>Redeem for Claude credits.</strong> Points redeem in the
+              portal, valued at the market price at redemption.</li>
+            <li><strong>Cash out via Stripe.</strong> Same mechanic: points redeem
+              at the market price at redemption, paid out through Stripe.</li>
           </ol>
         </div>
 
@@ -701,7 +702,7 @@
     </div>
 
     <footer class="footer">
-      <p>© 2026 DWELL · 1,000 points = $1.00 of earned ad value · Points are non-transferable until token launch</p>
+      <p>© 2026 DWELL · 1,000 points convert to 12,000 $DWELL at token launch · Points are non-transferable until token launch</p>
     </footer>
 
   </div><!-- /portal-page -->

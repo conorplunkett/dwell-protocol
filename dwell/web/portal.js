@@ -1,7 +1,8 @@
 // DWELL — signed-in portal (portal.html). Email magic-link or OAuth sign-in,
 // then the points dashboard: earnings, the activity ledger, the cash-out
 // preview, referrals, and install status. Points are the unit everywhere:
-// 1,000 points = $1.00 of earned ad value.
+// 1,000 points convert to 12,000 $DWELL at token launch; value floats with
+// the market (USD figures are earn-basis estimates, not a cash balance).
 //
 // Dev mode — open portal.html?dev=1. The flag sticks in localStorage and the
 // whole portal renders from seeded, deterministic mock data with no backend
