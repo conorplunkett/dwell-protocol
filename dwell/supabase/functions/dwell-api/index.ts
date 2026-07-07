@@ -274,13 +274,17 @@ const stripe = createStripe(config.stripeSecretKey);
 // ───────────────────────────── mailer.js ───────────────────────────────────
 function createMailer(cfg: any) {
   const provider = cfg.mailProvider || "console";
-  // Per-audience senders, all on the Resend-verified contact.dwellprotocol.com domain.
-  // User mail comes from hello@ with replies routed to support@; advertiser mail
-  // comes from ads@. Overridable via MAIL_FROM / MAIL_FROM_ADS.
-  const userFrom = cfg.mailFrom || "DWELL <hello@contact.dwellprotocol.com>";
-  const adsFrom = cfg.mailFromAds || "DWELL <ads@contact.dwellprotocol.com>";
-  const supportReplyTo = "support@contact.dwellprotocol.com";
-  const adsReplyTo = "ads@contact.dwellprotocol.com";
+  // Per-audience senders. Outbound mail still goes through the legacy
+  // Resend-verified contact.freeai.fyi domain (DWELL grew out of freeai.fyi and
+  // inherited its verified sending domain) — so recipients see freeai.fyi in the
+  // From address even though the brand is DWELL. Sending from a dwellprotocol.com
+  // address is rejected by Resend (unverified) and 500s the request. User mail
+  // comes from hello@ with replies routed to support@; advertiser mail comes from
+  // ads@. Overridable via MAIL_FROM / MAIL_FROM_ADS.
+  const userFrom = cfg.mailFrom || "DWELL <hello@contact.freeai.fyi>";
+  const adsFrom = cfg.mailFromAds || "DWELL <ads@contact.freeai.fyi>";
+  const supportReplyTo = "support@contact.freeai.fyi";
+  const adsReplyTo = "ads@contact.freeai.fyi";
   async function send(to: string, subject: string, htmlBody: string, opts: any = {}) {
     const from = opts.from || userFrom;
     const replyTo = opts.replyTo !== undefined ? opts.replyTo : supportReplyTo;

@@ -51,6 +51,18 @@ reference to the frozen root product's brand (CI greps for it).
   `SUM(ledger)`, never stored. The three-way split writes
   `points_credit` / `referral_points_credit` / `protocol_points_credit` plus a
   `platform_fee` row so every impression's rows sum to exactly its gross.
+- **Transactional email always sends from the legacy Resend-verified
+  `contact.freeai.fyi` domain — never a `dwellprotocol.com` address.** DWELL
+  grew out of freeai.fyi and inherited its verified sending domain; only
+  `contact.freeai.fyi` is verified in Resend, so any `From`/reply-to on a
+  `dwellprotocol.com` domain is rejected by Resend, the send throws, and the
+  route's catch-all returns `500 {error:"internal error"}` (which clients like
+  the terminal surface verbatim as *"internal error"*). Keep user mail on
+  `hello@contact.freeai.fyi`, advertiser mail on `ads@contact.freeai.fyi`, and
+  replies on `support@`/`ads@contact.freeai.fyi` — in **both** `server/src` and
+  `supabase/functions/dwell-api/index.ts`. Recipients seeing `freeai.fyi` in the
+  From address is expected and intentional (see the products-page FAQ); the
+  brand is DWELL but the verified sending domain is still freeai.fyi.
 - **Shared-database isolation**: DWELL lives in its own Postgres schema
   (`DB_SCHEMA`, default `dwell`) so it can share a database server with other
   products while staying isolated at the top level. Every connection pins
