@@ -123,16 +123,8 @@ a { color: inherit; text-decoration: none; }
 .sub strong { color: var(--ink); font-weight: 800; }
 .sub .hl { color: var(--green); font-weight: 700; }
 
-/* $DWELL — a little always-alive shimmer wherever the token is mentioned,
-   so the ticker symbol reads as a live, traded asset rather than static copy. */
-.dwell-token {
-  display: inline-block; font-weight: 800; color: var(--accent);
-  animation: dwell-pulse 2.2s ease-in-out infinite;
-}
-@keyframes dwell-pulse {
-  0%, 100% { text-shadow: 0 0 0 rgba(var(--accent-rgb), 0); }
-  50% { text-shadow: 0 0 10px rgba(var(--accent-rgb), .55); }
-}
+/* $DWELL — called out in red wherever the token is mentioned. */
+.dwell-token { font-weight: 800; color: var(--accent); }
 
 /* DEMO — before/after, with a little Claude Code guy perched on top */
 .demo {
@@ -435,6 +427,18 @@ a { color: inherit; text-decoration: none; }
   transition: background .15s, border-color .15s;
 }
 .dl-copy:hover { background: rgba(var(--accent-rgb),.26); border-color: rgba(var(--accent-rgb),.5); }
+
+/* Download email-capture — swaps in over the Chrome/Mac button the instant
+   it's clicked, so the click that "starts" the download also asks for an
+   email to notify at full launch. Reuses the .dl-cli/.dl-copy chrome. */
+.dl-email-input {
+  flex: 1; min-width: 0; border: none; background: transparent; outline: none;
+  font-family: var(--sans); font-size: 14px; color: var(--ink); padding: 6px 4px;
+}
+.dl-email-input::placeholder { color: var(--gray-2); }
+.dl-email-note {
+  margin: 8px 0 0; font: 500 12px/1.4 var(--sans); color: var(--gray-2); text-align: center;
+}
 @media (max-width: 860px) { .dl-grid { grid-template-columns: 1fr; } }
 
 /* SURFACES — "Native everywhere it appears" (Claude Design handoff).
@@ -1274,7 +1278,6 @@ a { color: inherit; text-decoration: none; }
   .cg-sprite,
   .claude-guy.cg-hop .cg-sprite,
   .cg-eye, .cg-spark,
-  .dwell-token,
   .jump-chev { animation: none !important; }
 }
 
@@ -1384,6 +1387,7 @@ a { color: inherit; text-decoration: none; }
   min-height: 100dvh;
   display: flex; align-items: center;
 }
+.proto-hero[hidden] { display: none; }
 .proto-mesh {
   position: absolute; inset: 0; width: 100%; height: 100%; display: block;
   /* concentrate the constellation on the right, like the brand card */
