@@ -15,7 +15,7 @@
     },
     {
       "source": "/download/mac",
-      "destination": "https://github.com/conorplunkett/dwell-protocol/releases/latest/download/SponsorOverlay.dmg",
+      "destination": "https://github.com/conorplunkett/dwell-protocol/releases/latest/download/Dwell.dmg",
       "permanent": false
     },
     {

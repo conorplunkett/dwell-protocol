@@ -194,7 +194,7 @@ seconds → one impression batch lands in the server ledger; clicking routes
 through `/v1/go/:token`, which records the click (clicks are tracked, not paid).
 
 **CI** builds the Swift app on a `macos-14` runner on every push/PR, packages
-it with `packaging/bundle.sh`, and uploads `SponsorOverlay.zip` + `.dmg` as the
+it with `packaging/bundle.sh`, and uploads `Dwell.zip` + `.dmg` as the
 `SponsorOverlay-macos` artifact. Download it from the Actions run, open the dmg
 (or unzip), clear quarantine (`xattr -dr com.apple.quarantine Dwell.app`),
 and open. The CI build is **ad-hoc signed**, so it only runs on the machine that
@@ -211,7 +211,7 @@ drag-to-Applications `.dmg`:
 ```sh
 cd desktop/macos/SponsorOverlay
 ./packaging/bundle.sh                  # ad-hoc signed, for local use
-# -> build/Dwell.app, build/SponsorOverlay.zip, build/SponsorOverlay.dmg
+# -> build/Dwell.app, build/Dwell.zip, build/Dwell.dmg
 ```
 
 The app carries an icon (`AppIcon.icns`, built from `packaging/assets/AppIcon-1024.png`
@@ -247,24 +247,22 @@ cd desktop/macos/SponsorOverlay
 VERSION=0.1.0 BUILD_NUMBER=1 \
   SIGN_IDENTITY="Developer ID Application: Conor Plunkett (C4GLRN98Q7)" ./packaging/bundle.sh
 # 2. notarize + staple (so it opens offline, no Gatekeeper prompt)
-xcrun notarytool submit build/SponsorOverlay.dmg --keychain-profile dwell --wait
-xcrun stapler staple build/SponsorOverlay.dmg
+xcrun notarytool submit build/Dwell.dmg --keychain-profile dwell --wait
+xcrun stapler staple build/Dwell.dmg
 # 3. prove it'll open on a stranger's Mac — want "accepted" / "source=Notarized Developer ID"
-spctl -a -t open --context context:primary-signature -v build/SponsorOverlay.dmg
-# 4. publish — the asset filename MUST be DWELL.dmg so /download/mac resolves.
-#    (gh's "file#text" sets the display *label*, not the filename — the download
-#    URL uses the filename — so upload a copy literally named DWELL.dmg.)
-cp build/SponsorOverlay.dmg build/DWELL.dmg
-gh release create desktop-v0.1.0 build/DWELL.dmg \
-  --title "DWELL Desktop 0.1.0" \
-  --notes "macOS DWELL overlay tool for Claude & ChatGPT Desktop."
+spctl -a -t open --context context:primary-signature -v build/Dwell.dmg
+# 4. publish — the asset filename MUST be Dwell.dmg so /download/mac resolves
+#    (bundle.sh already names it that; the download URL uses the filename).
+gh release create desktop-v0.1.0 build/Dwell.dmg \
+  --title "Dwell Desktop 0.1.0" \
+  --notes "macOS Dwell overlay tool for Claude & ChatGPT Desktop."
 # Re-releasing the same tag? Don't `create` — upload over the existing asset:
-#   gh release upload desktop-v0.1.0 build/DWELL.dmg --clobber
+#   gh release upload desktop-v0.1.0 build/Dwell.dmg --clobber
 ```
 
 **Hosting + the site link — no per-release site edit.** The dmg lives in
 **GitHub Releases** (keeps the multi-MB binary out of git). `vercel.json`
-redirects `/download/mac` → the repo's `releases/latest/download/DWELL.dmg`, and
+redirects `/download/mac` → the repo's `releases/latest/download/Dwell.dmg`, and
 the **Download for macOS** button in `products.html` (the `#desktop` section)
 points at `/download/mac`. So every `gh release create` automatically becomes the
 live download — the button only 404s until the *first* release exists.
