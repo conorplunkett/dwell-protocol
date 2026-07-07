@@ -1183,7 +1183,8 @@ function createRepo(pool) {
     async userForSession(sessionToken) {
       if (!sessionToken) return null;
       const { rows } = await pool.query(
-        `select u.id, u.email from web_sessions s join users u on u.id = s.user_id
+        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled
+           from web_sessions s join users u on u.id = s.user_id
           where s.token = $1 and s.expires_at > now()`,
         [sessionToken]
       );
@@ -1381,7 +1382,7 @@ function createRepo(pool) {
     // User-scoped gift redemption (website flow). Re-checks the user's balance
     // inside the transaction against the ledger so concurrent redeems can't spend
     // the same credits twice. Returns the redemption id, or null if short.
-    async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, recipientEmail, referralRewardMillicents, referralCap }) {
+    async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, feeCents = 0, recipientEmail, referralRewardMillicents, referralCap }) {
       return tx(async (c) => {
         // Serialize concurrent redeems on this user's balance (see
         // recordGiftRedemption) so the in-transaction check can't be overdrawn.
@@ -1393,7 +1394,9 @@ function createRepo(pool) {
               and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','payout_debit','gift_redemption_debit','admin_credit','admin_debit')`,
           [userId]
         );
-        const costMillicents = BigInt(amountCents) * 1000n;
+        // The user is debited face + fee; the fee lands platform-side so the
+        // two rows sum to the face value leaving the system (ledger stays closed).
+        const costMillicents = (BigInt(amountCents) + BigInt(feeCents)) * 1000n;
         if (BigInt(bal.rows[0].balance) < costMillicents) return null;
 
         const { rows } = await c.query(
@@ -1405,8 +1408,16 @@ function createRepo(pool) {
           `insert into ledger (entry_type, amount_millicents, user_id, meta)
            values ('gift_redemption_debit', $1, $2, $3)`,
           [(-costMillicents).toString(), userId,
-           JSON.stringify({ redemptionId: rows[0].id, plan, months })]
+           JSON.stringify({ redemptionId: rows[0].id, plan, months, faceCents: amountCents, feeCents })]
         );
+        if (feeCents > 0) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, meta)
+             values ('platform_fee', $1, $2)`,
+            [(BigInt(feeCents) * 1000n).toString(),
+             JSON.stringify({ source: "redemption_fee", redemptionId: rows[0].id, userId })]
+          );
+        }
         // The $20 referral program is retired — redeeming no longer rewards any
         // referrer. (maybeRewardReferral is kept defined but uncalled.) We still
         // return an object with a null reward so the redemption flow keeps a
@@ -1757,17 +1768,114 @@ function createRepo(pool) {
       return { ok: true, affiliate: upd.rows[0] };
     },
 
-    async recordPayout(userId, amountCents, transferId) {
+    // Post-transfer record used by the admin sweep: debits the gross, books the
+    // protocol's fee platform-side, and stores the net actually transferred.
+    async recordPayout(userId, grossCents, netCents, feeCents, transferId) {
       return tx(async (c) => {
         await c.query(
           `insert into ledger (entry_type, amount_millicents, user_id, meta)
            values ('payout_debit', $1, $2, $3)`,
-          [(-BigInt(amountCents) * 1000n).toString(), userId, JSON.stringify({ transferId })]
+          [(-BigInt(grossCents) * 1000n).toString(), userId,
+           JSON.stringify({ transferId, grossCents, netCents, feeCents })]
         );
+        if (feeCents > 0) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, meta)
+             values ('platform_fee', $1, $2)`,
+            [(BigInt(feeCents) * 1000n).toString(),
+             JSON.stringify({ source: "payout_fee", userId, transferId })]
+          );
+        }
         await c.query(
           "insert into payouts (user_id, amount_cents, stripe_transfer_id) values ($1,$2,$3)",
-          [userId, amountCents, transferId]
+          [userId, netCents, transferId]
         );
+      });
+    },
+
+    // Recent payout history for the portal's cash-out card. amount_cents is the
+    // net the user received (or will receive, for 'pending').
+    async payoutsForUser(userId) {
+      const { rows } = await pool.query(
+        `select amount_cents, status, stripe_transfer_id, created_at
+           from payouts where user_id = $1 order by created_at desc limit 20`,
+        [userId]
+      );
+      return rows.map((r) => ({
+        amountUsd: r.amount_cents / 100,
+        status: r.status,
+        createdAt: r.created_at,
+      }));
+    },
+
+    // Debit-first half of an on-demand payout: inside one transaction, take the
+    // per-user redemption lock, re-check the balance, debit the gross, book the
+    // fee, and create a 'pending' payouts row. The Stripe transfer happens after
+    // commit; finalizePayout flips the row to paid/failed. Returns
+    // { id, netCents } or null when the balance no longer covers the gross.
+    async recordPayoutRequest({ userId, grossCents, feeCents }) {
+      return tx(async (c) => {
+        await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, `user:${userId}`]);
+        const bal = await c.query(
+          `select coalesce(sum(amount_millicents), 0)::bigint as balance from ledger
+            where (user_id = $1 or device_id in (select id from devices where user_id = $1))
+              and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','payout_debit','gift_redemption_debit','admin_credit','admin_debit')`,
+          [userId]
+        );
+        const grossMillicents = BigInt(grossCents) * 1000n;
+        if (BigInt(bal.rows[0].balance) < grossMillicents) return null;
+
+        const netCents = grossCents - feeCents;
+        const { rows } = await c.query(
+          `insert into payouts (user_id, amount_cents, status)
+           values ($1, $2, 'pending') returning id`,
+          [userId, netCents]
+        );
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, user_id, meta)
+           values ('payout_debit', $1, $2, $3)`,
+          [(-grossMillicents).toString(), userId,
+           JSON.stringify({ payoutId: rows[0].id, grossCents, netCents, feeCents })]
+        );
+        if (feeCents > 0) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, meta)
+             values ('platform_fee', $1, $2)`,
+            [(BigInt(feeCents) * 1000n).toString(),
+             JSON.stringify({ source: "payout_fee", payoutId: rows[0].id, userId })]
+          );
+        }
+        return { id: rows[0].id, netCents };
+      });
+    },
+
+    // Second half of an on-demand payout. Success stamps the transfer id;
+    // failure reverses both ledger legs (credit the user's gross back, negate
+    // the fee) so the books return to exactly the pre-request state.
+    async finalizePayout(payoutId, outcome) {
+      return tx(async (c) => {
+        if (outcome.failed) {
+          await c.query("update payouts set status = 'failed' where id = $1", [payoutId]);
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, user_id, meta)
+             values ('admin_credit', $1, $2, $3)`,
+            [(BigInt(outcome.grossCents) * 1000n).toString(), outcome.userId,
+             JSON.stringify({ source: "payout_reversal", payoutId })]
+          );
+          if (outcome.feeCents > 0) {
+            await c.query(
+              `insert into ledger (entry_type, amount_millicents, meta)
+               values ('platform_fee', $1, $2)`,
+              [(-BigInt(outcome.feeCents) * 1000n).toString(),
+               JSON.stringify({ source: "payout_fee_reversal", payoutId })]
+            );
+          }
+        } else {
+          await c.query(
+            "update payouts set status = 'paid', stripe_transfer_id = $2 where id = $1",
+            [payoutId, outcome.transferId]
+          );
+        }
       });
     },
 

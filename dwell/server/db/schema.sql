@@ -310,6 +310,13 @@ alter table ledger add constraint ledger_entry_type_check check (entry_type in (
   'token_claim_debit'        -- live mode: entitlement moved into an onchain Merkle root (- user)
 ));
 
+-- On-demand web payouts are debit-first: the balance is charged and a payouts
+-- row created as 'pending' before the Stripe transfer fires, then flipped to
+-- 'paid' or 'failed' (with a ledger reversal). Widen the original two-state
+-- check so existing databases accept the intermediate state.
+alter table payouts drop constraint if exists payouts_status_check;
+alter table payouts add constraint payouts_status_check check (status in ('pending', 'paid', 'failed'));
+
 -- ── Affiliates ───────────────────────────────────────────────────────────────
 -- A separate, application-gated program (distinct from referrals). A user
 -- applies to become an affiliate by submitting their social handles + follower
