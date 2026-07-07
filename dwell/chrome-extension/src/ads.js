@@ -24,7 +24,7 @@
   g.BB_MOCK_AD = {
     brand: "DWELL Test",
     chip: "✓",
-    color: "#d97757", // DWELL brand coral (--accent) — our own test ad, not a sponsor
+    color: "#ff0000", // DWELL brand red (--accent) — our own test ad, not a sponsor
     ink: "#fff",
     line: "this is a test ad — what advertisers will see here.",
     url: "https://dwellprotocol.com/?test=1",

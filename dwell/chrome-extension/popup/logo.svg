@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- DWELL brand mark: eight dots on the clock face, swept clockwise from a
+       solid accent red (12 o'clock, "now") through fading opacity, the
+       passage of dwell time. All dots share the theme.css accent red;
+       only opacity changes, so the mark can never drift off-palette. -->
+  <circle cx="100" cy="35" r="15" fill="#ff0000" fill-opacity="1"/>
+  <circle cx="145.96" cy="54.04" r="15" fill="#ff0000" fill-opacity=".08"/>
+  <circle cx="165" cy="100" r="15" fill="#ff0000" fill-opacity=".22"/>
+  <circle cx="145.96" cy="145.96" r="15" fill="#ff0000" fill-opacity=".38"/>
+  <circle cx="100" cy="165" r="15" fill="#ff0000" fill-opacity=".55"/>
+  <circle cx="54.04" cy="145.96" r="15" fill="#ff0000" fill-opacity=".72"/>
+  <circle cx="35" cy="100" r="15" fill="#ff0000" fill-opacity=".88"/>
+  <circle cx="54.04" cy="54.04" r="15" fill="#ff0000" fill-opacity=".95"/>
+</svg>
