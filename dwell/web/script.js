@@ -459,68 +459,6 @@ if (adForm) {
   });
 }
 
-// --- Waitlist email capture (hero) --------------------------------------
-// The hero waitlist form is static markup in index.html (#wl) — nothing on
-// the earn side is installable yet, so it's the primary CTA. Pre-account: it
-// POSTs a bare email to /v1/waitlist (no login, no magic link) tagged with the
-// page it came from.
-const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-// Tag each signup with the page it came from so a lead's `source` is useful
-// later (e.g. "index", "lander:gemini").
-function waitlistSource() {
-  const slug = location.pathname.replace(/\/+$/, "").split("/").pop() || "index";
-  if (!slug || /^index(\.html)?$/.test(slug)) return "index";
-  return "lander:" + slug.replace(/\.html$/, "");
-}
-const WL_OK = '<p class="wl-ok">You\u2019re on the list \u2713 \u2014 we\u2019ll email you at launch.</p>';
-function wireWaitlist(form, email, btn, noteEl) {
-  if (!form || !email || !btn) return;
-  const setNote = (msg, kind) => {
-    if (!noteEl) return;
-    noteEl.textContent = msg;
-    noteEl.className = "wl-note" + (kind ? " wl-note--" + kind : "");
-  };
-  const succeed = () => { form.outerHTML = WL_OK; if (noteEl) noteEl.remove(); };
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const value = (email.value || "").trim();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) {
-      setNote("Enter a valid email address.", "err");
-      email.focus();
-      return;
-    }
-    const label = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Joining\u2026";
-    // No API base (dev mode / misconfig): show success rather than hang.
-    if (!API_BASE) { succeed(); return; }
-    try {
-      const res = await fetch(`${API_BASE}/v1/waitlist`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: value, source: waitlistSource() }),
-      });
-      if (res.ok) { succeed(); return; }
-      if (res.status === 429) {
-        setNote("Too many signups from here today \u2014 try again later.", "err");
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setNote(data.error ? cap(data.error) : "Something went wrong \u2014 try again.", "err");
-      }
-    } catch (_) {
-      setNote("Couldn\u2019t reach the server \u2014 check your connection and try again.", "err");
-    }
-    btn.disabled = false;
-    btn.textContent = label;
-  });
-}
-wireWaitlist(
-  document.getElementById("wl-form"),
-  document.getElementById("wl-email"),
-  document.querySelector("#wl-form .wl-btn"),
-  document.getElementById("wl-note"),
-);
-
 // --- Surfaces showcase: provider-tab cross-fade ("Native everywhere it
 // appears"). Clicking a tab swaps the active screenshot within that surface
 // row only. Scoped to .surfaces so it can't touch anything else on the page. ---
