@@ -47,7 +47,13 @@ button, input, select, textarea { font: inherit; }
    login page must opt back into display:none when portal.js sets hidden — else
    it stays visible on top of the signed-in dashboard. */
 #login-page[hidden] { display: none; }
-/* Same grid-vs-[hidden] override for the first-login onboarding splits. */
+/* First-login onboarding screens: a full-width top nav (like the dashboard)
+   stacked above the two-column split. */
+.portal-onboard { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+.portal-onboard > .portal-split { min-height: 0; flex: 1 1 auto; }
+.onboard-nav { max-width: none; }
+/* `.portal-onboard { display: flex }` (like the split grid) outranks the UA
+   [hidden] rule, so the onboarding screens must opt back into display:none. */
 #onboarding-page[hidden],
 #survey-page[hidden] { display: none; }
 

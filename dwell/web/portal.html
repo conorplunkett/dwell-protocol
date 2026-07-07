@@ -65,10 +65,6 @@
           was thinking and recent activity.
         </p>
       </div>
-
-      <footer class="portal-footer">
-        <span>DWELL portal</span>
-      </footer>
     </div>
 
     <!-- RIGHT — auth card -->
@@ -135,31 +131,27 @@
        its own screen, shown before the refer-a-friend step).
        Both questions are multi-select.
   ══════════════════════════════════════════════════ -->
-  <div class="portal-split" id="survey-page" hidden>
+  <div class="portal-onboard" id="survey-page" hidden>
+
+    <header class="nav onboard-nav">
+      <a class="brand" href="index.html">
+        <span class="logo"><img src="assets/logo.svg" alt="" /></span>
+        <span class="brand-name">DWELL</span>
+        <span class="brand-sub">— Portal</span>
+      </a>
+      <div class="dash-account">
+        <a href="index.html" class="dash-account-link dash-home">Home</a>
+        <button class="dash-account-link dash-signout js-signout" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <div class="portal-split">
 
     <!-- LEFT — hero / brand -->
     <div class="portal-left">
-      <header class="portal-nav">
-        <a class="brand" href="index.html">
-          <span class="logo"><img src="assets/logo.svg" alt="" /></span>
-          <span class="brand-name">DWELL</span>
-        </a>
-        <nav class="portal-nav-links">
-          <a href="index.html">Home</a>
-        </nav>
-      </header>
-
       <div class="portal-hero">
         <h1 class="portal-h1">Tell us how you use AI.</h1>
-        <p class="portal-lead">
-          A couple of quick questions so we can tailor DWELL to where you work.
-          This takes ten seconds.
-        </p>
       </div>
-
-      <footer class="portal-footer">
-        <span>DWELL portal</span>
-      </footer>
     </div>
 
     <!-- RIGHT — survey card (two steps, one visible at a time) -->
@@ -211,6 +203,7 @@
       </div>
     </div>
 
+    </div><!-- /.portal-split -->
   </div><!-- /survey-page -->
 
 
@@ -219,34 +212,27 @@
        reaching the dashboard). The friend doesn't have to
        sign up; a valid email is all it takes to continue.
   ══════════════════════════════════════════════════ -->
-  <div class="portal-split" id="onboarding-page" hidden>
+  <div class="portal-onboard" id="onboarding-page" hidden>
+
+    <header class="nav onboard-nav">
+      <a class="brand" href="index.html">
+        <span class="logo"><img src="assets/logo.svg" alt="" /></span>
+        <span class="brand-name">DWELL</span>
+        <span class="brand-sub">— Portal</span>
+      </a>
+      <div class="dash-account">
+        <a href="index.html" class="dash-account-link dash-home">Home</a>
+        <button class="dash-account-link dash-signout js-signout" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <div class="portal-split">
 
     <!-- LEFT — hero / brand -->
     <div class="portal-left">
-      <header class="portal-nav">
-        <a class="brand" href="index.html">
-          <span class="logo"><img src="assets/logo.svg" alt="" /></span>
-          <span class="brand-name">DWELL</span>
-        </a>
-        <nav class="portal-nav-links">
-          <a href="index.html">Home</a>
-        </nav>
-      </header>
-
       <div class="portal-hero">
         <h1 class="portal-h1">Invite friends to start earning.</h1>
-        <p class="portal-lead">
-          DWELL grows by word of mouth. You earn 10% of every friend's earnings,
-          forever — the referrer share carved from each campaign's pool
-          (viewer 60%, referrer 10%, protocol 30%), never deducted from their
-          60%. Invite two to unlock your dashboard; a valid email is all it
-          takes to get started.
-        </p>
       </div>
-
-      <footer class="portal-footer">
-        <span>DWELL portal</span>
-      </footer>
     </div>
 
     <!-- RIGHT — invite card -->
@@ -280,15 +266,11 @@
           </button>
         </form>
 
-        <p class="auth-referral-note">
-          Their emails just need to be valid — they don't have to sign up for you
-          to continue. When they join, you earn 10% of their earnings, forever,
-          carved from each campaign's pool — never deducted from their 60%.
-        </p>
         <p class="auth-error" id="onboard-error" hidden></p>
       </div>
     </div>
 
+    </div><!-- /.portal-split -->
   </div><!-- /onboarding-page -->
 
 
@@ -310,7 +292,7 @@
           Wallet · at token launch
         </button>
         <a href="index.html" class="dash-account-link dash-home">Home</a>
-        <button class="dash-account-link dash-signout" id="signout" type="button">Sign out</button>
+        <button class="dash-account-link dash-signout js-signout" id="signout" type="button">Sign out</button>
       </div>
     </header>
 

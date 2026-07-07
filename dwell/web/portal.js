@@ -660,7 +660,9 @@ $("resend-btn-2").addEventListener("click", () => handleResend($("resend-btn-2")
 $("back-btn").addEventListener("click", () => showStep("providers"));
 
 // ── Sign out ──
-$("signout").addEventListener("click", async () => {
+// Bound to every .js-signout button — the dashboard header plus the onboarding
+// top bars (survey + invite), which share the signed-in top nav.
+async function signOut() {
   // Revoke server-side first so the token is dead even if a copy lingers
   // anywhere; best-effort — clear locally and reload regardless. Dev mode is
   // cleared too, so signing out of a demo lands on the real login screen.
@@ -668,7 +670,8 @@ $("signout").addEventListener("click", async () => {
   localStorage.removeItem(SESSION_KEY);
   try { localStorage.removeItem(DEV_KEY); } catch (e) {}
   location.replace(location.pathname);
-});
+}
+document.querySelectorAll(".js-signout").forEach((b) => b.addEventListener("click", signOut));
 
 // ---- first-login survey: "what models" then "where do you use them" ----
 const surveyModels = new Set();
