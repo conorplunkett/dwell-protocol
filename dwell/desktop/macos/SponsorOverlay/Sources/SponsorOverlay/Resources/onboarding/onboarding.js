@@ -102,14 +102,19 @@
     '<circle cx="54.04" cy="145.96" r="15" fill="#ff0000" fill-opacity=".72"/>' +
     '<circle cx="35" cy="100" r="15" fill="#ff0000" fill-opacity=".88"/>' +
     '<circle cx="54.04" cy="54.04" r="15" fill="#ff0000" fill-opacity=".95"/></svg>';
-  // The actual menu-bar mark, as a wireframe: a hollow rounded chip with the
-  // mono "D$" inside — mirrors makeStatusIcon() in main.swift. Inherits the
-  // surrounding text colour via currentColor.
+  // The actual menu-bar mark: the eight-dot clock sweep, mirroring
+  // makeStatusIcon() in main.swift. Inherits the surrounding text colour via
+  // currentColor; only per-dot opacity varies.
   var MENUBAR_WIRE_SVG =
-    '<svg class="mb-wire" viewBox="0 0 28 18" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-    '<rect x="1.1" y="1.1" width="25.8" height="15.8" rx="4.6" stroke="currentColor" stroke-width="1.3" />' +
-    '<text x="14" y="12.7" text-anchor="middle" font-family="\'JetBrains Mono\', ui-monospace, monospace" ' +
-    'font-size="9" font-weight="700" fill="currentColor">D$</text></svg>';
+    '<svg class="mb-wire" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    '<circle cx="100" cy="35" r="15" fill="currentColor" fill-opacity="1"/>' +
+    '<circle cx="145.96" cy="54.04" r="15" fill="currentColor" fill-opacity=".08"/>' +
+    '<circle cx="165" cy="100" r="15" fill="currentColor" fill-opacity=".22"/>' +
+    '<circle cx="145.96" cy="145.96" r="15" fill="currentColor" fill-opacity=".38"/>' +
+    '<circle cx="100" cy="165" r="15" fill="currentColor" fill-opacity=".55"/>' +
+    '<circle cx="54.04" cy="145.96" r="15" fill="currentColor" fill-opacity=".72"/>' +
+    '<circle cx="35" cy="100" r="15" fill="currentColor" fill-opacity=".88"/>' +
+    '<circle cx="54.04" cy="54.04" r="15" fill="currentColor" fill-opacity=".95"/></svg>';
   var GOOGLE_SVG =
     '<svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/>' +
     '<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/>' +
@@ -128,9 +133,8 @@
             '<div class="vr">v1.0 · macOS</div>' +
           '</div>' +
         '</div>' +
-        '<span class="eyebrow">Get paid for the wait</span>' +
         '<h1 class="h-title">Earn crypto while you work.</h1>' +
-        '<p class="h-sub">Dwell shows <b>one</b> sponsored line while your AI assistant is thinking — and you receive <b>60%</b> of each campaign\'s pool (90% of every ad dollar), paid in dwells.</p>' +
+        '<p class="h-sub">Dwell shows one sponsored line while your AI assistant is thinking — and you receive <b>60%</b> of each campaign\'s spend.</p>' +
         '<ul class="bullets">' +
           '<li><span class="tick">✓</span><div>Works with <b>ChatGPT, Claude &amp; Claude Code</b> out of the box.</div></li>' +
           '<li><span class="tick">✓</span><div>Reads <b>none</b> of your prompts. Setup takes under a minute.</div></li>' +
@@ -145,7 +149,6 @@
         '<h1 class="h-title">We turned the spinner into income.</h1>' +
         '<div class="how">' +
           '<div class="demo">' +
-            '<div class="demo-lbl">On claude.ai · live</div>' +
             '<div class="chat">' +
               '<div class="msg me">Refactor this auth flow for me</div>' +
               '<div class="msg">On it — reading through your handlers…</div>' +
@@ -154,7 +157,7 @@
           '<div class="how-col">' +
             '<ul class="how-list">' +
               '<li><span class="how-num">1</span><div><div class="ht">Keep Dwell running</div>' +
-                '<div class="hs">Lives in your menu bar as the <b>D$</b> icon, watching for the "thinking" moment.</div></div></li>' +
+                '<div class="hs">Lives in your menu bar as the Dwell icon.</div></div></li>' +
               '<li><span class="how-num">2</span><div><div class="ht">Your assistant thinks</div></div></li>' +
               '<li><span class="how-num">3</span><div><div class="ht">You earn dwells</div></div></li>' +
             '</ul>' +
@@ -212,7 +215,7 @@
 
   function paneSignin() {
     var head = '' +
-      '<span class="eyebrow">Save your dwells</span>' +
+      '<div class="callout callout-top">Come back to Setup via the ' + MENUBAR_WIRE_SVG + ' icon in your menu bar.</div>' +
       '<h1 class="h-title">Where should we send your dwells?</h1>' +
       '<p class="h-sub">Connect an account so your dwells accrue to you. We only use it to track your balance and pay out redemptions.</p>';
     // Once the app detects the device is linked, show the confirmation.
@@ -444,7 +447,6 @@
         '<div class="pill ad swap">' +
           '<span class="pchip" style="background:' + ad.color + ';color:' + ad.ink + '">' + esc(ad.chip) + '</span>' +
           '<span class="ptxt"><b style="color:#fff">' + esc(ad.brand) + '</b> — ' + esc(ad.line) + '</span>' +
-          '<span class="ptag">ad·</span>' +
         '</div>');
     }
     function swap(node) {

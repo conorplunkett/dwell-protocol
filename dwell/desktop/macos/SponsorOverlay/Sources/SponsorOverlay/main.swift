@@ -533,10 +533,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshAccessibilityState()
     }
 
-    // Brand "D$" wordmark for the menu bar, rendered once per state: a hollow
-    // wireframe outline of the app-icon chip (tools/gen-icons.py) as a
+    // The Dwell brand mark for the menu bar, rendered once per state: the
+    // eight-dot clock sweep (web/assets/logo.svg / tools/gen-icons.py) as a
     // monochrome template image, so the menu bar tints it (white on dark, dark
-    // on light) rather than the filled coral.
+    // on light) rather than the filled red.
     private lazy var statusIconNormal = Self.makeStatusIcon(warning: false)
     private lazy var statusIconWarning = Self.makeStatusIcon(warning: true)
     /// Last badge state reflected in the menu-bar icon, so we only swap the image
@@ -544,7 +544,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var iconShowsWarning: Bool?
 
     /// Reflects Accessibility-permission state in the menu (row visibility) and
-    /// the status icon (the brand "D$" mark, badged amber when access is missing
+    /// the status icon (the brand dot mark, badged when access is missing
     /// OR the account isn't linked) so the user notices before wondering why
     /// nothing shows / where their dwells went. Cheap; runs each tick + on open.
     private func refreshAccessibilityState() {
@@ -558,37 +558,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Draws the DWELL "D$" menu-bar mark as a hollow wireframe: a stroked
-    /// rounded-rect chip (the app-icon silhouette) with the monospace "D$"
-    /// inside. Returned as a template image — drawn in opaque black and tinted
-    /// by the menu bar, so it shows white on the usual dark bar and dark on a
-    /// light one, never coloured. When `warning` is set (Accessibility not
-    /// granted) a small dot is badged top-right, replacing the old "⚠" glyph.
+    /// Draws the actual Dwell brand mark — the eight-dot clock sweep from
+    /// web/assets/logo.svg — as the menu-bar icon: a solid dot at 12 o'clock
+    /// fading clockwise through opacity. Returned as a template image — drawn
+    /// in black (opacity carries the sweep) and tinted by the menu bar, so it
+    /// shows white on the usual dark bar and dark on a light one, never
+    /// coloured. When `warning` is set (Accessibility not granted) a small
+    /// solid dot is badged top-right, replacing the old "⚠" glyph.
     private static func makeStatusIcon(warning: Bool) -> NSImage {
-        let height: CGFloat = 16
-        let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .bold)
-        let text = "D$" as NSString
-        // Template images are masked by alpha and tinted by the system, so the
-        // ink colour itself is irrelevant — draw in opaque black.
-        let ink = NSColor.black
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink]
-        let textSize = text.size(withAttributes: attrs)
-        let padX: CGFloat = 4
-        let width = ceil(textSize.width) + padX * 2
+        let side: CGFloat = 16
+        // Clockwise from 12 o'clock — mirror of the source SVG's fill-opacity
+        // ramp; ratios match tools/gen-icons.py (orbit 65/200, dot 15/200).
+        let opacities: [CGFloat] = [1, 0.08, 0.22, 0.38, 0.55, 0.72, 0.88, 0.95]
+        let orbit = side * 0.325
+        let dotR = side * 0.075
 
-        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
-            let lineWidth: CGFloat = 1
-            let radius = height * 0.26 // matches the app-icon corner ratio
-            let box = rect.insetBy(dx: lineWidth / 2, dy: lineWidth / 2)
-            let path = NSBezierPath(roundedRect: box, xRadius: radius, yRadius: radius)
-            path.lineWidth = lineWidth
-            ink.setStroke()
-            path.stroke() // hollow outline — no fill
-            text.draw(at: NSPoint(x: padX, y: (height - textSize.height) / 2), withAttributes: attrs)
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            let cx = rect.midX, cy = rect.midY
+            for (i, alpha) in opacities.enumerated() {
+                // AppKit is y-up, so clockwise-from-12 is (+sin, +cos).
+                let theta = Double(i) * .pi / 4
+                let x = cx + orbit * CGFloat(sin(theta))
+                let y = cy + orbit * CGFloat(cos(theta))
+                NSColor.black.withAlphaComponent(alpha).setFill()
+                NSBezierPath(ovalIn: NSRect(x: x - dotR, y: y - dotR,
+                                            width: dotR * 2, height: dotR * 2)).fill()
+            }
             if warning {
                 let d: CGFloat = 4
-                let dot = NSRect(x: rect.maxX - d - 0.5, y: rect.maxY - d - 0.5, width: d, height: d)
-                ink.setFill()
+                let dot = NSRect(x: rect.maxX - d, y: rect.maxY - d, width: d, height: d)
+                NSColor.black.setFill()
                 NSBezierPath(ovalIn: dot).fill()
             }
             return true
@@ -787,7 +786,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showSetupOnFirstLaunch() {
         guard !demoMode, !UserDefaults.standard.bool(forKey: "didOnboard") else { return }
-        UserDefaults.standard.set(true, forKey: "didOnboard")
+        // Marked done in windowWillClose, not here — if the app dies before the
+        // user has actually seen (and dismissed) the window, the next launch
+        // shows Setup again instead of silently skipping onboarding forever.
         showSetup()
     }
 
@@ -935,6 +936,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
         w.title = "Setup"
         w.isReleasedWhenClosed = false
+        w.delegate = self   // windowWillClose marks didOnboard for this path too
         w.center()
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 440, height: 320))
@@ -943,13 +945,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         heading.frame = NSRect(x: 28, y: 268, width: 384, height: 24)
 
         let steps = NSTextField(wrappingLabelWithString: """
-        1.  Keep Dwell running — it lives in your menu bar (the D$ icon).
+        1.  Keep Dwell running — it lives in your menu bar (the Dwell icon).
 
         2.  Open your preferred app — ChatGPT or Claude — and grant \
         Accessibility access if prompted (System Settings ▸ Privacy & \
         Security ▸ Accessibility).
 
-        3.  Start a response, then open the menu bar D$ icon and drag \
+        3.  Start a response, then open the menu bar Dwell icon and drag \
         “Card height” until the sponsor card overlaps the app’s thinking \
         icon. Each app remembers its own height.
 
@@ -1029,7 +1031,12 @@ extension AppDelegate: WKNavigationDelegate {
 
 extension AppDelegate: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
-        if (notification.object as? NSWindow) === setupWindow { stopPermissionPoll() }
+        if (notification.object as? NSWindow) === setupWindow {
+            stopPermissionPoll()
+            // The user saw Setup and dismissed it — only now does first-launch
+            // onboarding count as done (see showSetupOnFirstLaunch).
+            UserDefaults.standard.set(true, forKey: "didOnboard")
+        }
     }
 }
 
