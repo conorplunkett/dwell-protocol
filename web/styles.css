@@ -980,6 +980,9 @@ a { color: inherit; text-decoration: none; }
   background: var(--bg-tint); border: 1px solid var(--line); border-radius: 14px;
   font-size: 13.5px; color: var(--ink-2); line-height: 1.5;
 }
+/* flex outranks the UA [hidden] rule, so hidden needs its own display: none —
+   without this the notice shows even when the auction has inventory. */
+.dash-notice[hidden] { display: none; }
 .dash-notice-ico { flex: none; font-size: 15px; line-height: 1.5; }
 
 /* Gift-card delivery — read-only "delivered to" card replacing the bare input. */

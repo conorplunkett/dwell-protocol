@@ -163,6 +163,8 @@ function mockGet(path) {
   }
   if (p === "/v1/web/sources") return { sources: MOCK.sources };
   if (p === "/v1/web/points/summary") return MOCK.summary;
+  // Non-empty inventory keeps the out-of-stock notice hidden in dev mode.
+  if (p === "/v1/ads") return { ads: [{ id: "mock-ad" }] };
   return {};
 }
 
@@ -1057,6 +1059,18 @@ function enterDashboard(email) {
   loadEarnings("7d");
   retrieveActivity();  // auto-load the ledger so it's ready when the tab opens
   loadPointsSummary(); // balance + the reserve strip
+  checkInventory();
+}
+
+// The out-of-inventory notice: /v1/ads is public (no session needed) and
+// returns an empty list whenever the auction has no funded campaign to serve.
+// Mirrors the same check in the extension popup.
+async function checkInventory() {
+  try {
+    const res = await apiGet("/v1/ads");
+    const hasInventory = res.status === 200 && Array.isArray(res.body.ads) && res.body.ads.length > 0;
+    if ($("inventory-notice")) $("inventory-notice").hidden = hasInventory;
+  } catch (_) {}
 }
 
 boot();

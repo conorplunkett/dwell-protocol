@@ -495,6 +495,17 @@ html.auth-pending #portal-loading { display: flex; }
   box-shadow: 0 0 0 3px var(--warn-bg);
 }
 
+/* out-of-inventory notice — informational, not an error: --bg-tint keeps it calm */
+.dash-notice {
+  display: flex; align-items: flex-start; gap: 10px;
+  width: min(756px, 100% - 28px); margin: 18px auto 0; padding: 13px 16px;
+  background: var(--bg-tint); border: 1px solid var(--line); border-radius: 14px;
+  font-size: 13.5px; color: var(--ink-2); line-height: 1.5;
+}
+/* flex outranks the UA [hidden] rule — same pattern as the auth steps above. */
+.dash-notice[hidden] { display: none; }
+.dash-notice-ico { flex: none; font-size: 15px; line-height: 1.5; }
+
 /* Section tabs — one segmented control, one active view at a time. */
 .dash-tabs {
   display: flex; gap: 4px;
