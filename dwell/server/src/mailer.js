@@ -50,21 +50,13 @@ function createMailer(config) {
   const FONT = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
   const site = config.siteUrl || "https://dwellprotocol.com";
 
-  // DWELL eight-dot brand mark (assets/logo.svg) rebuilt as an email-safe table:
-  // eight red dots on a clock face, opacity swept clockwise from solid at 12
-  // o'clock. Mail clients strip SVG and data-URI images (Gmail especially), so
-  // each dot is drawn as a <div> whose fill is red pre-blended onto white at the
-  // mark's opacity stop — no rgba/opacity support needed, and it degrades to
-  // solid dots in Outlook. The 3×3 grid's centre cell is empty.
+  // DWELL eight-dot brand mark — the real assets/logo.svg, pre-rendered to a
+  // transparent PNG (web/assets/logo-email.png, served by the site) because
+  // mail clients strip inline SVG and data-URI images (Gmail especially).
+  // Remote PNGs ride every client's image proxy; when images are blocked the
+  // DWELL wordmark beside it still carries the header.
   function logoMark() {
-    const dot = (c) => `<td width="18" height="18" align="center" valign="middle" style="padding:0;line-height:0;font-size:0;">`
-      + `<div style="width:12px;height:12px;background:${c};border-radius:50%;line-height:12px;font-size:0;">&nbsp;</div></td>`;
-    const gap = `<td width="18" height="18" style="padding:0;line-height:0;font-size:0;">&nbsp;</td>`;
-    return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">`
-      + `<tr>${dot("#ff0d0d")}${dot("#ff0000")}${dot("#ffebeb")}</tr>`
-      + `<tr>${dot("#ff1f1f")}${gap}${dot("#ffc7c7")}</tr>`
-      + `<tr>${dot("#ff4747")}${dot("#ff7373")}${dot("#ff9e9e")}</tr>`
-      + `</table>`;
+    return `<img src="${site}/assets/logo-email.png" width="44" height="44" alt="" style="display:block;width:44px;height:44px;border:0;">`;
   }
   function button(href, label) {
     return `<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:26px auto 6px;"><tr>`
