@@ -32,7 +32,7 @@ const CREW_SIZE = 5;
 const env = (k: string, d = "") => Deno.env.get(k) ?? d;
 const SUPABASE_URL = env("SUPABASE_URL");
 function loadConfig() {
-  const siteUrl = env("SITE_URL", "https://dwell-protocol.vercel.app");
+  const siteUrl = env("SITE_URL", "https://dwellprotocol.com");
   return {
     databaseUrl: env("SUPABASE_DB_URL") || env("DATABASE_URL"),
     stripeSecretKey: env("STRIPE_SECRET_KEY"),
@@ -42,7 +42,7 @@ function loadConfig() {
     stripeConnectWebhookSecret: env("STRIPE_CONNECT_WEBHOOK_SECRET"),
     siteUrl,
     // Where Stripe/OAuth/magic-link callbacks point. Defaults to this function.
-    apiBaseUrl: env("API_BASE_URL") || (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/api` : ""),
+    apiBaseUrl: env("API_BASE_URL") || (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/dwell-api` : ""),
     corsOrigin: env("CORS_ORIGIN") || siteUrl,
     adminKey: env("ADMIN_KEY"),
     killswitch: env("KILLSWITCH") === "1",
@@ -57,7 +57,7 @@ function loadConfig() {
     referralCap: parseInt(env("REFERRAL_CAP", "10"), 10),
     affiliateRewardBps: parseInt(env("AFFILIATE_REWARD_BPS", "1000"), 10), // affiliate's cut, basis points (1000 = 10%)
     affiliateCapPeople: parseInt(env("AFFILIATE_CAP_PEOPLE", "1000"), 10), // max attributed friends per affiliate (dollar earnings uncapped)
-    giftFulfillmentEmail: env("GIFT_FULFILLMENT_EMAIL", "hello@dwell.example"),
+    giftFulfillmentEmail: env("GIFT_FULFILLMENT_EMAIL", "hello@dwellprotocol.com"),
     emailTokenTtlMs: parseInt(env("EMAIL_TOKEN_TTL_MS", "1800000"), 10),
     emailCooldownMs: parseInt(env("EMAIL_COOLDOWN_MS", "60000"), 10), // min gap between magic-link sends per email; 0 disables. DB-backed, so it holds even though the in-memory rate limiter is dropped here.
     emailIpDailyCap: parseInt(env("EMAIL_IP_DAILY_CAP", "50"), 10), // magic-link/login email sends per source IP per UTC day; 0 disables (shared-NAT/CGNAT). DB-backed replacement for the dropped per-IP limiter.
@@ -96,7 +96,7 @@ function loadConfig() {
     // ---- brand — the DWELL deployment bills and writes copy under its own name ----
     brandName: env("BRAND_NAME", "DWELL"),
     stripeProductName: env("STRIPE_PRODUCT_NAME", "DWELL ad campaign"),
-    stripeProductImage: env("STRIPE_PRODUCT_IMAGE", "https://dwell-protocol.vercel.app/og.png"),
+    stripeProductImage: env("STRIPE_PRODUCT_IMAGE", "https://dwellprotocol.com/og.png"),
   };
 }
 const config = loadConfig();
@@ -272,13 +272,13 @@ const stripe = createStripe(config.stripeSecretKey);
 // ───────────────────────────── mailer.js ───────────────────────────────────
 function createMailer(cfg: any) {
   const provider = cfg.mailProvider || "console";
-  // Per-audience senders, all on the Resend-verified contact.dwell-protocol.vercel.app domain.
+  // Per-audience senders, all on the Resend-verified contact.dwellprotocol.com domain.
   // User mail comes from hello@ with replies routed to support@; advertiser mail
   // comes from ads@. Overridable via MAIL_FROM / MAIL_FROM_ADS.
-  const userFrom = cfg.mailFrom || "DWELL <hello@dwell.example>";
-  const adsFrom = cfg.mailFromAds || "DWELL <ads@contact.dwell-protocol.vercel.app>";
-  const supportReplyTo = "support@contact.dwell-protocol.vercel.app";
-  const adsReplyTo = "ads@contact.dwell-protocol.vercel.app";
+  const userFrom = cfg.mailFrom || "DWELL <hello@dwellprotocol.com>";
+  const adsFrom = cfg.mailFromAds || "DWELL <ads@contact.dwellprotocol.com>";
+  const supportReplyTo = "support@contact.dwellprotocol.com";
+  const adsReplyTo = "ads@contact.dwellprotocol.com";
   async function send(to: string, subject: string, htmlBody: string, opts: any = {}) {
     const from = opts.from || userFrom;
     const replyTo = opts.replyTo !== undefined ? opts.replyTo : supportReplyTo;
@@ -301,7 +301,7 @@ function createMailer(cfg: any) {
   // clients; palette mirrors theme.css (Claude coral on cream). The advertiser
   // and admin notices further down keep their original plain layout on purpose. ──
   const FONT = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  const site = cfg.siteUrl || "https://dwell-protocol.vercel.app";
+  const site = cfg.siteUrl || "https://dwellprotocol.com";
   function button(href: string, label: string) {
     return `<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:26px auto 6px;"><tr>`
       + `<td align="center" bgcolor="#d97757" style="border-radius:10px;background:#d97757;background:linear-gradient(180deg,#e08a6a,#cf6b4a);">`
@@ -326,7 +326,7 @@ function createMailer(cfg: any) {
       + `<div style="font-family:${FONT};font-size:15px;line-height:1.6;color:#3d3b37;">${body}</div>${btn}${foot}`
       + `</td></tr>`
       + `<tr><td align="center" style="padding:22px 10px 6px;font-family:${FONT};font-size:12px;line-height:1.7;color:#9b988f;">`
-      + `<a href="${site}" style="color:#c15f3c;text-decoration:none;font-weight:700;">dwell-protocol.vercel.app</a>`
+      + `<a href="${site}" style="color:#c15f3c;text-decoration:none;font-weight:700;">dwellprotocol.com</a>`
       + `&nbsp;·&nbsp;<a href="${site}/terms" style="color:#9b988f;text-decoration:underline;">Terms</a>`
       + `&nbsp;·&nbsp;<a href="${site}/privacy" style="color:#9b988f;text-decoration:underline;">Privacy</a>`
       + `<br>Earn credits while you use Claude, ChatGPT &amp; Gemini.`
@@ -397,7 +397,7 @@ function createMailer(cfg: any) {
         hero: "🎉", heading: "You're on the waitlist",
         body: `<p style="margin:0 0 14px;">Thanks for joining DWELL — you're on the list. We'll email you the moment you can install it and start earning Claude credits while you use ChatGPT, Claude &amp; Gemini.</p>`
           + `<p style="margin:0;">The Chrome extension is in review right now, with the command line and desktop apps close behind.</p>`,
-        note: "You're getting this because you joined the waitlist at dwell-protocol.vercel.app. Didn't sign up? You can safely ignore this email.",
+        note: "You're getting this because you joined the waitlist at dwellprotocol.com. Didn't sign up? You can safely ignore this email.",
       })),
     sendAdvertiserReceiptEmail: (to: string, { campaignId, brand, adLine, cpmCents, impressionsTotal, budgetCents }: any) =>
       sendAds(to, "Your DWELL campaign receipt",
@@ -1162,7 +1162,7 @@ function createRepo(pool: any) {
         return u.rows[0];
       });
     },
-    // Link a device to a user (self-serve, from the dwell-protocol.vercel.app web session). Same
+    // Link a device to a user (self-serve, from the dwellprotocol.com web session). Same
     // association the magic-link verify makes — balance queries already roll up
     // "this user OR any device linked to them", so no balance merge is needed.
     async linkDeviceToUser(deviceId: string, userId: string) {
@@ -2478,7 +2478,7 @@ const CORS: Record<string, string> = {
 };
 // Allowed browser origins. Reflect the caller's Origin when it's on our
 // allowlist (apex + www variants of SITE_URL, plus any CORS_ORIGIN entries) so
-// both https://dwell-protocol.vercel.app and https://www.dwell-protocol.vercel.app pass preflight.
+// both https://dwellprotocol.com and https://www.dwellprotocol.com pass preflight.
 const ALLOWED_ORIGINS: Set<string> = (() => {
   const set = new Set<string>();
   const add = (o: string) => { const v = (o || "").trim().replace(/\/+$/, ""); if (v) set.add(v); };
@@ -2611,7 +2611,7 @@ route("GET", "/v1/leaderboard", async () => {
 
 // ── devices & events ──
 route("POST", "/v1/devices/register", async () => json(200, await repo.registerDevice()));
-// Self-serve device→account link: the extension's dwell-protocol.vercel.app bridge posts the
+// Self-serve device→account link: the extension's dwellprotocol.com bridge posts the
 // device creds + the site's web session; we attach the device to that user and
 // enroll them as an affiliate so the popup's crew lights up. No magic link.
 route("POST", "/v1/devices/link", async (ctx: any) => {
@@ -2791,7 +2791,7 @@ route("POST", "/v1/checkout", async (ctx: any) => {
     payment_intent_data: { receipt_email: email },
     // Brand-configurable so the DWELL deployment bills under its own Stripe
     // product line, even before its keys move to their own account.
-    line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: budgetCents, product_data: { name: config.stripeProductName || "DWELL ad campaign", description: `${brand ? brand + " — " : ""}"${adLine}" → ${url} · ${impressions.toLocaleString("en-US")} impressions @ $${(cpmCents / 100).toFixed(2)} CPM`, images: [config.stripeProductImage || "https://dwell-protocol.vercel.app/og.png"] } } }],
+    line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: budgetCents, product_data: { name: config.stripeProductName || "DWELL ad campaign", description: `${brand ? brand + " — " : ""}"${adLine}" → ${url} · ${impressions.toLocaleString("en-US")} impressions @ $${(cpmCents / 100).toFixed(2)} CPM`, images: [config.stripeProductImage || "https://dwellprotocol.com/og.png"] } } }],
     metadata: { campaign_id: campaignId },
     success_url: `${config.siteUrl}/?checkout=success`,
     cancel_url: `${config.siteUrl}/?checkout=cancelled`,
@@ -2801,7 +2801,7 @@ route("POST", "/v1/checkout", async (ctx: any) => {
 });
 
 // ── Pre-account email capture (launch waitlist) ──
-// Public, no-auth: someone types their email under the hero on dwell-protocol.vercel.app (or a
+// Public, no-auth: someone types their email under the hero on dwellprotocol.com (or a
 // lander) to be told when they can install and start earning. We store the bare
 // email (no account, no magic link), then — best-effort, off the hot path — send
 // a confirmation and mirror them into Resend for the launch broadcast.

@@ -34,15 +34,14 @@ JWTs.
 | `RESEND_API_KEY` + `MAIL_PROVIDER=resend` + `MAIL_FROM` | sending login / verify / fulfillment email |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in |
 | `APPLE_CLIENT_ID` / `APPLE_TEAM_ID` / `APPLE_KEY_ID` / `APPLE_PRIVATE_KEY` | Apple sign-in |
-| `SITE_URL` | redirect targets (defaults to `https://dwell-protocol.vercel.app`) |
-| `API_BASE_URL` | optional; defaults to `${SUPABASE_URL}/functions/v1/api` |
+| `SITE_URL` | redirect targets (defaults to `https://dwellprotocol.com`) |
+| `API_BASE_URL` | optional; defaults to `${SUPABASE_URL}/functions/v1/dwell-api` |
 
 ## External console changes that go with this migration
 
-The API's origin moved to Supabase (off the old Fly host). `api.dwell-protocol.vercel.app` still
-resolves — `vercel.json` rewrites it onto the Edge Function — but pin OAuth and
-Stripe to the **canonical** function base, which is what the function emits in its
-own redirect URIs (`https://<ref>.supabase.co/functions/v1/api`):
+Pin OAuth and Stripe to the **canonical** function base, which is what the
+function emits in its own redirect URIs
+(`https://<ref>.supabase.co/functions/v1/dwell-api`):
 
 - **Google / Apple OAuth** redirect URIs →
   `…/v1/auth/google/callback` and `…/v1/auth/apple/callback`.
