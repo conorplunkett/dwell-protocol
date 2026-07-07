@@ -3114,8 +3114,22 @@ route("POST", "/v1/me/affiliate/invite", async (ctx: any) => {
   const aff = await repo.getOrCreateAffiliate(user.id);
   const link = `${config.siteUrl}/portal.html?ref=${aff.code}`;
   const invite = await repo.createReferralInvite(user.id, email, aff.code);
-  await mailer.sendCrewInviteEmail(email, { inviterEmail: user.email, link, rewardPct: config.affiliateRewardBps / 100 });
-  return json(200, { ok: true, sent: true, invite: { email: invite.email, status: invite.status, createdAt: invite.sent_at } });
+  // Email delivery is best-effort — the invite row is the source of truth. A
+  // mail-provider rejection must not fail the request (see /v1/web/affiliate/invite).
+  let sent = true;
+  try {
+    await mailer.sendCrewInviteEmail(email, { inviterEmail: user.email, link, rewardPct: config.affiliateRewardBps / 100 });
+  } catch (err: any) {
+    sent = false;
+    console.error("[dwell] crew invite email failed:", err?.message);
+    try {
+      await pool.query(
+        "insert into diag_errors (method, path, message, stack) values ($1,$2,$3,$4)",
+        ["POST", "/v1/me/affiliate/invite", String(err?.message || err), String(err?.stack || "")]
+      );
+    } catch (_e) { /* logging is best-effort too */ }
+  }
+  return json(200, { ok: true, sent, invite: { email: invite.email, status: invite.status, createdAt: invite.sent_at } });
 });
 
 // ── gift card catalog & device-scoped redemption ──
@@ -3435,8 +3449,26 @@ route("POST", "/v1/web/affiliate/invite", async (ctx: any) => {
   const aff = await repo.getOrCreateAffiliate(user.id);
   const link = `${config.siteUrl}/portal.html?ref=${aff.code}`;
   const invite = await repo.createReferralInvite(user.id, email, aff.code);
-  await mailer.sendCrewInviteEmail(email, { inviterEmail: user.email, link, rewardPct: config.affiliateRewardBps / 100 });
-  return json(200, { ok: true, sent: true, invite: { email: invite.email, status: invite.status, createdAt: invite.sent_at } });
+  // The invite row above is the onboarding gate and the source of truth: a
+  // friend never has to act for the inviter to progress. Delivering the email
+  // is best-effort — if the mail provider rejects it (e.g. an unverified
+  // sending domain), record it for the admin diag but don't fail the request,
+  // or the user is stranded on onboarding behind an "internal error" for an
+  // invite that was actually saved.
+  let sent = true;
+  try {
+    await mailer.sendCrewInviteEmail(email, { inviterEmail: user.email, link, rewardPct: config.affiliateRewardBps / 100 });
+  } catch (err: any) {
+    sent = false;
+    console.error("[dwell] crew invite email failed:", err?.message);
+    try {
+      await pool.query(
+        "insert into diag_errors (method, path, message, stack) values ($1,$2,$3,$4)",
+        ["POST", "/v1/web/affiliate/invite", String(err?.message || err), String(err?.stack || "")]
+      );
+    } catch (_e) { /* logging is best-effort too */ }
+  }
+  return json(200, { ok: true, sent, invite: { email: invite.email, status: invite.status, createdAt: invite.sent_at } });
 });
 // Influencer upgrade application: attach socials to request a custom rate /
 // uncapped earnings. Keeps the user's active base 10% — no status downgrade.
