@@ -1,0 +1,37 @@
+name: Release macOS DMG
+
+# Builds the Dwell Sponsor Overlay (ad-hoc signed, universal) and publishes it
+# as a GitHub Release, which is what the site's /download/mac redirect serves:
+#   https://github.com/conorplunkett/dwell-protocol/releases/latest/download/SponsorOverlay.dmg
+# Manual dispatch only — run it whenever the desktop app should ship. Marking
+# the release latest is what flips the download link to the new build.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. desktop-v0.8.0)"
+        required: true
+        default: "desktop-v0.8.0"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: dwell/desktop/macos/SponsorOverlay
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build + package (ad-hoc signed, universal)
+        run: BUILD_NUMBER="${{ github.run_number }}" DMG_FANCY=0 ./packaging/bundle.sh
+      - name: Create release and upload the DMG
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.tag }}" \
+            --title "Dwell Sponsor Overlay ${{ inputs.tag }}" \
+            --notes "Ad-hoc signed macOS build (Apple silicon + Intel, macOS 13+). First launch: right-click the app → Open. Served at dwellprotocol.com/download/mac." \
+            --latest \
+            build/SponsorOverlay.dmg build/SponsorOverlay.zip
