@@ -77,7 +77,7 @@
   --ease-pop: cubic-bezier(0.5, 1.5, 0.4, 1);
 }
 
-/* The "F$" brand mark — coral wordmark on the accent gradient (from base.css). */
+/* The "D$" brand mark — coral wordmark on the accent gradient (from base.css). */
 .logo {
   width: 30px; height: 30px; border-radius: var(--radius-sm);
   background: linear-gradient(180deg, var(--accent-grad-a), var(--accent-grad-b));

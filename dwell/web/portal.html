@@ -23,7 +23,7 @@
        portal.js never calls it — every view renders from seeded mock data. -->
   <meta name="dwell-api" content="https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/dwell-api" />
   <title>DWELL — Portal</title>
-  <meta name="description" content="Sign in to see your DWELL points — earned ad value from the sponsored line. 1,000 points convert to 12,000 $DWELL at token launch." />
+  <meta name="description" content="Sign in to see your dwells — earned ad value from the sponsored line. 1,000 dwells convert to 12,000 $DWELL at token launch." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -59,17 +59,17 @@
       </header>
 
       <div class="portal-hero">
-        <h1 class="portal-h1">Sign in to see your DWELL points.</h1>
+        <h1 class="portal-h1">Sign in to see your dwells.</h1>
         <p class="portal-lead">
-          Your private dashboard shows points credited while your AI assistant
+          Your private dashboard shows dwells credited while your AI assistant
           was thinking and recent activity.
-          1,000 points convert to 12,000 $DWELL at token launch.
+          1,000 dwells convert to 12,000 $DWELL at token launch.
         </p>
       </div>
 
       <footer class="portal-footer">
         <span>DWELL portal</span>
-        <span>1,000 points convert to 12,000 $DWELL at token launch</span>
+        <span>1,000 dwells convert to 12,000 $DWELL at token launch</span>
       </footer>
     </div>
 
@@ -167,7 +167,7 @@
 
       <footer class="portal-footer">
         <span>DWELL portal</span>
-        <span>1,000 points convert to 12,000 $DWELL at token launch</span>
+        <span>1,000 dwells convert to 12,000 $DWELL at token launch</span>
       </footer>
     </div>
 
@@ -255,7 +255,7 @@
 
       <footer class="portal-footer">
         <span>DWELL portal</span>
-        <span>1,000 points convert to 12,000 $DWELL at token launch</span>
+        <span>1,000 dwells convert to 12,000 $DWELL at token launch</span>
       </footer>
     </div>
 
@@ -349,7 +349,7 @@
       </button>
       <button class="dash-tab" data-section="cashout" type="button" role="tab" aria-selected="false">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M3.5 10h17"/><path d="M7 14.5h4"/></svg></span>
-        <span class="dash-tab-label">Cash out</span>
+        <span class="dash-tab-label">Redeem</span>
       </button>
       <button class="dash-tab" data-section="install" type="button" role="tab" aria-selected="false">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4.5 20.5h15"/></svg></span>
@@ -362,8 +362,8 @@
       <section class="portal-card" id="earnings-view">
         <div class="balance-row">
           <div>
-            <span class="eyebrow">DWELL points balance</span>
-            <div class="balance" id="balance">0 <span class="balance-unit">points</span></div>
+            <span class="eyebrow">Dwells balance</span>
+            <div class="balance" id="balance">0 <span class="balance-unit">dwells</span></div>
             <div class="balance-sub" id="balance-usd">= $0.00 of earned ad value</div>
             <div class="balance-sub" id="balance-email"></div>
           </div>
@@ -372,25 +372,25 @@
         <h2 class="earn-title">How much you've earned with DWELL</h2>
         <p class="portal-copy">
           Each sponsored line you watch while your AI assistant thinks credits
-          you the viewer's 60% share of that campaign's pool in DWELL points.
-          1,000 points convert to 12,000 $DWELL at token launch.
+          you the viewer's 60% share of that campaign's pool in dwells.
+          1,000 dwells convert to 12,000 $DWELL at token launch.
         </p>
 
         <div class="earn-stats">
           <div class="earn-stat">
             <span class="es-label">Today</span>
             <span class="es-num" id="earn-today">0</span>
-            <span class="es-sub">points credited today</span>
+            <span class="es-sub">dwells credited today</span>
           </div>
           <div class="earn-stat">
             <span class="es-label">This month</span>
             <span class="es-num" id="earn-month">0</span>
-            <span class="es-sub">points month-to-date</span>
+            <span class="es-sub">dwells month-to-date</span>
           </div>
           <div class="earn-stat">
             <span class="es-label">Lifetime</span>
             <span class="es-num" id="earn-lifetime">0</span>
-            <span class="es-sub">all-time points</span>
+            <span class="es-sub">all-time dwells</span>
           </div>
         </div>
 
@@ -398,7 +398,7 @@
           <div class="ecc-head">
             <div>
               <h3 class="ecc-title">Earnings activity</h3>
-              <p class="ecc-sub">Points credited over the selected window.</p>
+              <p class="ecc-sub">Dwells credited over the selected window.</p>
             </div>
             <div class="earn-window" id="earn-window" role="group" aria-label="Chart window">
               <button class="ew-btn" data-window="24h" type="button">24h</button>
@@ -407,12 +407,12 @@
             </div>
           </div>
           <div class="earn-chart" id="earn-chart"><!-- SVG drawn by portal.js --></div>
-          <p class="earn-chart-foot" id="earn-chart-foot">0 points across 0 events</p>
+          <p class="earn-chart-foot" id="earn-chart-foot">0 dwells across 0 events</p>
         </div>
 
         <div class="earn-surfaces-card">
           <h3 class="ess-title">Where you're earning</h3>
-          <p class="ess-sub">Each surface lights up once it sends its first points credit.</p>
+          <p class="ess-sub">Each surface lights up once it sends its first dwells credit.</p>
           <div class="earn-surfaces">
             <div class="earn-surface">
               <span class="es-surface-name">Chrome</span>
@@ -438,7 +438,7 @@
         <div class="act-head">
           <div>
             <span class="eyebrow">Activity ledger</span>
-            <h2 class="earn-title">Your points entries</h2>
+            <h2 class="earn-title">Your dwells ledger</h2>
             <p class="portal-copy">
               Ledger entries from this account, retrieved on demand. Search and
               filter happen locally on the retrieved rows.
@@ -468,65 +468,87 @@
         <div class="act-pager" id="act-pager" hidden></div>
       </section>
 
-      <!-- ── CASH OUT ── -->
+      <!-- ── REDEEM ── -->
       <section class="portal-card" id="cashout-view" hidden>
         <div class="balance-row">
           <div>
-            <span class="eyebrow">Your points</span>
-            <div class="balance" id="co-points">0 <span class="balance-unit">points</span></div>
+            <span class="eyebrow">Your dwells</span>
+            <div class="balance" id="co-points">0 <span class="balance-unit">dwells</span></div>
             <div class="balance-sub" id="co-usd">= $0.00 of earned ad value</div>
           </div>
         </div>
 
-        <h2>Cash out</h2>
+        <h2>Redeem your dwells</h2>
         <p class="portal-copy">
-          DWELL points convert to $DWELL at token launch at a fixed,
-          pre-announced rate — 1,000 points = 12,000 $DWELL. Their value floats
-          with the market. Cashing out opens at token launch; until then your
-          points accrue here and stay recorded on the ledger.
+          Dwells convert to $DWELL at token launch at a fixed, pre-announced
+          rate — 1,000 dwells = 12,000 $DWELL; value floats with the market.
+          You can also redeem now: trade dwells for a Claude gift card or cash
+          out to your bank through Stripe. Gift cards and cash carry a 10%
+          protocol fee; the $DWELL claim does not.
         </p>
 
-        <!-- (a) Points summary card — same stat tiles as the Earnings tab. -->
-        <div class="earn-stats">
-          <div class="earn-stat">
-            <span class="es-label">Points balance</span>
-            <span class="es-num" id="co-sum-points">0</span>
-            <span class="es-sub">DWELL points</span>
+        <!-- (a) Claude gift cards — live. Grid rendered by portal.js from
+             GET /v1/giftcards; prices shown in dwells at face + the protocol
+             fee, mirroring exactly what POST /v1/web/redemptions charges. -->
+        <div class="redeem-block" id="gift-block">
+          <div class="rb-head">
+            <h3 class="rb-title">Claude gift card</h3>
+            <span class="rb-badge" id="gift-fee-badge">includes 10% protocol fee</span>
           </div>
-          <div class="earn-stat">
-            <span class="es-label">Ad value watched</span>
-            <span class="es-num" id="co-sum-usd">$0.00</span>
-            <span class="es-sub">earn basis — not a cash balance</span>
+          <p class="portal-copy">
+            Pick a plan and term. The gift card is emailed to your account
+            address within <strong>48 hours</strong>, and the dwells are
+            deducted when you redeem.
+          </p>
+          <div class="gift-menu" id="gift-menu"><!-- rendered by portal.js --></div>
+          <div class="redeem-foot">
+            <div class="redeem-delivery">
+              <span class="rd-text">
+                <span class="rd-label">Gift card delivered to</span>
+                <span class="rd-email" id="recipient-email"></span>
+              </span>
+            </div>
+            <div class="redeem-summary" id="gift-summary">Select a gift above to continue.</div>
+            <button class="btn-accent" id="redeem-btn" type="button" disabled>Redeem</button>
           </div>
-          <div class="earn-stat">
-            <span class="es-label">Converts to</span>
-            <span class="es-num">×12</span>
-            <span class="es-sub">$DWELL per point at launch</span>
-          </div>
+          <p class="redeem-result" id="redeem-result" hidden></p>
         </div>
 
-        <!-- (b) Future cash-out flow — preview only; no live calls behind it. -->
+        <!-- (b) Cash payout via Stripe — live. Three states rendered by
+             portal.js from GET /v1/web/payouts: set-up, in-review, enabled. -->
+        <div class="redeem-block" id="payout-block">
+          <div class="rb-head">
+            <h3 class="rb-title">Cash out to your bank</h3>
+            <span class="rb-badge" id="payout-fee-badge">10% protocol fee · $10 minimum</span>
+          </div>
+          <div id="payout-body"><!-- rendered by portal.js --></div>
+          <div class="payout-history" id="payout-history" hidden></div>
+          <p class="redeem-result" id="payout-result" hidden></p>
+        </div>
+
+        <!-- (c) $DWELL claim — preview until token launch; no live calls. -->
         <div class="launch-preview">
           <div class="lp-head">
-            <h3 class="lp-title">How cashing out will work</h3>
+            <h3 class="lp-title">Claim $DWELL</h3>
             <span class="lp-badge">Available at token launch</span>
           </div>
           <ol class="lp-steps">
-            <li><strong>Claim $DWELL to your wallet.</strong> Your points convert to
-              DWELL tokens at the published rate; the claim happens onchain, on
-              Solana — into an email-based wallet created for you, or one you
-              connect yourself.</li>
-            <li><strong>Redeem for Claude credits.</strong> Points redeem in the
-              portal, valued at the market price at redemption.</li>
-            <li><strong>Cash out via Stripe.</strong> Same mechanic: points redeem
-              at the market price at redemption, paid out through Stripe.</li>
+            <li><strong>Claim $DWELL to your wallet.</strong> Your dwells convert to
+              DWELL tokens at the published rate — no fee on the claim; it
+              happens onchain, on Solana, into an email-based wallet created for
+              you or one you connect yourself.</li>
+            <li><strong>Spend or hold.</strong> Claimed $DWELL is yours onchain —
+              hold it, swap it, or move it anywhere.</li>
+            <li><strong>Redemptions revalue.</strong> After launch, gift cards and
+              cash-outs are valued at the market price at redemption instead of
+              the earn basis shown today.</li>
           </ol>
         </div>
 
-        <!-- (c) Factual note on transferability. -->
+        <!-- (d) Factual note on transferability. -->
         <p class="cashout-note">
-          DWELL points are non-transferable until token launch. Nothing to do
-          today — your points are already recorded on the ledger.
+          Dwells themselves are non-transferable; redeeming spends them and is
+          recorded on the ledger like every other entry.
         </p>
       </section>
 
@@ -539,7 +561,7 @@
           <h2>Earn from referrals</h2>
           <p class="portal-copy">
             You earn <strong id="aff-pct">10%</strong> of every friend's earnings,
-            forever — credited as DWELL points, for up to
+            forever — credited as dwells, for up to
             <span id="aff-cap">1,000 friends</span>. That 10% is the referrer share
             carved from each campaign's pool (viewer 60%, referrer 10%,
             protocol 30% — the referrer share joins the treasury when there's
@@ -560,7 +582,7 @@
               </div>
               <div class="ref-stat">
                 <span class="rs-num" id="aff-earned">0</span>
-                <span class="rs-label">points earned</span>
+                <span class="rs-label">dwells earned</span>
               </div>
               <div class="ref-stat">
                 <span class="rs-num" id="aff-remaining">1,000</span>
@@ -629,7 +651,7 @@
       <!-- ── INSTALL ── -->
       <section class="portal-card" id="install-view" hidden>
         <!-- "Active" status — a greyed brand-mark chip that fills into the colored logo
-             the moment this account earns its first DWELL points from any service.
+             the moment this account earns its first dwells from any service.
              Per-service activation comes from GET /v1/web/sources (see portal.js). -->
         <div class="install-hero">
           <span class="logo install-hero-logo is-inactive" id="install-hero-logo" aria-hidden="true"><img src="assets/logo.svg" alt="" /></span>
@@ -641,8 +663,8 @@
 
         <h3 class="install-h">Set up DWELL</h3>
         <p class="portal-copy">
-          Earning is in DWELL points, wherever you use your assistant. Each logo
-          turns from grey to color once you earn your first points from that
+          Earning is in dwells, wherever you use your assistant. Each logo
+          turns from grey to color once you earn your first dwells from that
           service.
         </p>
 
@@ -698,11 +720,11 @@
     <!-- Points strip — points-phase accounting, in one line. Fed by
          GET /v1/web/points/summary with a seeded mock fallback (see portal.js). -->
     <div class="reserve-strip">
-      <span class="reserve-pill"><strong id="reserve-points">3,912,400</strong> points outstanding across all accounts</span>
+      <span class="reserve-pill"><strong id="reserve-points">3,912,400</strong> dwells outstanding across all accounts</span>
     </div>
 
     <footer class="footer">
-      <p>© 2026 DWELL · 1,000 points convert to 12,000 $DWELL at token launch · Points are non-transferable until token launch</p>
+      <p>© 2026 DWELL · 1,000 dwells convert to 12,000 $DWELL at token launch · Dwells are non-transferable until token launch</p>
     </footer>
 
   </div><!-- /portal-page -->
@@ -724,7 +746,7 @@
         <li><strong>Or connect your own</strong> — use an existing wallet with the portal instead.</li>
       </ul>
       <p class="modal-body">
-        Until launch, points accrue to your account and stay recorded on the
+        Until launch, dwells accrue to your account and stay recorded on the
         ledger.
       </p>
       <button class="btn-accent" id="wallet-modal-close" type="button">Got it</button>

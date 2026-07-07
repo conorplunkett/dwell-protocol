@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DWELL Products — install the Chrome extension, terminal client &amp; macOS app</title>
+  <meta name="description" content="Three ways to run DWELL: the Chrome extension, the @dwell-protocol/terminal client for Claude Code, and the macOS Sponsor Overlay. One sponsored line shows while your AI thinks — and you earn dwells for watching it." />
+  <link rel="canonical" href="https://dwellprotocol.com/products" />
+  <meta name="theme-color" content="#ff0000" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="DWELL" />
+  <meta property="og:url" content="https://dwellprotocol.com/products" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:title" content="DWELL Products — earn dwells everywhere your AI thinks" />
+  <meta property="og:description" content="The Chrome extension, the terminal client for Claude Code, and the macOS Sponsor Overlay. One sponsored line while the AI thinks — the person watching earns dwells." />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="DWELL Products — earn dwells everywhere your AI thinks" />
+  <meta name="twitter:description" content="The Chrome extension, the terminal client for Claude Code, and the macOS Sponsor Overlay. One sponsored line while the AI thinks — the person watching earns dwells." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="assets/favicon.svg" />
+
+  <!-- Page-local styles. The Products page reuses the shared design system
+       (theme.css tokens + the .nav / .eyebrow / .btn-green / .btn-outline /
+       .faq accordion / .footer primitives from styles.css) and adds only
+       what's unique to it: the priority-ordered product blocks, the step
+       grids, the terminal mock, and the macOS install graphics. Depth stays
+       Kinetic Broadcast: 1px --line borders and tonal separation, red only
+       for actions and accents. -->
+  <style>
+    .prod-wrap { max-width: 940px; margin: 8px auto 0; padding: 0 24px 96px; }
+
+    .prod-hero { text-align: center; max-width: 680px; margin: 30px auto 8px; }
+    .prod-hero .eyebrow { display: block; margin-bottom: 0; color: var(--accent-d); }
+    .prod-hero h1 { font-size: clamp(28px, 7vw, 44px); font-weight: 900; letter-spacing: -.035em; line-height: 1.06; margin: 12px 0 12px; }
+    .prod-hero p { color: var(--ink-2); font-size: 17px; line-height: 1.6; margin: 0 auto; max-width: 580px; }
+    .prod-hero p strong { color: var(--ink); }
+
+    /* In-page chip nav — jumps to each product, in priority order. */
+    .prod-jump { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 24px 0 6px; }
+    .prod-jump a {
+      font-family: var(--mono); font-size: 12.5px; font-weight: 600; letter-spacing: .02em;
+      color: var(--gray); padding: 8px 15px; border: 1px solid var(--line); border-radius: var(--radius-pill);
+      background: #fff; transition: border-color .15s, background .15s, color .15s;
+    }
+    .prod-jump a:hover { border-color: var(--accent); color: var(--accent-d); background: rgba(var(--accent-rgb),.04); }
+    .prod-jump a .rank { color: var(--gray-2); margin-right: 6px; }
+
+    /* ── Product block ── one per surface, priority encoded in emphasis ── */
+    .product {
+      position: relative; scroll-margin-top: 84px;
+      border: 1px solid var(--line); border-radius: var(--radius-3xl); background: #fff;
+      padding: 30px 30px 32px; margin-top: 26px;
+      box-shadow: var(--shadow-card);
+    }
+    /* Priority #1 — Chrome: heaviest. Red top rule, larger heading, faint tint. */
+    .product.is-primary {
+      border-color: rgba(var(--accent-rgb),.28);
+      background: linear-gradient(180deg, rgba(var(--accent-rgb),.03), #fff);
+    }
+    .product.is-primary::before {
+      content: ""; position: absolute; left: 24px; right: 24px; top: 0; height: 3px;
+      border-radius: 0 0 3px 3px; background: linear-gradient(90deg, var(--accent-grad-a), var(--accent-grad-b));
+    }
+    .product.is-primary .prod-title { font-size: clamp(24px, 5vw, 32px); }
+
+    .prod-top { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .prod-ico { flex: none; width: 52px; height: 52px; border-radius: var(--radius-xl); display: grid; place-items: center; background: var(--bg-tint); color: var(--ink); }
+    .prod-ico svg { width: 28px; height: 28px; display: block; }
+    .product.is-primary .prod-ico { background: rgba(var(--accent-rgb),.08); color: var(--accent-d); }
+    .prod-headings { flex: 1 1 280px; min-width: 0; }
+    .prod-rank { font-family: var(--mono); font-size: 11.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--accent-d); font-weight: 700; }
+    .prod-title { font-size: clamp(21px, 4vw, 26px); font-weight: 800; letter-spacing: -.025em; margin: 4px 0 6px; }
+    .prod-lead { color: var(--ink-2); font-size: 15.5px; line-height: 1.6; margin: 0; }
+    .prod-lead code { font-family: var(--mono); font-size: 13.5px; background: var(--bg-tint); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1px 5px; }
+    .prod-badge {
+      position: absolute; top: 24px; right: 24px; font-family: var(--mono); font-size: 11px; font-weight: 700;
+      letter-spacing: .05em; text-transform: uppercase; padding: 6px 11px; border-radius: var(--radius-pill);
+      background: var(--bg-tint); color: var(--gray); border: 1px solid var(--line);
+    }
+
+    /* ── Step grid (max 3 steps per product) ── */
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 24px 0 4px; }
+    .steps.steps-2 { grid-template-columns: repeat(2, 1fr); }
+    .step { border: 1px solid var(--line); border-radius: var(--radius-xl); padding: 16px 16px 18px; background: #fff; }
+    .step-num {
+      width: 26px; height: 26px; border-radius: var(--radius-sm); display: grid; place-items: center;
+      font-family: var(--mono); font-weight: 700; font-size: 13px;
+      background: var(--accent); color: var(--accent-ink); margin-bottom: 10px;
+    }
+    .product.is-secondary .step-num, .product.is-tertiary .step-num { background: var(--ink); }
+    .step-title { font-size: 15px; font-weight: 700; margin: 0 0 5px; letter-spacing: -.01em; }
+    .step-body { font-size: 13.5px; color: var(--gray); line-height: 1.55; margin: 0; }
+    .step-body code { font-family: var(--mono); font-size: 12.5px; background: var(--bg-tint); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1px 5px; color: var(--ink); }
+    .step-body a { color: var(--link); font-weight: 600; }
+
+    .prod-cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 22px; }
+    .prod-cta .note { font-size: 13px; color: var(--gray); line-height: 1.5; }
+    .prod-cta .note strong { color: var(--accent-d); }
+    .prod-cta .note code { font-family: var(--mono); font-size: 12px; background: var(--bg-tint); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1px 5px; color: var(--ink); }
+    .prod-cta a.text-link { font-size: 14px; font-weight: 600; color: var(--link); }
+
+    /* Terminal mock — same preview as the home page's Surfaces section
+       (index.html "Surface 02 — CLI"), markup + palette mirrored here so the
+       terminal product shows the real sponsored-line demo. */
+    .prod-term { margin: 18px 0 0; }
+    .prod-term .win { border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-card); border: 1px solid var(--line); }
+    .prod-term .win.term { background: #0c0e12; border-color: #1c1f24; font-family: var(--mono); }
+    .prod-term .win .chrome { display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid; }
+    .prod-term .win.term .chrome { background: #0f1217; border-color: #1c1f24; }
+    .prod-term .win .chrome i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+    .prod-term .win .chrome .label { margin-left: 10px; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; color: #5b626e; }
+    .prod-term .termpad { padding: 22px 22px 20px; font-size: 13px; line-height: 1.7; color: #c7ccd6; }
+    .prod-term .termpad .status { color: var(--accent); }
+    .prod-term .termpad .status .muted { color: #6b727e; }
+    .prod-term .termpad .divider { border: 0; border-top: 1px solid #20242b; margin: 16px 0; }
+    .prod-term .termpad .prompt { display: flex; align-items: center; gap: 10px; color: #e9ecf2; }
+    .prod-term .termpad .prompt .chev { color: #e9ecf2; }
+    .prod-term .cursor { display: inline-block; width: 9px; height: 17px; background: #e9ecf2; animation: blink 1.1s steps(1) infinite; vertical-align: middle; }
+    .prod-term .termpad .adline { margin-top: 16px; }
+    .prod-term .termpad .adline .ad { color: var(--ov-tag-text); }
+    .prod-term .termpad .adline a { color: #7c84f0; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+
+    /* ── macOS install graphics (illustrated, CSS/SVG — no real screenshots) ── */
+    .step.has-art { padding-bottom: 14px; }
+    .mac-art { width: 100%; height: 96px; margin: 12px 0 2px; border-radius: var(--radius-lg); background: var(--bg-tint); border: 1px solid var(--line); display: block; }
+    .mac-art svg { width: 100%; height: 100%; display: block; }
+    /* SVG presentation attributes can't read CSS var(), so palette colors +
+       fonts for the install graphics are applied via these classes instead of
+       raw hex. (Genuinely non-palette macOS-illustration colors — traffic
+       lights, the blue Applications folder — stay literal, like the terminal
+       mock's traffic lights.) */
+    .mac-art text { font-family: var(--sans); }
+    .mac-art .mono { font-family: var(--mono); }
+    .mac-art .e-line { stroke: var(--line); }
+    .mac-art .f-tint { fill: var(--bg-tint); }
+    .mac-art .f-acc { fill: var(--accent); }
+    .mac-art .s-acc { stroke: var(--accent); }
+    .mac-art .f-acc-soft { fill: var(--accent); opacity: .18; }
+    .mac-art .s-gray2 { stroke: var(--gray-2); }
+    .mac-art .f-gray { fill: var(--gray); }
+    .mac-art .f-ink { fill: var(--ink); }
+
+    .back { display: inline-block; margin-top: 40px; font-size: 14px; color: var(--link); font-weight: 600; }
+
+    /* FAQ — the accordion itself (.faq-item / .faq-q / .faq-a / .faq-lead)
+       comes from styles.css; only the section heading, inline code, and link
+       color are page-local. */
+    .faq { scroll-margin-top: 84px; }
+    .faq > h2 { font-size: clamp(24px, 5vw, 32px); font-weight: 800; letter-spacing: -.03em; margin: 6px 0 6px; }
+    .faq .faq-sub { font-size: 15px; color: var(--gray); line-height: 1.6; margin: 0 0 8px; max-width: 560px; }
+    .faq-q code { font-family: var(--mono); font-size: 17px; font-weight: 700; }
+    .faq-lead code { font-family: var(--mono); font-size: 13px; background: var(--bg-tint); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1px 5px; color: var(--ink); }
+    .faq-lead a { color: var(--link); font-weight: 600; }
+
+    @media (max-width: 640px) {
+      /* .steps-2 needs its own rule here — its two-column desktop rule is more
+         specific than plain .steps, so it wouldn't collapse otherwise. */
+      .steps, .steps.steps-2 { grid-template-columns: 1fr; }
+      .product { padding: 24px 18px 26px; border-radius: var(--radius-xl); }
+      .prod-badge { position: absolute; top: 18px; right: 18px; }
+      .faq-q { font-size: 18px; }
+      .faq-q code { font-size: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- NAV — same segmented control as the lander and tokenomics pages. -->
+  <header class="nav">
+    <a class="brand" href="/">
+      <span class="logo"><img src="assets/logo.svg" alt="" /></span>
+      <span class="brand-name">$DWELL</span>
+    </a>
+    <nav class="nav-btns" aria-label="Primary">
+      <a href="/products" class="navbtn is-active" aria-current="page">Products</a>
+      <a href="/tokenomics" class="navbtn">Tokenomics</a>
+      <a href="/portal" class="navbtn"><span class="nav-txt-opt">Open </span>Portal</a>
+      <a href="/#advertisers" class="navbtn navbtn-cta">Advertise</a>
+    </nav>
+  </header>
+
+  <main class="prod-wrap">
+    <div class="prod-hero">
+      <span class="eyebrow">Products</span>
+      <h1>Earn dwells everywhere your AI thinks.</h1>
+      <p>
+        DWELL shows one sponsored line while your AI assistant is thinking — and pays
+        you in <strong>dwells</strong> for watching it
+        (1,000&nbsp;dwells&nbsp;=&nbsp;$1.00 of earned ad value). Pick where you work
+        and install in minutes. No account needed to start.
+      </p>
+    </div>
+
+    <nav class="prod-jump" aria-label="Jump to a product">
+      <a href="#chrome"><span class="rank">01</span> Chrome extension</a>
+      <a href="#claude-code"><span class="rank">02</span> Terminal</a>
+      <a href="#desktop"><span class="rank">03</span> Desktop</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+
+    <!-- ═══════════ 01 · CHROME EXTENSION — top priority ═══════════ -->
+    <section class="product is-primary" id="chrome">
+      <span class="prod-badge">v0.8.0 · In review</span>
+      <div class="prod-top">
+        <span class="prod-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3.4"/>
+            <path d="M12 8.6h8.4M9 13.5 4.8 6.3M15 13.5l-4.2 7.2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <div class="prod-headings">
+          <span class="prod-rank">01 · Browser</span>
+          <h2 class="prod-title">Dwell Protocol — Chrome extension</h2>
+          <p class="prod-lead">
+            Works inside <strong>ChatGPT, Claude &amp; Gemini</strong> in your browser.
+            Free, installs in seconds, reads none of your prompts.
+          </p>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <span class="step-num">1</span>
+          <h3 class="step-title">Add to Chrome</h3>
+          <p class="step-body">Open the Chrome Web Store listing and click <strong>Add to Chrome</strong> to confirm.</p>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <h3 class="step-title">Open your AI</h3>
+          <p class="step-body">Head to <strong>ChatGPT</strong>, <strong>Claude</strong>, or <strong>Gemini</strong> and ask anything.</p>
+        </div>
+        <div class="step">
+          <span class="step-num">3</span>
+          <h3 class="step-title">Earn dwells</h3>
+          <p class="step-body">One sponsored line shows while it thinks and you earn dwells. Link an email in your <a href="/portal">portal</a> when you want to redeem.</p>
+        </div>
+      </div>
+
+      <div class="prod-cta">
+        <a href="#" class="btn-green" aria-disabled="true">
+          <svg class="btn-chrome" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+            <circle cx="12" cy="12" r="3.4" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 8.6h8.4M9 13.5 4.8 6.3M15 13.5l-4.2 7.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          Add to Chrome
+        </a>
+        <span class="note"><strong>In Chrome Web Store review</strong> — link goes live when approved.</span>
+        <a class="text-link" href="/portal">Open your portal →</a>
+      </div>
+    </section>
+
+    <!-- ═══════════ 02 · TERMINAL — secondary ═══════════ -->
+    <section class="product is-secondary" id="claude-code">
+      <div class="prod-top">
+        <span class="prod-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2.5"/>
+            <path d="M7.5 9.5 10.5 12l-3 2.5"/>
+            <path d="M13 14.5h4"/>
+          </svg>
+        </span>
+        <div class="prod-headings">
+          <span class="prod-rank">02 · Terminal</span>
+          <h2 class="prod-title">Dwell Terminal for Claude Code</h2>
+          <p class="prod-lead">
+            <code>@dwell-protocol/terminal</code> adds a reversible <code>claude</code>
+            wrapper that shows one sponsored line <strong>only while Claude Code is thinking</strong>.
+          </p>
+        </div>
+      </div>
+
+      <div class="steps steps-2">
+        <div class="step">
+          <span class="step-num">1</span>
+          <h3 class="step-title">Install &amp; set up</h3>
+          <p class="step-body">
+            <code>npm install -g @dwell-protocol/terminal</code><br />
+            <code>dwell claude setup</code><br />
+            Or in one shot: <code>npx @dwell-protocol/terminal claude setup</code>.
+            Link your account by email during setup so your dwells sync to the portal.
+          </p>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <h3 class="step-title">Use Claude as normal</h3>
+          <p class="step-body">Keep typing <code>claude</code> — the sponsored line shows only while it's thinking. Change your mind any time: <code>dwell claude restore</code> puts everything back exactly as it was.</p>
+        </div>
+      </div>
+
+      <div class="prod-term" aria-hidden="true">
+        <div class="win term">
+          <div class="chrome">
+            <i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+            <span class="label">claude code — ~/dwell</span>
+          </div>
+          <div class="termpad">
+            <div class="status">· Linear — Plan your next sprint faster… <span class="muted">(2s · thinking)</span></div>
+            <hr class="divider" />
+            <div class="prompt"><span class="chev">›</span> <span class="cursor"></span></div>
+            <div class="adline"><span class="ad">ad·</span> <a href="#">Linear — Plan your next sprint faster</a></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="prod-cta">
+        <span class="note">Wraps Claude Code without touching it — fully reversible with <code>dwell claude restore</code>.</span>
+      </div>
+    </section>
+
+    <!-- ═══════════ 03 · DESKTOP — tertiary, with install graphics ═══════════ -->
+    <section class="product is-tertiary" id="desktop">
+      <span class="prod-badge">macOS · Universal</span>
+      <div class="prod-top">
+        <span class="prod-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="12" rx="2"/>
+            <path d="M8 20h8M12 16v4"/>
+          </svg>
+        </span>
+        <div class="prod-headings">
+          <span class="prod-rank">03 · Desktop</span>
+          <h2 class="prod-title">Dwell Sponsor Overlay</h2>
+          <p class="prod-lead">
+            A lightweight macOS overlay that anchors the sponsored line to <strong>Claude
+            Desktop</strong> and <strong>ChatGPT Desktop</strong> while they think.
+            One universal build for Apple silicon and Intel.
+          </p>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step has-art">
+          <span class="step-num">1</span>
+          <h3 class="step-title">Download the app</h3>
+          <span class="mac-art" role="img" aria-label="Downloading the Dwell disk image">
+            <svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg">
+              <rect x="34" y="14" width="132" height="74" rx="9" fill="#fff" class="e-line"/>
+              <path d="M34 23a9 9 0 0 1 9-9h114a9 9 0 0 1 9 9v6H34z" class="f-tint"/>
+              <circle cx="46" cy="21.5" r="2.6" fill="#ff5f57"/><circle cx="55" cy="21.5" r="2.6" fill="#febc2e"/><circle cx="64" cy="21.5" r="2.6" fill="#28c840"/>
+              <path d="M100 40v22" class="s-acc" stroke-width="4.5" stroke-linecap="round"/>
+              <path d="M89 53l11 11 11-11" fill="none" class="s-acc" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <rect x="74" y="72" width="52" height="7" rx="3.5" class="f-acc-soft"/>
+            </svg>
+          </span>
+          <p class="step-body">Grab <a href="/download/mac"><code>Dwell.dmg</code></a> and open it.</p>
+        </div>
+        <div class="step has-art">
+          <span class="step-num">2</span>
+          <h3 class="step-title">Drag to Applications</h3>
+          <span class="mac-art" role="img" aria-label="Dragging Dwell into the Applications folder">
+            <svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg">
+              <rect x="10" y="10" width="180" height="90" rx="10" fill="#fff" class="e-line"/>
+              <!-- Dwell app icon -->
+              <rect x="34" y="38" width="36" height="36" rx="9" class="f-acc"/>
+              <text x="52" y="63" class="mono" font-weight="700" font-size="18" fill="#fff" text-anchor="middle">D</text>
+              <!-- drag arrow -->
+              <path d="M80 56h36" class="s-gray2" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 7"/>
+              <path d="M112 50l8 6-8 6" fill="none" class="s-gray2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- Applications folder (macOS folder blue — non-palette OS illustration) -->
+              <path d="M130 40h14l4 5h18a3 3 0 0 1 3 3v22a3 3 0 0 1-3 3h-36a3 3 0 0 1-3-3V43a3 3 0 0 1 3-3z" fill="#cfe0f5" stroke="#9bb8de"/>
+              <text x="151" y="88" font-weight="700" font-size="9" class="f-gray" text-anchor="middle">Applications</text>
+            </svg>
+          </span>
+          <p class="step-body">Drop Dwell into your <strong>Applications</strong> folder.</p>
+        </div>
+        <div class="step has-art">
+          <span class="step-num">3</span>
+          <h3 class="step-title">First launch: right-click → Open</h3>
+          <span class="mac-art" role="img" aria-label="Right-clicking the Dwell app and choosing Open from the context menu">
+            <svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg">
+              <rect x="10" y="10" width="180" height="90" rx="10" fill="#fff" class="e-line"/>
+              <!-- Dwell app icon -->
+              <rect x="26" y="36" width="34" height="34" rx="8" class="f-acc"/>
+              <text x="43" y="59" class="mono" font-weight="700" font-size="16" fill="#fff" text-anchor="middle">D</text>
+              <!-- context menu -->
+              <rect x="76" y="24" width="96" height="62" rx="7" fill="#fff" class="e-line"/>
+              <rect x="81" y="30" width="86" height="16" rx="5" class="f-acc"/>
+              <text x="89" y="41.5" font-weight="700" font-size="9" fill="#fff">Open</text>
+              <rect x="89" y="54" width="60" height="5" rx="2.5" class="f-acc-soft"/>
+              <rect x="89" y="66" width="44" height="5" rx="2.5" class="f-acc-soft"/>
+              <line x1="81" y1="49.5" x2="167" y2="49.5" class="e-line"/>
+            </svg>
+          </span>
+          <p class="step-body">The app is ad-hoc signed for now, so the first time you launch it, <strong>right-click Dwell in Applications and choose Open</strong>, then click <strong>Open</strong> again in the dialog. macOS remembers after that.</p>
+        </div>
+      </div>
+
+      <div class="prod-cta">
+        <a href="/download/mac" class="btn-green">
+          <svg class="btn-apple" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
+            <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.323-4.66-2.323-7.34 0-4.31 2.797-6.6 5.552-6.6 1.448 0 2.675.95 3.6.95.865 0 2.222-1.01 3.902-1.01.613 0 2.886.06 4.374 2.19-.13.09-2.383 1.37-2.383 4.19 0 3.26 2.854 4.42 2.955 4.46z"/>
+          </svg>
+          Download for macOS
+        </a>
+        <span class="note">Universal — Apple silicon &amp; Intel. Requires macOS 13 or later.</span>
+      </div>
+    </section>
+
+    <!-- ═══════════ FAQ ═══════════ -->
+    <section class="faq" id="faq" aria-labelledby="faq-h">
+      <span class="eyebrow">FAQ</span>
+      <h2 id="faq-h">Everything people ask before installing.</h2>
+      <p class="faq-sub">What dwells are, how the published split works, what the protocol charges, and how to turn it all off.</p>
+
+      <details class="faq-item">
+        <summary class="faq-q">What are dwells?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">Dwells are the protocol's earning unit: <strong>1,000 dwells = $1.00 of earned ad value</strong>. You earn them by watching one sponsored line while an AI assistant thinks. Dwells are non-transferable until the token launch; you redeem them in your <a href="/portal">portal</a>.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">Is DWELL really free?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">Yes. There is no subscription and nothing to pay to start earning. You install once, keep using the AI tools you already use, and earn dwells while they think. The protocol only charges a fee when you redeem for a gift card or cash — see the fees question below.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">How much can I earn?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">It depends on how much you use AI — the more an assistant thinks in front of you, the more sponsored impressions you watch. The published split is fixed: advertisers pay fixed dollar CPMs, <strong>90% of every ad dollar goes to the campaign pool</strong>, and <strong>60% of that pool goes to the viewer</strong> — credited to you as dwells (1,000 dwells = $1.00 of earned ad value). 10% of the pool goes to your referrer (to the protocol treasury when you're unreferred) and 30% to the protocol treasury.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">How do I redeem dwells?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">Three ways, all in your <a href="/portal">portal</a>:</p>
+          <p class="faq-lead"><strong>1 · $DWELL tokens</strong> — at token launch, dwells become claimable as $DWELL. The claim is free.<br />
+          <strong>2 · Claude gift cards</strong> — a 10% protocol fee applies on top of the card's face value.<br />
+          <strong>3 · Cash via Stripe</strong> — a 10% protocol fee applies, with a $10 payout minimum.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">What is the $DWELL token?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">$DWELL is the protocol's token. At launch, the dwells you've earned become claimable as $DWELL under the published rules — supply, allocation, and mechanics are documented on the <a href="/tokenomics">tokenomics page</a>.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">What fees does the protocol charge?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">Nothing to start earning, and nothing to claim $DWELL at launch. A <strong>10% protocol fee</strong> applies to gift-card and cash redemptions (cash payouts also have a $10 minimum).</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">How does the split work — can I trust it?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">The split is published and auditable: 90% of every ad dollar goes to the campaign pool, and that pool divides <strong>60% to the viewer, 10% to their referrer (to the protocol treasury when unreferred), and 30% to the protocol treasury</strong>. Your balance is an <strong>open, append-only ledger</strong> recomputed from every credit and debit, with amounts stored at millicent precision — so the split is exact, never rounded against you.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">Does DWELL read my prompts or conversations?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">No. It reads <strong>none</strong> of your prompts or the model's output. It only detects whether the assistant is currently thinking — a visible Stop button, a busy region, or a streaming marker — so it knows when to show the sponsored line. The terminal client reads only structural transcript metadata needed to tell active from idle.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">Which AI tools does it work with?</summary>
+        <div class="faq-a">
+          <p class="faq-lead"><strong>ChatGPT, Claude and Gemini</strong> in your browser via the Chrome extension, <strong>Claude Code</strong> in your terminal, and the native <strong>Claude and ChatGPT desktop apps</strong> on macOS. The sponsored line is styled to look native on each surface and only appears while the AI is working.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">Do I need an account to start earning?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">No — you start earning the moment you install. An email is only needed to link your devices together and to redeem. Sign in with <strong>Google or an email magic link</strong> at <a href="/portal">dwellprotocol.com/portal</a>.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">How do my terminal earnings reach my account?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">Link by email during <code>dwell claude setup</code> (or later with <code>dwell claude link</code>). Your dwells then show up in the <a href="/portal">portal</a> alongside your browser and desktop earnings.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">Will the ads get in my way?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">The sponsored line only appears <em>while</em> the assistant is thinking, then gets out of the way when the answer arrives. No pop-ups, no autoplay, no takeovers. You can opt out any time.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q"><span>Does DWELL change my real <code>claude</code> command?</span></summary>
+        <div class="faq-a">
+          <p class="faq-lead">No — <code>dwell claude setup</code> adds a reversible wrapper and never edits your Claude install or settings. Undo with <code>dwell claude restore</code>.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">Are you affiliated with Anthropic, OpenAI, or Google?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">No. DWELL is an independent product and is not affiliated with Anthropic, OpenAI, or Google. "Claude," "ChatGPT," and "Gemini" are trademarks of their respective owners.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">Can I advertise on DWELL?</summary>
+        <div class="faq-a">
+          <p class="faq-lead">Yes. You bid for the sponsored line that shows while ChatGPT, Claude and Gemini think — the one moment every AI user stares at the screen. You're billed for impressions only; clicks are tracked, never billed. <a href="/#advertisers">Set up a campaign →</a></p>
+        </div>
+      </details>
+
+      <details class="faq-item" id="uninstall">
+        <summary class="faq-q">How do I uninstall DWELL?</summary>
+        <div class="faq-a">
+          <p class="faq-lead"><strong>Chrome extension</strong> — <code>chrome://extensions</code> → Remove.</p>
+          <p class="faq-lead"><strong>Terminal</strong> — <code>dwell claude restore</code>, then <code>npm rm -g @dwell-protocol/terminal</code>. Add <code>rm -rf ~/.dwell</code> to clear local state.</p>
+          <p class="faq-lead"><strong>macOS app</strong> — drag Dwell Sponsor Overlay from Applications to the Trash.</p>
+        </div>
+      </details>
+    </section>
+
+    <a class="back" href="/">← Back to DWELL</a>
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 DWELL · <a href="/tokenomics">Tokenomics</a> · <a href="/portal">Portal</a></p>
+    <p class="fdim">An open marketplace for the time you already spend waiting on AI.</p>
+    <p class="fdim tiny">Not affiliated with Anthropic, OpenAI, or Google.</p>
+  </footer>
+
+  <!-- FAQPage structured data — lets search engines show these Q&As as rich
+       results. Mirrors the visible #faq section above; keep them in sync. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "What are dwells?", "acceptedAnswer": { "@type": "Answer", "text": "Dwells are the protocol's earning unit: 1,000 dwells = $1.00 of earned ad value. You earn them by watching one sponsored line while an AI assistant thinks. Dwells are non-transferable until the token launch; you redeem them in your portal at dwellprotocol.com/portal." } },
+      { "@type": "Question", "name": "Is DWELL really free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. There is no subscription and nothing to pay to start earning. You install once, keep using the AI tools you already use, and earn dwells while they think. The protocol only charges a fee when you redeem for a gift card or cash." } },
+      { "@type": "Question", "name": "How much can I earn?", "acceptedAnswer": { "@type": "Answer", "text": "It depends on how much you use AI. The published split is fixed: advertisers pay fixed dollar CPMs, 90% of every ad dollar goes to the campaign pool, and 60% of that pool goes to the viewer — credited as dwells (1,000 dwells = $1.00 of earned ad value). 10% of the pool goes to your referrer (to the protocol treasury when unreferred) and 30% to the protocol treasury." } },
+      { "@type": "Question", "name": "How do I redeem dwells?", "acceptedAnswer": { "@type": "Answer", "text": "Three ways in the portal: (1) $DWELL tokens at token launch — the claim is free; (2) Claude gift cards, with a 10% protocol fee on top of face value; (3) cash via Stripe, with a 10% protocol fee and a $10 payout minimum." } },
+      { "@type": "Question", "name": "What is the $DWELL token?", "acceptedAnswer": { "@type": "Answer", "text": "$DWELL is the protocol's token. At launch, the dwells you've earned become claimable as $DWELL under the published rules — supply, allocation, and mechanics are documented on the tokenomics page at dwellprotocol.com/tokenomics." } },
+      { "@type": "Question", "name": "What fees does the protocol charge?", "acceptedAnswer": { "@type": "Answer", "text": "Nothing to start earning, and nothing to claim $DWELL at launch. A 10% protocol fee applies to gift-card and cash redemptions; cash payouts also have a $10 minimum." } },
+      { "@type": "Question", "name": "How does the split work — can I trust it?", "acceptedAnswer": { "@type": "Answer", "text": "The split is published and auditable: 90% of every ad dollar goes to the campaign pool, and that pool divides 60% to the viewer, 10% to their referrer (to the protocol treasury when unreferred), and 30% to the protocol treasury. Balances live on an open, append-only ledger recomputed from every credit and debit, stored at millicent precision." } },
+      { "@type": "Question", "name": "Does DWELL read my prompts or conversations?", "acceptedAnswer": { "@type": "Answer", "text": "No. It reads none of your prompts or the model's output. It only detects whether the assistant is currently thinking so it knows when to show the sponsored line. The terminal client reads only structural transcript metadata needed to tell active from idle." } },
+      { "@type": "Question", "name": "Which AI tools does it work with?", "acceptedAnswer": { "@type": "Answer", "text": "ChatGPT, Claude and Gemini in your browser via the Chrome extension, Claude Code in your terminal, and the native Claude and ChatGPT desktop apps on macOS. The sponsored line is styled to look native on each surface and only appears while the AI is working." } },
+      { "@type": "Question", "name": "Do I need an account to start earning?", "acceptedAnswer": { "@type": "Answer", "text": "No — you start earning the moment you install. An email is only needed to link your devices together and to redeem. Sign in with Google or an email magic link at dwellprotocol.com/portal." } },
+      { "@type": "Question", "name": "How do my terminal earnings reach my account?", "acceptedAnswer": { "@type": "Answer", "text": "Link by email during dwell claude setup (or later with dwell claude link). Your dwells then show up in the portal alongside your browser and desktop earnings." } },
+      { "@type": "Question", "name": "Will the ads get in my way?", "acceptedAnswer": { "@type": "Answer", "text": "The sponsored line only appears while the assistant is thinking, then gets out of the way when the answer arrives. No pop-ups, no autoplay, no takeovers. You can opt out any time." } },
+      { "@type": "Question", "name": "Does DWELL change my real claude command?", "acceptedAnswer": { "@type": "Answer", "text": "No — dwell claude setup adds a reversible wrapper and never edits your Claude install or settings. Undo with dwell claude restore." } },
+      { "@type": "Question", "name": "Are you affiliated with Anthropic, OpenAI, or Google?", "acceptedAnswer": { "@type": "Answer", "text": "No. DWELL is an independent product and is not affiliated with Anthropic, OpenAI, or Google. Claude, ChatGPT, and Gemini are trademarks of their respective owners." } },
+      { "@type": "Question", "name": "Can I advertise on DWELL?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. You bid for the sponsored line that shows while ChatGPT, Claude and Gemini think. You're billed for impressions only; clicks are tracked, never billed." } },
+      { "@type": "Question", "name": "How do I uninstall DWELL?", "acceptedAnswer": { "@type": "Answer", "text": "Chrome extension — chrome://extensions then Remove. Terminal — dwell claude restore, then npm rm -g @dwell-protocol/terminal. macOS app — drag Dwell Sponsor Overlay from Applications to the Trash." } }
+    ]
+  }
+  </script>
+</body>
+</html>

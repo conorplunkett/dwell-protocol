@@ -1,5 +1,8 @@
 // Dwell Protocol — service worker
-// Holds earnings state and the revenue math. 50% comes back as Claude credits.
+// Holds earnings state and the revenue math. The viewer's share of each
+// campaign's pool (the server-provided revenueShare) accrues as dwells:
+// 1,000 dwells = $1.00 of earned ad value. State stays USD-denominated to
+// match the API; the popup converts to dwells for display.
 //
 // Talks to the production backend (Supabase Edge Function):
 //   • registers an anonymous device (deviceId + deviceKey)
@@ -19,7 +22,7 @@ const DEFAULTS = {
   enabled: true,
   testMode: false, // show the mock ad continuously so you can verify the loop
   serving: true, // mirrors the server killswitch (/v1/config); ads off when false
-  revenueShare: 0.5, // your cut, redeemable as Claude credits (server may override)
+  revenueShare: 0.5, // offline fallback only — /v1/config's revenueShare always overrides
   grossCpm: 12, // gross USD per 1,000 qualifying (2-second) impressions
   blockedCategories: [],
   impressions: 0,

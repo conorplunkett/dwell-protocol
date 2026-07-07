@@ -55,7 +55,7 @@ manifest and pre-fills name, version, and icons. Then complete the tabs below.
 | Field | Value |
 | --- | --- |
 | **Name** | `Dwell Protocol — Earn from ChatGPT, Claude & Gemini` (from manifest) |
-| **Summary** (132 char max) | `Earn while you use AI. One sponsored line shows while the AI is thinking — you earn DWELL points for watching.` (from manifest) |
+| **Summary** (132 char max) | `Earn dwells while you use AI. One sponsored line appears while AI thinks; earnings are yours to redeem.` (from manifest) |
 | **Category** | Productivity |
 | **Language** | English |
 | **Official website** | `https://dwellprotocol.com` |
@@ -65,17 +65,19 @@ manifest and pre-fills name, version, and icons. Then complete the tabs below.
 **Detailed description** (paste into the description box):
 
 ```
-DWELL turns the AI "thinking" spinner into a tiny ad marketplace and gives
-you half the money back as credits.
+DWELL turns the AI "thinking" spinner into a tiny ad marketplace and pays
+the person watching, in dwells (1,000 dwells = $1.00 of earned ad value).
 
 While ChatGPT, Claude, or Gemini is generating an answer, instead of sitting
 idle, DWELL shows a sponsored line right by the reply. That's it. When the
-model finishes, it goes away. 50% of the ad revenue accrues to you as credits
-you can redeem for AI subscriptions like Claude.
+model finishes, it goes away. You receive 60% of each campaign's pool — 90%
+of every ad dollar goes to the earn side — credited to you as dwells. Redeem
+them in the web portal: $DWELL tokens at launch, Claude gift cards, or cash
+via Stripe (10% protocol fee on gift cards and cash).
 
 WHAT IT DOES
 • Shows a sponsored line only while the assistant is thinking.
-• Tracks impressions and shows your live earnings.
+• Tracks impressions and shows your live dwell balance.
 • Lets you earn more from friends you refer.
 
 WHAT IT DOES NOT DO
@@ -101,8 +103,9 @@ the #1 cause of rejection. Answer it to match what the code actually does
 
 - **Single purpose** (paste):
   > DWELL displays a sponsored line of text while an AI assistant is generating a
-  > response, and returns 50% of that ad revenue to the user as credits to redeem
-  > for gift cards.
+  > response, and credits the user their share of that ad revenue as dwells
+  > (1,000 dwells = $1.00 of earned ad value), redeemable in the DWELL web portal
+  > for $DWELL tokens at launch, Claude gift cards, or cash.
 
 - **Data usage disclosures** — check honestly. In the "What user data do you
   collect?" checklist, **tick exactly these** (and nothing else):

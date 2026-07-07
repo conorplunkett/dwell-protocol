@@ -2,6 +2,9 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "redirects": [
+    { "source": "/redeem", "destination": "/portal", "permanent": false },
+    { "source": "/redeem.html", "destination": "/portal.html", "permanent": false },
+    { "source": "/download/mac", "destination": "https://github.com/conorplunkett/dwell-protocol/releases/latest/download/SponsorOverlay.dmg", "permanent": false },
     { "source": "/go/fluidstack", "destination": "https://www.fluidstack.io", "permanent": false },
     { "source": "/go/ramp", "destination": "https://ramp.com", "permanent": false },
     { "source": "/go/linear", "destination": "https://linear.app", "permanent": false },
