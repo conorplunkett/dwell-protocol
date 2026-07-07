@@ -6,7 +6,7 @@
 // Wallet here is a Solana pubkey's raw 32 bytes (on EVM it'd be the
 // abi-encoded address — same 32-byte slot).
 
-import { keccak_256 } from "@noble/hashes/sha3";
+import { keccak_256 } from "@noble/hashes/sha3.js";
 
 function leafHash(walletPubkey, cumulativeAmount) {
   const amt = Buffer.alloc(32);

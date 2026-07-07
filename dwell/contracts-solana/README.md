@@ -102,3 +102,28 @@ export DWELL_MINT=... USDC_MINT=...
 node setup.js             # vaults, init both programs, wire keeper + swap target
 node fund-campaign.js     # the buy + the four failure drills
 ```
+
+## Earnings run — executed 2026-07-07, the full user-earning + referral loop
+
+merkle-distributor deployed at `DBfMVuq2WPrBS6aoXyJFRYppWntSC7qCHP2ApNBLCbFJ`
+(one in-place upgrade during the run: the hand-rolled CPI transfer's PDA
+authority meta needed `is_signer: true` — caught live by the first claim,
+fixed, upgraded, re-run).
+
+Epoch 1 (campaigns 1+2, cumulative tree, root
+`4ws9ZHpT…pC5kH`): the four leaves close **exactly** against the 70% legs
+the funder sent on-chain (764,400 DWELL, vault residual 0 after claims):
+
+| Leaf | Amount (DWELL) | Claim tx |
+|---|---|---|
+| viewer (60% of c1) | 648,000 | `4LQGDbUhpzMhqqEG41em…` |
+| referrer (10% of c1) | 108,000 | `qHL5HvGuRV5USGgs7Dkh…` |
+| viewer2, unreferred (60% of c2) | 7,200 | `4a4zfgVn6sKaWtYFzFda…` — **gas-sponsored: the user wallet holds zero SOL** |
+| treasury shortfall leaf (c2's unclaimed 10%) | 1,200 | `5nCmSxLzcFfEP4GL8vp4…` |
+
+Epoch 2: campaign 3 funded on-chain (`Nyftf1FW…ZPVz`), vault funded with
+the epoch delta only (standing rule), root 2 published, viewer claimed
+**only the delta** (+64,800). Drills all rejected in-program: stale
+epoch-1 proof after root 2, inflated amount, epoch skip 2→4, setRoot from
+a non-root-setter key, claims while paused (with unpause restoring).
+Final vault residual: 0 — every allocated base unit accounted for.

@@ -122,8 +122,15 @@ console.log(`epoch 1 total: ${epoch1Total} (must equal the on-chain 70% legs: 76
 if (epoch1Total !== 764_400n * D) throw new Error("epoch-1 books do not close");
 
 // ---------- T3: init distributor + vault, migrate the 70% legs, fund epoch 1 only ----------
+// Idempotence guard: T3 is a single atomic tx, so an existing state account
+// means init + epoch-1 funding both already happened — skip on re-run.
 
-let sig = await sendTx(conn, [
+let sig;
+const alreadyInit = (await conn.getAccountInfo(distributorStatePda())) !== null;
+if (alreadyInit) {
+  console.log("T3 skipped (distributor already initialized)");
+} else {
+sig = await sendTx(conn, [
   new TransactionInstruction({
     programId: DISTRIBUTOR_PROGRAM_ID,
     keys: [
@@ -144,11 +151,19 @@ let sig = await sendTx(conn, [
   createTransferInstruction(legacyStandin, vault, rootSetter.publicKey, epoch1Total),
 ], treasury, [rootSetter]);
 console.log("T3 distributor initialized, vault funded for epoch 1 only:", sig);
+}
 
 // ---------- T4: publish root 1 ----------
+// state layout: init(1) owner(32) setter(32) mint(32) root(32) epoch(8) …
+const epochOf = async () =>
+  (await conn.getAccountInfo(distributorStatePda())).data.readBigUInt64LE(129);
 const tree1 = buildTree(epoch1);
-sig = await sendTx(conn, [setRootIx(tree1.root, 1n, epoch1Total)], rootSetter);
-console.log("T4 root 1 published:", sig);
+if ((await epochOf()) >= 1n) {
+  console.log("T4 skipped (root 1 already published)");
+} else {
+  sig = await sendTx(conn, [setRootIx(tree1.root, 1n, epoch1Total)], rootSetter);
+  console.log("T4 root 1 published:", sig);
+}
 
 // ---------- T5–T8: the four claims ----------
 for (const [name, kp, payer] of [

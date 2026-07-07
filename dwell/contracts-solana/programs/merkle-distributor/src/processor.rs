@@ -287,7 +287,7 @@ fn claim(
             accounts: vec![
                 AccountMeta::new(*vault.key, false),
                 AccountMeta::new(*wallet_dwell_account.key, false),
-                AccountMeta::new_readonly(*vault_authority_ai.key, false),
+                AccountMeta::new_readonly(*vault_authority_ai.key, true),
             ],
             data: ix_data,
         },
