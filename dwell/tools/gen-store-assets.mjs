@@ -85,7 +85,7 @@ const brandBg = (frameInset, radius) => `
 const logo = (size, font) => `<div class="logo" style="width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.26)}px;
   background:linear-gradient(160deg,${C.gradA},${C.gradB});display:flex;align-items:center;justify-content:center;
   font-family:'JetBrains Mono',monospace;font-weight:700;font-size:${font}px;color:#fff;
-  box-shadow:0 10px 24px rgba(${C.rgb},0.34)">F$</div>`;
+  box-shadow:0 10px 24px rgba(${C.rgb},0.34)">D$</div>`;
 
 // ── the marquee (1400×560): copy + a REAL captured product screenshot ────────
 const marqueeHtml = (demoB64) => `<!doctype html><html><head><meta charset="utf-8">${FONTS}<style>
@@ -104,10 +104,10 @@ const marqueeHtml = (demoB64) => `<!doctype html><html><head><meta charset="utf-
   .shot{width:100%;border-radius:16px;border:1px solid ${C.line};background:${C.tint};padding:14px 16px;box-shadow:0 18px 44px rgba(20,23,28,.12)}
   .shot img{width:100%;display:block;border-radius:8px}
 </style></head><body><div class="frame"></div><div class="pad">
-  <div class="top">${logo(58, 31)}<div class="wordmark">DWELL</div><div class="domain">dwellprotocol.com</div></div>
+  <div class="top">${logo(58, 31)}<div class="wordmark">Dwell Protocol</div><div class="domain">dwellprotocol.com</div></div>
   <div class="eyebrow">Chrome extension</div>
-  <h1>Get Claude <span class="pop">for free.</span></h1>
-  <p class="sub">A sponsored line shows while <b>ChatGPT, Claude &amp; Gemini</b> think — and <b>50% of the revenue</b> comes back to you as Claude Pro &amp; Max credits.</p>
+  <h1>Earn dwells <span class="pop">while AI thinks.</span></h1>
+  <p class="sub">One sponsored line shows while <b>ChatGPT, Claude &amp; Gemini</b> think. The dwells you earn redeem for <b>$DWELL at launch, Claude gift cards, or cash</b>.</p>
   <div class="demoWrap"><div class="shot"><img src="data:image/png;base64,${demoB64}" alt="before/after"></div></div>
 </div></body></html>`;
 
@@ -129,9 +129,9 @@ const smallHtml = () => `<!doctype html><html><head><meta charset="utf-8">${FONT
     display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px}
   .pill .line{color:${C.ovLine}} .pill .name{font-weight:700}
 </style></head><body><div class="frame"></div><div class="pad">
-  <div class="top">${logo(34, 19)}<div class="wordmark">DWELL</div></div>
-  <h1>Get Claude <span class="pop">for free.</span></h1>
-  <p class="sub"><b>50%</b> of the ad revenue comes back as Claude credits.</p>
+  <div class="top">${logo(34, 19)}<div class="wordmark">Dwell Protocol</div></div>
+  <h1>Earn dwells <span class="pop">while AI thinks.</span></h1>
+  <p class="sub"><b>Dwells</b> redeem for $DWELL, Claude gift cards, or cash.</p>
   <div class="pill"><span class="chip">L</span> <span class="name">Linear</span> <span class="line">· Plan your next sprint faster</span></div>
 </div></body></html>`;
 
@@ -156,17 +156,24 @@ const settle = async (page) => { await page.evaluate(() => document.fonts.ready)
 const browser = await chromium.launch();
 try {
   // live captures at 2× for crisp downscaling
-  // The walking mascot (#claude-guy) is a transient animation — parked at a
-  // random spot mid-capture it reads like an artifact, so hide it for clean shots.
-  const HIDE = "#claude-guy{display:none!important}";
+  // The lander's spinner/mesh animations never settle, which stalls
+  // Playwright's element-stability wait — freeze all motion for clean shots.
+  const HIDE = "#claude-guy{display:none!important} *,*::before,*::after{animation:none!important;transition:none!important}";
   const page = await browser.newPage({ viewport: { width: 1440, height: 980 }, deviceScaleFactor: 2 });
   await page.goto(`${base}/web/index.html`, { waitUntil: "load", timeout: 30000 });
   await page.addStyleTag({ content: HIDE });
   await settle(page);
+  // the lander's .demo block is hidden pre-launch; #surfaces is the visible
+  // product-in-context showcase and reads better in the marquee anyway
   const demoPath = join(tmp, "demo.png");
-  await (await page.$(".demo")).screenshot({ path: demoPath });
+  await (await page.$("#surfaces")).screenshot({ path: demoPath });
+  // the install shot comes from the products page (the lander has no #install)
+  const installPage = await browser.newPage({ viewport: { width: 1440, height: 980 }, deviceScaleFactor: 2 });
+  await installPage.goto(`${base}/web/products.html`, { waitUntil: "load", timeout: 30000 });
+  await installPage.addStyleTag({ content: HIDE });
+  await settle(installPage);
   const installPath = join(tmp, "install.png");
-  await (await page.$("#install")).screenshot({ path: installPath });
+  await (await installPage.$("#chrome")).screenshot({ path: installPath });
 
   // homepage hero as a native 1280×800 viewport (2× → 2560×1600), then 50% down
   const hero = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
