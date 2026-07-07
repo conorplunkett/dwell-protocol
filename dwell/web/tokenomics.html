@@ -103,6 +103,13 @@
       font-size: 13px; line-height: 1.6; color: var(--gray);
     }
 
+    .tk-not-live {
+      display: inline-block; margin-left: 10px; padding: 2px 9px;
+      font: 800 10.5px/1.6 var(--sans); letter-spacing: .03em; text-transform: uppercase;
+      color: var(--accent-d); background: rgba(var(--accent-rgb), .1);
+      border: 1px solid rgba(var(--accent-rgb), .3); border-radius: 999px; white-space: nowrap;
+    }
+
     @media (max-width: 720px) {
       .tk-flow-amt { width: 64px; font-size: 13.5px; }
       .tk-splitbar > div { font-size: 11.5px; }
@@ -137,7 +144,7 @@
       <div class="tk-tablewrap">
         <table class="tk-table">
           <tbody>
-            <tr><td><strong>Name / symbol</strong></td><td class="num">DWELL</td></tr>
+            <tr><td><strong>Name / symbol</strong></td><td class="num">DWELL <span class="tk-not-live">Token not launched yet</span></td></tr>
             <tr><td><strong>Chain</strong></td><td>Solana (SPL token, minted by star.fun)</td></tr>
             <tr><td><strong>Supply</strong></td><td>1,000,000,000 — fixed. No mint authority after launch.</td></tr>
             <tr><td><strong>Launch</strong></td><td>star.fun curated raise at a <strong>$1M launch valuation</strong>. 5-day deposit window, funds held in escrow; full refund if the raise misses its target.</td></tr>
