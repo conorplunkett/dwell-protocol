@@ -91,14 +91,19 @@ final class BackendClient {
         }
     }
 
-    func fetchAds(completion: @escaping ([Ad]) -> Void) {
+    /// Completion: `nil` when the request failed (offline, server error,
+    /// unparseable body); `[]` when the API answered and there are genuinely no
+    /// live campaigns. The two look identical to the overlay (no card either
+    /// way) but the menu reports them differently, so a user staring at a blank
+    /// screen can tell "nothing to serve" from "can't reach the server".
+    func fetchAds(completion: @escaping ([Ad]?) -> Void) {
         get("v1/ads") { result in
             guard case .success(let data) = result,
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let adsJSON = obj["ads"],
                   let adsData = try? JSONSerialization.data(withJSONObject: adsJSON),
                   let ads = try? JSONDecoder().decode([Ad].self, from: adsData) else {
-                return completion([])
+                return completion(nil)
             }
             completion(ads)
         }
