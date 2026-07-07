@@ -62,6 +62,8 @@ function loadConfig(env = process.env) {
     viewerShareBps: parseInt(env.VIEWER_SHARE_BPS || "6000", 10), // viewer's share of the reserve tranche
     referrerShareBps: parseInt(env.REFERRER_SHARE_BPS || "1000", 10), // referrer's share (falls to protocol when unreferred)
     reserveTrancheBps: parseInt(env.RESERVE_TRANCHE_BPS || "9000", 10), // slice of gross routed to the token side
+    pointsToDwell: parseInt(env.POINTS_TO_DWELL || "12", 10), // fixed launch conversion: DWELL per point (1,000 points = 12,000 DWELL) — applies ONLY to pre-snapshot points
+    airdropPointsCap: parseInt(env.AIRDROP_POINTS_CAP || "8333333", 10), // 100M-token airdrop ÷ POINTS_TO_DWELL — the fixed-rate conversion must fit inside it
 
     // ---- brand — the DWELL deployment bills and writes copy under its own name ----
     brandName: env.BRAND_NAME || "FreeAI",
@@ -91,6 +93,7 @@ async function boot(env = process.env) {
     throw new Error("VIEWER_SHARE_BPS + REFERRER_SHARE_BPS must be <= 10000");
   }
   if (config.reserveTrancheBps > 10000) throw new Error("RESERVE_TRANCHE_BPS must be <= 10000");
+  if (config.tokenMode && !(config.pointsToDwell > 0)) throw new Error("POINTS_TO_DWELL must be a positive integer");
   // Stripe is only exercised by advertiser checkout / webhooks — never by the
   // earning loop. In a local devnet (DEVNET=1) we let the API boot without it
   // so you can test devices → ledger → portal end-to-end with no Stripe account;

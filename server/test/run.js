@@ -1528,6 +1528,52 @@ const fakeMailer = {
     assert.strictEqual(sum.body.usdEquivalent, 5.94);
   });
 
+  // The launch invariant (dwell-protocol docs/01): the fixed points→DWELL rate
+  // applies ONLY to points earned before the snapshot. A view after the
+  // snapshot must never reach the fixed-rate conversion export — otherwise a
+  // $1 view at a higher market cap mints more than $1 of tokens.
+  await check("token mode: snapshot is set-once and fences the fixed-rate conversion", async () => {
+    const ADMIN_T = { "X-Admin-Key": "test-admin" };
+
+    // no export before the snapshot
+    assert.strictEqual((await apiT("GET", "/v1/admin/token/conversion", undefined, ADMIN_T)).status, 409);
+
+    // take the snapshot; a second take 409s with the original timestamp
+    const snap = await apiT("POST", "/v1/admin/token/snapshot", { adminKey: "test-admin" });
+    assert.strictEqual(snap.status, 200);
+    assert.ok(snap.body.snapshotAt, "snapshot returns its timestamp");
+    const again = await apiT("POST", "/v1/admin/token/snapshot", { adminKey: "test-admin" });
+    assert.strictEqual(again.status, 409, "snapshot is set-once");
+    assert.strictEqual(again.body.snapshotAt, snap.body.snapshotAt, "repeat returns the original instant");
+    // and the fence is public: /v1/reserve reports it
+    assert.strictEqual((await apiT("GET", "/v1/reserve")).body.snapshotAt, snap.body.snapshotAt);
+
+    // pre-snapshot points are in the export at the fixed rate (12 DWELL/point)
+    const conv = await apiT("GET", "/v1/admin/token/conversion", undefined, ADMIN_T);
+    assert.strictEqual(conv.status, 200);
+    assert.strictEqual(conv.body.pointsToDwell, 12);
+    const viewer = conv.body.accounts.find((a) => a.email === "dwell-viewer@example.com");
+    assert.strictEqual(viewer.points, 594_000, "viewer's pre-snapshot balance converts");
+    assert.strictEqual(viewer.dwell, 594_000 * 12, "fixed rate: 12 DWELL per point");
+    const ref = conv.body.accounts.find((a) => a.email === "dwell-ref@example.com");
+    assert.strictEqual(ref.points, 99_000, "referrer's carved 10% converts too");
+    assert.strictEqual(conv.body.overCap, false, "test totals sit inside the airdrop cap");
+    const totalBefore = conv.body.totalPoints;
+
+    // a view AFTER the snapshot still earns points…
+    const dev = (await apiT("POST", "/v1/devices/register")).body;
+    const serve = await apiT("POST", "/v1/impressions/serve", { ...dev });
+    const redeem = await apiT("POST", "/v1/impressions/redeem", { ...dev, token: serve.body.token, source: "claude_code" });
+    assert.strictEqual(redeem.status, 200, "earning continues after the snapshot");
+    assert.strictEqual(redeem.body.creditedMillicents, 54_000);
+
+    // …but can never reach the fixed-rate export
+    const conv2 = await apiT("GET", "/v1/admin/token/conversion", undefined, ADMIN_T);
+    assert.strictEqual(conv2.body.totalPoints, totalBefore,
+      "post-snapshot view is excluded from the fixed-rate conversion");
+    assert.strictEqual(conv2.body.totalDwell, totalBefore * 12);
+  });
+
   await check("token routes 404 on the legacy deployment; live-only surfaces answer 409 in points mode", async () => {
     assert.strictEqual((await api("GET", "/v1/reserve")).status, 404, "FreeAI deployment exposes no token surface");
     assert.strictEqual((await api("GET", "/v1/token/pools")).status, 404);
