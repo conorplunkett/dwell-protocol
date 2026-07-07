@@ -230,6 +230,22 @@ async function renderOverview(view) {
     h("div", { class: "card-head" }, h("h2", {}, "Campaigns by status")),
     table([{ label: "Status" }, { label: "Count", num: true }], d.campaignsByStatus,
       (s) => [badge(s.status), num(s.n)])));
+
+  // Every dollar figure above is real Stripe revenue only. If a campaign was
+  // ever marked paid WITHOUT a real Stripe charge (dev/seed data run against
+  // this database), it's excluded from those numbers but never hidden —
+  // flagged here so it can't quietly masquerade as real money again.
+  const tm = d.testMoney;
+  if (tm && (tm.adsPurchasedUsd > 0 || tm.campaigns.length)) {
+    view.append(h("div", { class: "card danger-zone" },
+      h("div", { class: "card-head" }, h("h2", {}, "⚠ Test / seed money (excluded above)")),
+      h("p", { class: "hint" },
+        `${usd(tm.adsPurchasedUsd)} of "ads purchased" and ${pts(tm.liabilityUsd)} of points liability come from `
+        + "campaigns marked paid with no real Stripe charge — dev/seed data, not advertiser revenue. "
+        + "Already excluded from every number above; shown here so it's visible instead of silently vanishing."),
+      table([{ label: "Campaign" }, { label: "Status" }, { label: "Budget", num: true }, { label: "Marked paid" }], tm.campaigns,
+        (cm) => [cm.brand, badge(cm.status), usd(cm.budgetUsd), dt(cm.paidAt)])));
+  }
 }
 
 async function renderDaily(view) {
@@ -795,6 +811,18 @@ async function renderSettings(view) {
       action: async (next) => {
         await api("/v1/admin/killswitch", { method: "POST", body: { serving: next } });
         setServePill(next); toast(next ? "Serving resumed" : "Ads paused");
+      },
+    }),
+    switchRow({
+      title: "Earnings", on: d.earningsEnabled, offLabel: "Disabled", onLabel: "Enabled",
+      confirmOn: "Re-enable viewer earnings everywhere?",
+      confirmOff: "Turn OFF all viewer point earning everywhere, immediately? No new points will be credited from ads, impressions, or events until this is switched back on.",
+      desc: (on) => on
+        ? "Viewers can earn points normally (ad views, impressions, legacy event batches)."
+        : "Earnings are OFF — no points are being credited anywhere (ads are also hidden while this is off).",
+      action: async (next) => {
+        await api("/v1/admin/earnings-killswitch", { method: "POST", body: { enabled: next } });
+        toast(next ? "Earnings re-enabled" : "Earnings disabled everywhere");
       },
     }),
     switchRow({

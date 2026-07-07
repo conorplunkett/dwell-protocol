@@ -2027,6 +2027,22 @@ function createRepo(pool: any) {
              ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','admin_credit','admin_debit','payout_debit','gift_redemption_debit')),0)::bigint as liability
          from ledger`
       )).rows[0];
+      // "Test money" = ledger activity tied to a campaign that was marked paid
+      // without a real Stripe charge (stripe_payment_intent_id is null) — i.e. a
+      // dev/seed-funded campaign, never actual advertiser revenue. Every dollar
+      // figure above double-counts this unless a caller subtracts it out; keep
+      // it as its own bucket so the dashboard can show real vs. test instead of
+      // silently blending them (that blend is exactly how a $600 seed campaign
+      // once read as real "ads purchased").
+      const moneyTest = (await pool.query(
+        `select
+           coalesce(sum(amount_millicents) filter (where entry_type='campaign_credit'),0)::bigint as campaign_credit,
+           coalesce(sum(amount_millicents) filter (where entry_type='platform_fee'),0)::bigint as platform_fee,
+           coalesce(sum(amount_millicents) filter (where entry_type in
+             ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','admin_credit','admin_debit','payout_debit','gift_redemption_debit')),0)::bigint as liability
+         from ledger
+         where campaign_id in (select id from campaigns where paid_at is not null and stripe_payment_intent_id is null)`
+      )).rows[0];
       const counts = (await pool.query(
         `select
            (select count(*) from users)::int as users,
@@ -2047,7 +2063,12 @@ function createRepo(pool: any) {
       const byStatus = (await pool.query(
         "select status, count(*)::int as n from campaigns group by status order by status"
       )).rows;
-      return { money, counts, campaignsByStatus: byStatus };
+      const testCampaigns = (await pool.query(
+        `select id, brand, budget_cents, status, paid_at from campaigns
+          where paid_at is not null and stripe_payment_intent_id is null
+          order by paid_at desc`
+      )).rows;
+      return { money, moneyTest, counts, campaignsByStatus: byStatus, testCampaigns };
     },
 
     // One bucket per UTC day, merged across tables in JS by the route.
@@ -2449,6 +2470,13 @@ async function runPayouts() {
 // admin dashboard propagates across isolates. syncServing() refreshes at most
 // once per 15s to keep the /v1/ads hot path cheap.
 let serving = !config.killswitch;
+// Master earnings killswitch — separate from (and stronger than) `serving`.
+// `serving` only stops *new* ads from being shown/tokenized; the legacy
+// /v1/events batch path and an already-served impression token can still
+// mint points while `serving` is off. `earningsEnabled` additionally blocks
+// the actual crediting in ingestBatch/redeemImpression, so flipping it off
+// stops every way a viewer can earn points, immediately.
+let earningsEnabled = true;
 // Whether the public "Live bid market" leaderboard is shown on the lander.
 // Off by default; flipped from the admin dashboard and surfaced via /v1/config.
 let leaderboardPublic = false;
@@ -2463,6 +2491,10 @@ async function syncServing() {
     const v = await repo.getSetting("serving");
     if (typeof v === "boolean") serving = v;
   } catch { /* settings table absent / unreachable — keep current value */ }
+  try {
+    const v = await repo.getSetting("earnings_enabled");
+    if (typeof v === "boolean") earningsEnabled = v;
+  } catch { /* settings absent — keep current value (default: on) */ }
   try {
     leaderboardPublic = (await repo.getSetting("leaderboard_public")) === true;
   } catch { /* settings absent — keep default (hidden) */ }
@@ -2601,7 +2633,7 @@ route("GET", "/v1/pricing", async () => {
 });
 route("GET", "/v1/ads", async () => {
   await syncServing();
-  const ads = serving ? await repo.activeAds() : [];
+  const ads = (serving && earningsEnabled) ? await repo.activeAds() : [];
   return json(200, { revenueShare: displayRevenueShare, ads: ads.map((a: any) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined })) });
 });
 route("GET", "/v1/leaderboard", async () => {
@@ -2635,6 +2667,8 @@ route("POST", "/v1/events", async (ctx: any) => {
     return json(409, { error: "migrated client must use /v1/impressions/serve+redeem" });
   }
   if (!body.batchKey || !Array.isArray(body.events)) return json(400, { error: "batchKey and events[] required" });
+  await syncServing();
+  if (!earningsEnabled) return json(200, { ok: true, duplicate: false, creditedMillicents: 0, earningsDisabled: true });
   try {
     const result = await repo.ingestBatch({
       deviceId: device.id, batchKey: body.batchKey, events: body.events,
@@ -2675,7 +2709,7 @@ route("POST", "/v1/impressions/serve", async (ctx: any) => {
   const device = await authDeviceFrom(ctx);
   if (!device) return json(401, { error: "bad device credentials" });
   await syncServing();
-  if (!serving) return json(200, { ad: null, serving: false });
+  if (!serving || !earningsEnabled) return json(200, { ad: null, serving: false });
   const result = await repo.serveImpression({
     deviceId: device.id, ipHash: hashIp(ctx), ttlMs: config.impressionTokenTtlMs,
     dailyCap: config.dailyImpressionCap, ipDailyCap: config.ipDailyImpressionCap,
@@ -2693,6 +2727,8 @@ route("POST", "/v1/impressions/redeem", async (ctx: any) => {
   const device = await authDeviceFrom(ctx);
   if (!device) return json(401, { error: "bad device credentials" });
   if (!ctx.body?.token) return json(400, { error: "token required" });
+  await syncServing();
+  if (!earningsEnabled) return json(503, { ok: false, reason: "earnings_disabled" });
   const result = await repo.redeemImpression({
     token: ctx.body.token, deviceId: device.id, revenueShare: config.revenueShare,
     minDwellMs: config.impressionMinDwellMs,
@@ -3478,6 +3514,15 @@ route("POST", "/v1/admin/killswitch", async (ctx: any) => {
   catch (err: any) { console.error("[dwell] killswitch persist failed:", err?.message); }
   return json(200, { ok: true, serving });
 });
+route("POST", "/v1/admin/earnings-killswitch", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  if (typeof ctx.body?.enabled !== "boolean") return json(400, { error: "enabled (boolean) required" });
+  earningsEnabled = ctx.body.enabled;
+  servingSyncedAt = Date.now();
+  try { await repo.setSetting("earnings_enabled", earningsEnabled); } // persist across isolates
+  catch (err: any) { console.error("[dwell] earnings killswitch persist failed:", err?.message); }
+  return json(200, { ok: true, earningsEnabled });
+});
 route("POST", "/v1/admin/payouts", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   return json(200, await runPayouts());
@@ -3542,24 +3587,37 @@ const receiptStats = (row: any) => {
 route("GET", "/v1/admin/overview", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   const o = await repo.adminOverview();
-  const m = o.money;
+  const m = o.money, t = o.moneyTest;
   return json(200, {
     revenue: {
-      adsPurchasedUsd: mcUsd(m.campaign_credit),
+      // "Real" = backed by an actual Stripe charge. Test/seed-funded campaigns
+      // (paid_at set but no stripe_payment_intent_id) are subtracted out here
+      // and broken out separately below, so this never blends fake money into
+      // what looks like real advertiser revenue.
+      adsPurchasedUsd: mcUsd(m.campaign_credit - t.campaign_credit),
       refundedUsd: -mcUsd(m.campaign_refund),
-      platformFeeUsd: mcUsd(m.platform_fee),
+      platformFeeUsd: mcUsd(m.platform_fee - t.platform_fee),
       developerCreditUsd: mcUsd(m.dev_credit),
       referralCreditUsd: mcUsd(m.referral_credit),
       affiliateCreditUsd: mcUsd(m.affiliate_credit),
       paidOutUsd: -mcUsd(m.payout_debit),
       redeemedUsd: -mcUsd(m.redemption_debit),
       adminAdjustUsd: mcUsd(m.admin_adjust),
-      outstandingLiabilityUsd: mcUsd(m.liability),
+      outstandingLiabilityUsd: mcUsd(m.liability - t.liability),
+    },
+    testMoney: {
+      adsPurchasedUsd: mcUsd(t.campaign_credit),
+      platformFeeUsd: mcUsd(t.platform_fee),
+      liabilityUsd: mcUsd(t.liability),
+      campaigns: o.testCampaigns.map((c: any) => ({
+        id: c.id, brand: c.brand, budgetUsd: cUsd(c.budget_cents), status: c.status, paidAt: c.paid_at,
+      })),
     },
     counts: o.counts,
     campaignsByStatus: o.campaignsByStatus,
     pendingRedemptionsUsd: cUsd(o.counts.redemptions_pending_cents),
     serving,
+    earningsEnabled,
   });
 });
 
