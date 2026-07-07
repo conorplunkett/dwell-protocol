@@ -24,17 +24,17 @@ impression tokens, and the dual Node-reference / Supabase-edge backend (see
                                                               │  Stripe payout → bank → Coinbase
                                                               │  USD → USDC (Advanced Trade API)
                                                               ▼
-                                                     USDC RESERVE  (segregated Coinbase account
-                                                      │             or Base Safe; company-owned)
-                                                      ▼
-                                            reserve_allocation rows (ledger mirror)
-                                            public GET /v1/reserve attestation feed
+                                                 TOKEN-SIDE EARMARK  (ledger accounting on the
+                                                      │              company account — no custodied
+                                                      ▼              cash reserve, no dollar peg)
+                                            reserve_allocation rows (ledger earmark)
+                                            public GET /v1/reserve accounting feed
 
  user views ad ──impression token serve/redeem──▶ ledger:
      points_credit            (viewer, 60% of the tranche's dollar value)
      referral_points_credit   (referrer, 10% — skipped if unreferred)
      protocol_points_credit   (protocol, 30% — 40% when unreferred)
- balances = SUM(ledger)  ·  1,000 points = $1.00  ·  non-transferable, no withdrawal
+ balances = SUM(ledger)  ·  1,000 points → 12,000 DWELL at launch  ·  non-transferable pre-launch
 ```
 
 ## Live mode (Phase 2, post-TGE)
@@ -69,7 +69,7 @@ impression tokens, and the dual Node-reference / Supabase-edge backend (see
 the parent platform), with one added transition: on `markCampaignPaid`, the 90% tranche
 is committed — points mode records `reserve_allocation`; live mode enqueues the
 `swapAndFund` keeper job. A rejected campaign refunds via Stripe as today; its
-tranche is released from the reserve (points) or its pool is returned to the
+earmark is released on the ledger (points) or its pool is returned to the
 treasury before any impressions were served (live).
 
 ## Key custody
@@ -106,7 +106,7 @@ keys, exportable). The company never holds user tokens with unilateral control
 | Bad Merkle root published | Reconciliation job: onchain root vs. rebuilt tree | `pause()`, publish corrected root at `epoch+1`; cumulative amounts self-heal |
 | Swap fails / reverts (slippage, 0x outage) | Keeper job alert | Retry with fresh quote; campaign stays unfunded and unserved until funded |
 | Coinbase outage | Sweeper alert | Tranches queue in Stripe balance; points accrual is unaffected (ledger-only) |
-| Reserve ↔ points drift (points mode) | Daily attestation job: reserve balance vs. `SUM(reserve_allocation)` | Halt new campaign approvals until reconciled |
+| Earmark ↔ points drift (points mode) | Daily reconciliation job: earmark total vs. `SUM(reserve_allocation)` | Halt new campaign approvals until reconciled |
 | Chain reorg | Indexer waits for finality (Base ~minutes) before writing `token_campaign_pools` / claim rows | Re-index from last finalized block |
 | Distributor bug post-deploy | Audit + Base Sepolia dry-run gate ([06-launch-checklist.md](06-launch-checklist.md)) | `pause()`; deploy fixed distributor; re-publish cumulative root there |
 

@@ -266,10 +266,10 @@
           <h3>Points</h3>
           <ul>
             <li>Users earn <strong>DWELL points</strong> from day one — ad inventory is live from launch.</li>
-            <li><strong>1,000 points = $1.00</strong> of earned ad value.</li>
-            <li>Same 60/10/30 split, applied to dollar value.</li>
+            <li>Points are <strong>denominated in the token, not dollars</strong>: 1,000 points convert to 12,000 $DWELL at launch, and their value floats with the market.</li>
+            <li>How many points a view earns is set by the ad's value — the same 60/10/30 split of each campaign's $90 tranche.</li>
             <li>The $90 tranche per campaign is <strong>earmarked to the token side</strong> on the protocol ledger — a public accounting page will show the earmarked total vs. outstanding points.</li>
-            <li>Points are non-transferable and cannot be withdrawn during this phase.</li>
+            <li>Points are non-transferable until token launch.</li>
           </ul>
         </div>
         <div class="tk-phase">
@@ -277,7 +277,7 @@
           <h3>Conversion at the raise</h3>
           <ul>
             <li>The points ledger is snapshotted when the raise opens.</li>
-            <li>Points convert at a <strong>fixed price set by the $1M valuation</strong> ($0.0000833/DWELL): <strong>1,000 points = $1.00 = 12,000 DWELL</strong>, announced in advance.</li>
+            <li>Points convert at a <strong>fixed rate set by the $1M valuation</strong> ($0.0000833/DWELL): <strong>1,000 points = 12,000 $DWELL</strong>, announced in advance.</li>
             <li>Converted tokens come from the <strong>10% ad-rewards airdrop</strong>, so conversion is instant at token launch.</li>
             <li>Claims go onchain via a Merkle distributor, gated on wallet-linked accounts.</li>
             <li>The earmarked token-side funds move into the liquidity pool. New campaigns switch to campaign-locked rates in DWELL units.</li>
@@ -286,13 +286,33 @@
       </div>
     </section>
 
+    <!-- REDEMPTIONS -->
+    <section class="tk-section" id="redemptions">
+      <h2>Redemptions</h2>
+      <p class="tk-sub">Once the token is live, points redeem three ways — each valued
+        at the <strong>market price at the moment of redemption</strong>:</p>
+      <div class="tk-tablewrap">
+        <table class="tk-table">
+          <thead><tr><th>Path</th><th>How it settles</th></tr></thead>
+          <tbody>
+            <tr><td><strong>$DWELL to your wallet</strong></td><td>Onchain Merkle claim to a linked Solana wallet — your tokens, your keys.</td></tr>
+            <tr><td><strong>Claude credits</strong></td><td>The corresponding DWELL is sold at redemption; the proceeds fund the credits.</td></tr>
+            <tr><td><strong>Cash via Stripe</strong></td><td>Same mechanic: the corresponding DWELL is sold at redemption and the proceeds are paid out.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tk-note">Withdrawn tokens are never bought back — once $DWELL is in your
+        wallet, the exit is the open market. Cash-out is a feature of points, not of the
+        token.</p>
+    </section>
+
     <!-- RISKS -->
     <section class="tk-section" id="risks">
       <h2>Risks</h2>
       <div class="tk-risks">
         <div class="tk-risk">
           <h4>Price volatility</h4>
-          <p>Earnings are awarded at a locked per-campaign rate; their value floats afterward. The portal shows both token amounts and current USD estimates, and the cash-out path (DWELL→USDC via licensed partners) is the user's stability valve.</p>
+          <p>Earnings are awarded at a locked per-campaign rate; their value floats afterward — down to zero if the market goes there. The portal shows both token amounts and current USD estimates, and the redemption paths (Claude credits or Stripe payout at market price) are the user's stability valve.</p>
         </div>
         <div class="tk-risk">
           <h4>Thin liquidity</h4>

@@ -6,7 +6,7 @@ July 2026 — re-verify pricing before contracts are signed.
 | Job | Pick | Fallback |
 |---|---|---|
 | Chain | Base | Solana (only if fees ever dominate; loses ERC-20 tooling) |
-| USD → USDC + reserve custody | Coinbase Advanced Trade | Bridge (Stripe-owned) |
+| USD → USDC (live-phase buys) | Coinbase Advanced Trade | Bridge (Stripe-owned) |
 | USDC → DWELL routing | 0x Swap API | Direct Aerodrome router |
 | Liquidity venue | Aerodrome Slipstream | Uniswap v4 |
 | User wallets | Privy | Coinbase CDP Embedded Wallets |
@@ -28,12 +28,12 @@ standard Solidity/ERC-20 tooling — which is what `../contracts` targets.
 Canonical USDC on Base mainnet: `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`.
 Env: `BASE_RPC_URL`.
 
-## Coinbase Advanced Trade (fiat → USDC, reserve custody)
+## Coinbase Advanced Trade (fiat → USDC, live-phase conversion)
 
 Business account via Coinbase Developer Platform. USD→USDC conversion is
-free/near-free; API-driven; the points-phase USDC reserve can live in a
-segregated Coinbase account (withdrawal-address-locked to the treasury Safe)
-until TGE. Trading fees only matter if we ever trade beyond conversion
+free/near-free; API-driven; feeds the live-phase campaign buys (there is no
+points-phase cash reserve — the 90% tranche is a ledger earmark until token
+launch). Trading fees only matter if we ever trade beyond conversion
 (0.60%/1.20% maker/taker at low volume, falling with volume). Buying crypto
 for the company's own account is "user" activity under FinCEN guidance — not
 money transmission (see [05-legal-structure.md](05-legal-structure.md)).

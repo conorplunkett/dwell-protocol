@@ -44,10 +44,12 @@ function safeHref(url) {
 }
 const usd = (n) => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const usd0 = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("en-US"); // whole-dollar (CPM)
-// DWELL user-side value is denominated in POINTS: 1,000 points = $1.00 of earned
-// ad value. The API returns these balances in
-// USD, so points = usd × 1,000. Use pts() for anything a viewer earns/holds;
-// keep usd() for real money (advertiser spend, platform fees, Stripe payouts).
+// DWELL user-side value is denominated in POINTS. The ledger accrues them at
+// earn-time ad value (1 point per millicent — an earn basis, not a dollar
+// claim; points convert to $DWELL at launch). The API returns these balances
+// in USD terms, so points = usd × 1,000. Use pts() for anything a viewer
+// earns/holds; keep usd() for real money (advertiser spend, platform fees,
+// Stripe payouts).
 const pts = (n) => num(Math.round((Number(n) || 0) * 1000)) + " pts";
 const num = (n) => (Number(n) || 0).toLocaleString("en-US");
 const pct = (r) => (r == null ? "—" : (Number(r) * 100).toFixed(2) + "%");
@@ -705,7 +707,7 @@ const TABLE_DESC = {
   advertisers: "Ad campaign creators (email only).",
   campaigns: "Ads. Lifecycle: pending_payment → pending_review → active → exhausted (or rejected/cancelled).",
   event_batches: "Impression/click batches from extensions, with a hashed IP for fraud caps.",
-  ledger: "Append-only points/money log in millicents (1,000 points = $1). The single source of truth for all balances.",
+  ledger: "Append-only points/money log in millicents (1,000 points per earn-time ad dollar). The single source of truth for all balances.",
   payouts: "Stripe cash-out transfers converting viewers’ points to USDC.",
   gift_redemptions: "Points redeemed for a Claude plan (Pro / Max); fulfillment is manual.",
   web_sessions: "Website login bearer tokens.",

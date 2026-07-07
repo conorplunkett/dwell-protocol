@@ -46,7 +46,7 @@ Advertisers pay a **fixed dollar CPM** by card. Per $100 of ad spend:
 | Card processing (Stripe) | ~$2.50 | Stripe |
 | Provider fees (USD→USDC, swap, gas) | ~$2.50 | Coinbase / DEX / network |
 | Business margin (fiat) | $5.00 | The operating company |
-| **Token side** | **$90.00** | Pre-graduation: escrowed in the USDC reserve. Live: market-buys DWELL immediately |
+| **Token side** | **$90.00** | Points phase: earmarked to the token side on the protocol ledger. Live: market-buys DWELL immediately |
 
 Knob: `RESERVE_TRANCHE_BPS = 9000`. An advertiser paying in USDC directly
 skips the card leg, pushing ~$97.50 to the token side.
@@ -94,12 +94,18 @@ campaigns re-price at market. Earnings accrue per qualified view — same
 Users earn **DWELL points** from day one; ad inventory is live from launch.
 Points sit on the existing append-only millicent ledger:
 
-- **1,000 points = $1.00 of earned ad value** (1 point = 1 millicent).
-- Same 60/10/30 split, applied to dollar value.
-- The $90 tranche per campaign is **escrowed in the USDC reserve** — points
-  are visibly 1:1 dollar-backed, with a public reserve page showing escrowed
-  total vs. outstanding points.
-- Points are non-transferable and cannot be withdrawn
+- How many points a view earns is set by the ad's dollar value at earn time
+  (the ledger accrues your 60% share of the campaign's $90 tranche, 1 point
+  per millicent). Same 60/10/30 split.
+- **Points are denominated in DWELL, not dollars.** A point is not a dollar
+  claim and there is no cash reserve behind it: 1,000 points convert to
+  12,000 DWELL at launch, and what that DWELL is worth floats with the
+  market — down to zero. Dollar figures shown anywhere are estimates at the
+  current market price.
+- The $90 tranche per campaign is earmarked to the token side on the protocol
+  ledger; a public accounting page shows the earmarked total vs. outstanding
+  points.
+- Points are non-transferable until token launch
   ([05-legal-structure.md](05-legal-structure.md)).
 
 ## Conversion at the raise
@@ -107,21 +113,44 @@ Points sit on the existing append-only millicent ledger:
 When the raise opens, the points ledger is snapshotted (snapshot time
 announced at the snapshot, not before):
 
-1. Points convert at a **fixed price set by the $1M valuation**:
-   $0.0000833/DWELL, so **1,000 points = $1.00 = 12,000 DWELL** — announced in
-   advance and independent of where the pool opens.
+1. Points convert at a **fixed rate set by the $1M valuation**
+   ($0.0000833/DWELL): **1,000 points = 12,000 DWELL** — announced in advance
+   and independent of where the pool opens.
 2. Converted tokens come from the **10% ad-rewards airdrop**, so conversion is
    instant at token launch — no waiting on market buys.
 3. Claims go through a Solana Merkle distributor, gated on wallet-linked
    accounts. The root and a per-user lookup are published on the portal.
-4. The escrowed USDC reserve moves into the Meteora pool as added liquidity.
+4. The earmarked token-side funds move into the Meteora pool as added
+   liquidity.
 5. Once the pool is live, new campaigns switch to live buy-and-distribute at
    campaign-locked rates.
 
-Capacity note: at the fixed rate the 100M-token airdrop covers **$8,333** of
-converted point value (100M ÷ 12,000 per $1); outstanding points at the
-snapshot must stay under that, with the rest of the bucket left for launch
-boosts. Plenty for a day-one seed — track the ledger total against it.
+Capacity note: the 100M-token airdrop covers **8.33M points** (100M ÷ 12 per
+point, ≈ $8.3K of ad value at earn rates); outstanding points at the snapshot
+must stay under that, with the rest of the bucket left for launch boosts.
+Plenty for a day-one seed — track the ledger total against it.
+
+## Redemptions
+
+Once the token is live, points redeem three ways, each valued at the market
+price at the moment of redemption:
+
+1. **Withdraw as $DWELL** to a linked Solana wallet (Merkle claim).
+2. **Claude credits** — the corresponding DWELL is sold at redemption and the
+   proceeds fund the credits.
+3. **Cash via Stripe payouts** — same mechanic: the corresponding DWELL is
+   sold at redemption and the proceeds are paid out (Stripe Connect; users
+   receive 1099s at $600+/yr).
+
+Two structural rules keep the company flat on price:
+
+- Every cash-denominated redemption is **hedged by selling the corresponding
+  DWELL at the same time** — the protocol never owes more than the sale
+  raised, at any token price.
+- **Withdrawn tokens are never bought back.** Once $DWELL is in a user's
+  wallet, the exit is the open market. Cash-out is a feature of points, not
+  of the token — that keeps the payout flow a rewards program, not an
+  exchange.
 
 ## Business / owner P&L
 
@@ -142,11 +171,12 @@ balance-sheet accrual, not sell-side income. A third stream is the **founder's
 ## Risks
 
 - **Price volatility**: earnings lock per campaign; value floats afterward.
-  The portal shows token amounts and current USD estimates; the cash-out path
-  (DWELL→USDC via licensed partners) is the user's stability valve.
+  The portal shows token amounts and current USD estimates; the redemption
+  paths (Claude credits or Stripe payout, valued at market price at
+  redemption) are the user's stability valve.
 - **Thin liquidity**: mitigated by the 60%-of-supply liquidity seed plus the
-  escrowed reserve added at conversion; a $90 instant buy against a $25K pool
-  moves price ~0.7%, against $5K it whipsaws.
+  earmarked token-side funds added at conversion; a $90 instant buy against a
+  $25K pool moves price ~0.7%, against $5K it whipsaws.
 - **Wash-impression farming**: server-authoritative impression tokens, 2s
   dwell backstop, per-device and per-IP daily caps (FORGERY-SURFACE.md), plus
   payout requires a logged-in, wallet-linked account.
