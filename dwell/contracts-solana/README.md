@@ -69,15 +69,36 @@ need a fresh program address — `declare_id!` isn't runtime-enforced here
 since PDA derivation always uses the runtime `program_id` parameter, but
 keeping them in sync avoids confusion).
 
-## Devnet deploy (blocked on gas, see docs/08 status)
+## Devnet run — executed 2026-07-07, funding path verified
 
-Unlike Base Sepolia's captcha-gated faucets, Solana devnet SOL is normally
-self-serve (`solana airdrop`) — but this sandbox's shared egress IP has
-already exhausted the daily devnet faucet quota on every public RPC tried
-(`api.devnet.solana.com`, Helius, Ankr). Deploy is one command once an
-address is funded:
+Deployed and exercised on devnet (deploy needs `--use-rpc`: the CLI's
+default TPU path opens a websocket whose TLS this sandbox's proxy CA
+breaks; if a deploy dies mid-flight, reclaim the stranded rent with
+`solana program close --buffers`):
+
+| What | Address / tx |
+|---|---|
+| mock-jupiter-swap | `9YeYN5KMqFQTnu7RcqDnxQTpagvjFkSsiemzTmqBKnXH` |
+| dwell-funder | `6M2Gnz9shBWWkPuSz6Ty6coDJkGPTJsAvRDVubsBbuqe` |
+| DWELL mint (1B fixed, 9 dp, mint authority disabled) | `GBNEphoxbjw6i21oWkkneNegAY6kpHdbz5CLB7MT4sUb` |
+| test USDC mint (6 dp) | `6Ygmcoroohphani7fybnpF4Q317mG7Ec17DFM8c7G2PL` |
+| campaign 1 buy (`SwapAndFund`, 90 USDC tranche) | `2U5n3n3bLf8qekqk5cNzZ1LNJQtPLrh8jVM7HVoRJ8J8F4gdXB8PLV3Tx1vL8YmZaxRRfyTZEYAwckfLNwhSdWbD` |
+
+Verified on-chain, all exact to the base unit: a $100-campaign's 90-USDC
+tranche bought 1,080,000 DWELL at the configured rate, split 756,000 to the
+distributor vault (70%) and 324,000 to the treasury (30%); `funder_state`
+totals reconcile across both funded campaigns (91 USDC → 1,092,000 DWELL,
+70/30). Failure drills all rejected in-program: campaign replay
+(`AlreadyFunded`), funded non-keeper signer (`NotKeeper`, error 0x3),
+slippage floor (`InsufficientOutput`), paused funding (`Paused`) with
+un-pause restoring service.
+
+The `client/` scripts run it end to end (websocket-free send/confirm):
 
 ```sh
-solana program deploy target/deploy/mock_jupiter_swap.so --program-id target/deploy/mock_jupiter_swap-keypair.json --url devnet
-solana program deploy target/deploy/dwell_funder.so --program-id target/deploy/dwell_funder-keypair.json --url devnet
+cd client && npm install
+export SOL_KEYS_DIR=...   # dir with treasury/keeper/rootSetter/viewer.json
+export DWELL_MINT=... USDC_MINT=...
+node setup.js             # vaults, init both programs, wire keeper + swap target
+node fund-campaign.js     # the buy + the four failure drills
 ```

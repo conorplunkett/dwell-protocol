@@ -1,0 +1,11 @@
+{
+  "name": "dwell-solana-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Devnet dry-run client for dwell-funder + mock-jupiter-swap (docs/06 Phase 1 item 4's Solana leg)",
+  "type": "module",
+  "dependencies": {
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.95.0"
+  }
+}
