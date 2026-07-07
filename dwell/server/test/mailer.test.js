@@ -19,11 +19,13 @@ const TO = process.env.TEST_EMAIL || "conor.p43@gmail.com";
 const API_KEY = "re_test_key_1234567890";
 const RESEND_URL = "https://api.resend.com/emails";
 
-// Senders the mailer is configured with (mirrors mailer.js defaults).
-const USER_FROM = "DWELL <hello@dwellprotocol.com>";
-const ADS_FROM = "DWELL <ads@contact.dwellprotocol.com>";
-const SUPPORT_REPLY = "support@contact.dwellprotocol.com";
-const ADS_REPLY = "ads@contact.dwellprotocol.com";
+// Senders the mailer is configured with (mirrors mailer.js defaults). Outbound
+// mail runs through the legacy Resend-verified contact.freeai.fyi domain that
+// DWELL inherited from freeai.fyi, so every From/reply-to is on freeai.fyi.
+const USER_FROM = "DWELL <hello@contact.freeai.fyi>";
+const ADS_FROM = "DWELL <ads@contact.freeai.fyi>";
+const SUPPORT_REPLY = "support@contact.freeai.fyi";
+const ADS_REPLY = "ads@contact.freeai.fyi";
 
 // Captured Resend requests. Each send() should push exactly one.
 const sent = [];
