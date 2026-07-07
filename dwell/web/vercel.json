@@ -1,6 +1,18 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+  "redirects": [
+    { "source": "/go/fluidstack", "destination": "https://www.fluidstack.io", "permanent": false },
+    { "source": "/go/ramp", "destination": "https://ramp.com", "permanent": false },
+    { "source": "/go/linear", "destination": "https://linear.app", "permanent": false },
+    { "source": "/go/tuple", "destination": "https://tuple.app", "permanent": false },
+    { "source": "/go/vercel", "destination": "https://vercel.com", "permanent": false },
+    { "source": "/go/neon", "destination": "https://neon.tech", "permanent": false },
+    { "source": "/go/resend", "destination": "https://resend.com", "permanent": false },
+    { "source": "/go/querybear", "destination": "https://querybear.com", "permanent": false },
+    { "source": "/go/solo", "destination": "https://solo.io", "permanent": false },
+    { "source": "/go/liner", "destination": "https://getliner.com", "permanent": false }
+  ],
   "headers": [
     {
       "source": "/(.*)",

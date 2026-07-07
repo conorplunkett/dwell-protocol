@@ -72,11 +72,11 @@ const fakeMailer = {
     revenueShare: 0.9, dailyImpressionCap: 5000, ipDailyImpressionCap: 0, dailyClickCap: 5, payoutThresholdCents: 1000,
     referralRewardCents: 2000, referralCap: 10,
     affiliateRewardBps: 1000, affiliateCapPeople: 1000,
-    stripeWebhookSecret: WEBHOOK_SECRET, siteUrl: "https://dwell-protocol.vercel.app",
-    apiBaseUrl: "", corsOrigin: "https://dwell-protocol.vercel.app", adminKey: "test-admin",
+    stripeWebhookSecret: WEBHOOK_SECRET, siteUrl: "https://dwellprotocol.com",
+    apiBaseUrl: "", corsOrigin: "https://dwellprotocol.com", adminKey: "test-admin",
     emailTokenTtlMs: 1800000, emailCooldownMs: 0, emailIpDailyCap: 0, webSessionTtlMs: 2592000000, clickTokenTtlMs: 120000, maxBodyBytes: 65536,
     impressionTokenTtlMs: 120000, impressionMinDwellMs: 0, // dwell off for the main suite; a dedicated test exercises it
-    logRequests: false, giftFulfillmentEmail: "hello@dwell.example",
+    logRequests: false, giftFulfillmentEmail: "hello@dwellprotocol.com",
   };
   const repo = createRepo(poolNs);
   const stripe = createStripe("sk_test_fake", { fetchImpl: fakeFetch });
@@ -117,7 +117,7 @@ const fakeMailer = {
   await check("CORS preflight returns 204 with allow-origin", async () => {
     const r = await fetch(base + "/v1/ads", { method: "OPTIONS" });
     assert.strictEqual(r.status, 204);
-    assert.strictEqual(r.headers.get("access-control-allow-origin"), "https://dwell-protocol.vercel.app");
+    assert.strictEqual(r.headers.get("access-control-allow-origin"), "https://dwellprotocol.com");
     // authed web endpoints send a Bearer token, so the preflight must allow it
     assert.ok(/authorization/i.test(r.headers.get("access-control-allow-headers")), "Authorization not in allowed headers");
   });
@@ -463,7 +463,7 @@ const fakeMailer = {
     const token = new URL(link).searchParams.get("token");
     const verify = await api("GET", `/v1/auth/verify?token=${token}`);
     assert.strictEqual(verify.status, 302);
-    assert.strictEqual(verify.headers.get("location"), "https://dwell-protocol.vercel.app/?verified=1");
+    assert.strictEqual(verify.headers.get("location"), "https://dwellprotocol.com/?verified=1");
 
     const ok = await api("POST", "/v1/connect/onboard", device);
     assert.strictEqual(ok.status, 200);
@@ -582,7 +582,7 @@ const fakeMailer = {
 
     // The fulfillment inbox is notified; the redeeming user now also gets their
     // own confirmation, so find the fulfillment mail rather than the last one.
-    const mail = [...mailbox].reverse().find((m) => m.to === "hello@dwell.example");
+    const mail = [...mailbox].reverse().find((m) => m.to === "hello@dwellprotocol.com");
     assert.ok(mail, "fulfillment inbox is notified of the redemption");
     assert.strictEqual(mail.planName, "Claude Pro");
     assert.strictEqual(mail.months, 3);
@@ -812,7 +812,7 @@ const fakeMailer = {
     assert.strictEqual(dash.body.enrolled, true);
     const code = dash.body.code;
     assert.ok(/^[A-Z0-9]{8}$/.test(code), "affiliate code is 8 chars");
-    assert.strictEqual(dash.body.link, `https://dwell-protocol.vercel.app/redeem.html?ref=${code}`);
+    assert.strictEqual(dash.body.link, `https://dwellprotocol.com/redeem.html?ref=${code}`);
     assert.strictEqual(dash.body.rewardPct, 10);
     assert.strictEqual(dash.body.upgraded, false);
     assert.strictEqual(dash.body.upgradeRequested, false);
@@ -1322,7 +1322,7 @@ const fakeMailer = {
   });
 
   await check("completion-email builder escapes advertiser-controlled fields", async () => {
-    const rm = require("../src/mailer").createMailer({ siteUrl: "https://dwell-protocol.vercel.app" });
+    const rm = require("../src/mailer").createMailer({ siteUrl: "https://dwellprotocol.com" });
     const { subject, html } = rm.buildCampaignCompletedEmail({
       adLine: "safe line", brand: "<b>x</b>", campaignId: "id", impressionsShown: 950,
       clicks: 1, ctr: 1 / 950, cpcUsd: 2, ecpmUsd: 2.1, totalPaidUsd: 2,
@@ -1443,7 +1443,7 @@ const fakeMailer = {
   let campT;
   await check("token mode: funding a campaign earmarks the 90% reserve tranche at payment", async () => {
     const r = await apiT("POST", "/v1/checkout", {
-      email: "ads@dwell.example", adLine: "DWELL funded campaign", url: "https://example.com/",
+      email: "ads@dwellprotocol.com", adLine: "DWELL funded campaign", url: "https://example.com/",
       brand: "DwellCo", pricePerBlock: 1000, blocks: 5,
     });
     campT = r.body.campaignId;

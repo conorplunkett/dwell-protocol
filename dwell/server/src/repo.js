@@ -870,7 +870,7 @@ function createRepo(pool) {
         return u.rows[0];
       });
     },
-    // Link a device to a user (self-serve, from the dwell-protocol.vercel.app web session). Same
+    // Link a device to a user (self-serve, from the dwellprotocol.com web session). Same
     // association the magic-link verify makes — balance queries already roll up
     // "this user OR any device linked to them", so no balance merge is needed.
     async linkDeviceToUser(deviceId, userId) {

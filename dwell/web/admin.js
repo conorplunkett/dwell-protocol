@@ -45,7 +45,7 @@ function safeHref(url) {
 const usd = (n) => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const usd0 = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("en-US"); // whole-dollar (CPM)
 // DWELL user-side value is denominated in POINTS: 1,000 points = $1.00 of earned
-// ad value (backed 1:1 by the USDC reserve). The API returns these balances in
+// ad value. The API returns these balances in
 // USD, so points = usd × 1,000. Use pts() for anything a viewer earns/holds;
 // keep usd() for real money (advertiser spend, platform fees, Stripe payouts).
 const pts = (n) => num(Math.round((Number(n) || 0) * 1000)) + " pts";

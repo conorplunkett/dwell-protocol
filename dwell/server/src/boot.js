@@ -6,7 +6,7 @@ const { createMailer } = require("./mailer");
 const { createRateLimiter } = require("./ratelimit");
 
 function loadConfig(env = process.env) {
-  const siteUrl = env.SITE_URL || "https://dwell-protocol.vercel.app";
+  const siteUrl = env.SITE_URL || "https://dwellprotocol.com";
   return {
     port: parseInt(env.PORT || "8787", 10),
     databaseUrl: env.DATABASE_URL,
@@ -29,7 +29,7 @@ function loadConfig(env = process.env) {
     referralCap: parseInt(env.REFERRAL_CAP || "10", 10), // max rewarded referrals per user
     affiliateRewardBps: parseInt(env.AFFILIATE_REWARD_BPS || "1000", 10), // affiliate's cut of an affiliated user's earnings, basis points (1000 = 10%)
     affiliateCapPeople: parseInt(env.AFFILIATE_CAP_PEOPLE || "10", 10), // max attributed friends per affiliate (dollar earnings uncapped)
-    giftFulfillmentEmail: env.GIFT_FULFILLMENT_EMAIL || "hello@dwell.example", // manual gift card fulfillment inbox
+    giftFulfillmentEmail: env.GIFT_FULFILLMENT_EMAIL || "hello@dwellprotocol.com", // manual gift card fulfillment inbox
     emailTokenTtlMs: parseInt(env.EMAIL_TOKEN_TTL_MS || "1800000", 10), // 30 min
     emailCooldownMs: parseInt(env.EMAIL_COOLDOWN_MS || "60000", 10), // min gap between magic-link sends per email; 0 disables
     emailIpDailyCap: parseInt(env.EMAIL_IP_DAILY_CAP || "50", 10), // magic-link/login email sends per source IP per UTC day; 0 disables (shared-NAT/CGNAT)
@@ -67,7 +67,7 @@ function loadConfig(env = process.env) {
     // ---- brand — the DWELL deployment bills and writes copy under its own name ----
     brandName: env.BRAND_NAME || "DWELL",
     stripeProductName: env.STRIPE_PRODUCT_NAME || "DWELL spinner block — 1,000 impressions",
-    stripeProductImage: env.STRIPE_PRODUCT_IMAGE || "https://dwell-protocol.vercel.app/og.png",
+    stripeProductImage: env.STRIPE_PRODUCT_IMAGE || "https://dwellprotocol.com/og.png",
   };
 }
 

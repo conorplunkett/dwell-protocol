@@ -195,7 +195,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     json(res, 200, await repo.registerDevice());
   });
 
-  // Self-serve device→account link: the extension's dwell-protocol.vercel.app bridge posts the
+  // Self-serve device→account link: the extension's dwellprotocol.com bridge posts the
   // device creds + the site's web session; attach the device to that user and
   // enroll them as an affiliate so the popup's crew lights up. No magic link.
   route("POST", "/v1/devices/link", async (req, res, body, rawBody, query) => {
@@ -364,7 +364,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
   });
 
   // ---------- pre-account email capture (launch waitlist) ----------
-  // Public, no-auth: someone types their email under the hero on dwell-protocol.vercel.app (or a
+  // Public, no-auth: someone types their email under the hero on dwellprotocol.com (or a
   // lander) to be told when they can install and start earning. Store the bare
   // email (no account, no magic link), then best-effort send a confirmation. (In
   // production the edge function additionally mirrors the contact into Resend.)
@@ -412,7 +412,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
           product_data: {
             name: config.stripeProductName || "DWELL spinner block — 1,000 impressions",
             description: `${brand ? brand + " — " : ""}"${adLine}" → ${url}`,
-            images: [config.stripeProductImage || "https://dwell-protocol.vercel.app/og.png"],
+            images: [config.stripeProductImage || "https://dwellprotocol.com/og.png"],
           },
         },
       }],

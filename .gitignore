@@ -3,6 +3,8 @@ __pycache__/
 
 # Chrome Web Store build output (regenerate with `make package-ext`).
 chrome-extension/dist/
+dwell/chrome-extension/dist/
 
 # Supabase CLI scratch (project link / version cache) — never committed.
 supabase/.temp/
+dwell/supabase/.temp/

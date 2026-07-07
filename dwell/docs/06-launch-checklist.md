@@ -23,6 +23,19 @@ brand-parameterized — only the theme tokens and (slightly) the copy differ.
 One codebase, two deployments. (This supersedes two same-day notes —
 rebrand-in-place, then fork-and-diverge — that briefly stood here.)
 
+**Decision record (2026-07-07): full rebrand — the legacy brand is frozen.**
+The prior product will never be used again; its tree stays at the repo root
+as a frozen reference (site, clients, and edge function keep running until
+retired) and **all development happens in `dwell/`**. Accepted interim
+deviations from the Separation list below, to launch now: (1) **shared
+Supabase project** — the `dwell-api` function and the `dwell` Postgres schema
+live in the legacy project (`DB_SCHEMA=dwell` isolation); migrate to an own
+project/org later, before scale. (2) **Email still sends from the legacy
+Resend account/domain** (env-level `MAIL_FROM`), until DWELL's own sending
+domain is verified. (3) The **existing Chrome Web Store listing is rebranded
+in place** (v0.7.0) instead of a new listing. Canonical domain:
+**dwellprotocol.com** (owned, live on the `dwell-protocol` Vercel project).
+
 ## Separation — two businesses, zero runtime connections
 
 Everything DWELL runs is its own **instance**: no shared data, keys, accounts,
@@ -46,10 +59,11 @@ both brands.
       migration of any kind — no users, devices, balances, campaigns,
       referral codes, or ad inventory imported from DWELL. Own
       `DATABASE_URL`, service keys, session/webhook secrets, `ADMIN_KEY`.
-- [ ] **Own site**: DWELL domain + its own Vercel project (root =
+- [x] **Own site**: DWELL domain + its own Vercel project (root =
       `dwell/web`). No links, redirects, shared assets, or shared analytics
       between the two sites in either direction — enforced by the
-      cross-brand grep in CI.
+      cross-brand grep in CI. *(Done 2026-07-07: dwellprotocol.com live on
+      the `dwell-protocol` Vercel project.)*
 - [ ] **Own admin dashboard deployment**: the **same** admin UI
       (`web/admin.{html,js,css}` elements), served from the DWELL site on
       the black/green theme and pointed at the DWELL backend with its own

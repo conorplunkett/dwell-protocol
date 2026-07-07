@@ -1,8 +1,8 @@
-// Generate the DWELL.fyi social share / link-preview image — og.png (1200×630).
+// Generate the DWELL social share / link-preview image — og.png (1200×630).
 //
 // This is the picture every platform (iMessage, Slack, Discord, WhatsApp,
 // Twitter/X, Facebook, LinkedIn, Telegram…) shows when someone pastes a
-// dwell-protocol.vercel.app link. It has one job: state the offer and look like a real brand,
+// dwellprotocol.com link. It has one job: state the offer and look like a real brand,
 // not a template. So it's deliberately spare — wordmark, one headline, flat
 // background. The og:description under the image carries the pitch.
 //
@@ -120,7 +120,7 @@ const cardHtml = ({ h1, note, sub }) => `<!doctype html><html><head><meta charse
   <div class="pad">
     <div class="top">
       <div class="logo">F$</div>
-      <div class="wordmark">DWELL.fyi</div>
+      <div class="wordmark">DWELL</div>
     </div>
     <div class="mid">
       ${note ? `<p class="note">${note}</p>` : ""}

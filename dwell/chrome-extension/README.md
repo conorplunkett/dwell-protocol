@@ -1,4 +1,4 @@
-# DWELL.fyi — Chrome extension
+# Dwell Protocol — Chrome extension
 
 > Earn money while you use AI. Ads appear while **ChatGPT, Claude & Gemini** think — a share of revenue goes to you.
 
@@ -33,7 +33,7 @@ Then verify it two ways:
   generic `aria-label*="stop"` catch-all), an `aria-busy` region, or a streaming
   marker — and shows the sponsored bar only while the assistant is working.
 - Every 5 seconds served is one **impression**; clicks are tracked but no longer
-  paid. Credits accrue at your revenue share, stored locally
+  paid. DWELL points accrue at your share of the campaign pool, stored locally
   (`chrome.storage`), shown live in the popup.
 - The bar mounts **inline, at the streaming reply** (Claude's
   `data-is-streaming` bubble, ChatGPT's last assistant turn, Gemini's
@@ -45,7 +45,7 @@ Then verify it two ways:
 - **Live backend.** `API_BASE` in `src/background.js` points at the production
   Supabase Edge Function
   (`https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/dwell-api`; the
-  `api.dwell-protocol.vercel.app` hostname is a Vercel rewrite onto the same function). On
+  `api.dwellprotocol.com` hostname is a Vercel rewrite onto the same function). On
   first run the service worker
   registers an anonymous device, pulls the live ad inventory from the auction
   (`/v1/ads`, falling back to the bundled list when offline), reports impressions

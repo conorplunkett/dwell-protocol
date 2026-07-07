@@ -295,7 +295,7 @@ clean. Rejection auto-refunds via Stripe and posts a reversing ledger entry.
 - Real Stripe account + Connect enablement; swap test keys for live.
 - Set `MAIL_PROVIDER=resend` + `RESEND_API_KEY` for real verification emails.
 - Hosting/DNS and the production secrets now live with the Edge Function — see
-  `supabase/functions/README.md` (the site is on Vercel under the `dwell-protocol.vercel.app`
+  `supabase/functions/README.md` (the site is on Vercel under the `dwellprotocol.com`
   domain).
 - Optional next: GitHub OAuth instead of email-only identity, per-IP device
   limits and click anomaly detection, edge WAF.

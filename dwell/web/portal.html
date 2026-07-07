@@ -23,7 +23,7 @@
        portal.js never calls it — every view renders from seeded mock data. -->
   <meta name="dwell-api" content="https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/dwell-api" />
   <title>DWELL — Portal</title>
-  <meta name="description" content="Sign in to see your DWELL points — earned ad value from the sponsored line. 1,000 points = $1.00, backed 1:1 by a USDC reserve." />
+  <meta name="description" content="Sign in to see your DWELL points — earned ad value from the sponsored line. 1,000 points = $1.00 of earned ad value." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -63,7 +63,7 @@
         <p class="portal-lead">
           Your private dashboard shows points credited while your AI assistant
           was thinking, their earned ad value, and recent activity.
-          1,000 points = $1.00 of earned ad value, backed 1:1 by a USDC reserve.
+          1,000 points = $1.00 of earned ad value.
         </p>
       </div>
 
@@ -333,7 +333,7 @@
     </div>
 
     <!-- Primary section nav — one active view at a time. Same order as the
-         FreeAI dashboard; Cash out sits in the Redeem slot. -->
+         legacy dashboard; Cash out sits in the Redeem slot. -->
     <nav class="dash-tabs" id="dash-tabs" role="tablist" aria-label="Portal sections">
       <button class="dash-tab active" data-section="earnings" type="button" role="tab" aria-selected="true">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M17 8h4v4"/></svg></span>
@@ -373,8 +373,7 @@
         <p class="portal-copy">
           Each sponsored line you watch while your AI assistant thinks credits
           you the viewer's 60% share of that campaign's pool in DWELL points.
-          1,000 points = $1.00 of earned ad value, backed 1:1 by the USDC
-          reserve.
+          1,000 points = $1.00 of earned ad value.
         </p>
 
         <div class="earn-stats">
@@ -481,9 +480,9 @@
 
         <h2>Cash out</h2>
         <p class="portal-copy">
-          DWELL points are earned ad value — 1,000 points = $1.00, backed 1:1 by
-          USDC held in the reserve. Cashing out opens at token launch; until
-          then your points accrue here and stay recorded on the ledger.
+          DWELL points are earned ad value — 1,000 points = $1.00. Cashing out
+          opens at token launch; until then your points accrue here and stay
+          recorded on the ledger.
         </p>
 
         <!-- (a) Points summary card — same stat tiles as the Earnings tab. -->
@@ -499,9 +498,9 @@
             <span class="es-sub">1,000 points = $1.00</span>
           </div>
           <div class="earn-stat">
-            <span class="es-label">Backing</span>
-            <span class="es-num">1:1</span>
-            <span class="es-sub">USDC reserve, escrowed</span>
+            <span class="es-label">Rate</span>
+            <span class="es-num">1,000 = $1</span>
+            <span class="es-sub">points per earned dollar</span>
           </div>
         </div>
 
@@ -514,7 +513,7 @@
           <ol class="lp-steps">
             <li><strong>Claim DWELL to your wallet.</strong> Your points convert to
               DWELL tokens under the published rules; the claim happens onchain, on
-              Base — into an email-based wallet created for you, or one you
+              Solana — into an email-based wallet created for you, or one you
               connect yourself.</li>
             <li><strong>Swap to USDC.</strong> One step inside the portal swaps
               claimed DWELL for USDC.</li>
@@ -523,11 +522,10 @@
           </ol>
         </div>
 
-        <!-- (c) Factual note on transferability + backing. -->
+        <!-- (c) Factual note on transferability. -->
         <p class="cashout-note">
-          DWELL points are non-transferable until token launch and are 1:1
-          dollar-backed by USDC held in the reserve. Nothing to do today — your
-          points and the reserve backing them are already recorded.
+          DWELL points are non-transferable until token launch. Nothing to do
+          today — your points are already recorded on the ledger.
         </p>
       </section>
 
@@ -696,10 +694,10 @@
       </section>
     </main>
 
-    <!-- Reserve strip — points-phase accounting, in one line. Fed by
+    <!-- Points strip — points-phase accounting, in one line. Fed by
          GET /v1/web/points/summary with a seeded mock fallback (see portal.js). -->
     <div class="reserve-strip">
-      <span class="reserve-pill">Reserve <strong id="reserve-usd">$48,120</strong> USDC · <strong id="reserve-points">3,912,400</strong> points outstanding</span>
+      <span class="reserve-pill"><strong id="reserve-points">3,912,400</strong> points outstanding across all accounts</span>
     </div>
 
     <footer class="footer">
@@ -725,8 +723,8 @@
         <li><strong>Or connect your own</strong> — use an existing wallet with the portal instead.</li>
       </ul>
       <p class="modal-body">
-        Until launch, points accrue to your account and are backed 1:1 by the
-        USDC reserve.
+        Until launch, points accrue to your account and stay recorded on the
+        ledger.
       </p>
       <button class="btn-accent" id="wallet-modal-close" type="button">Got it</button>
     </div>

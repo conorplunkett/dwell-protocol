@@ -235,7 +235,7 @@ body {
 .status.off .dot { background: var(--gray-2); }
 
 /* footer */
-/* account status — which dwell-protocol.vercel.app account this device is linked to */
+/* account status — which dwellprotocol.com account this device is linked to */
 .account-status {
   display: flex; align-items: center; gap: 7px;
   padding: 11px 18px; border-top: 1px solid var(--line);

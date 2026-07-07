@@ -1,5 +1,11 @@
 # FreeAI.fyi
 
+> **⚠️ This tree is frozen.** The product has been rebranded to **Dwell Protocol**
+> and now lives in [`dwell/`](dwell/) — site [dwellprotocol.com](https://dwellprotocol.com),
+> API function slug `dwell-api`. All development happens there; nothing at the
+> repo root ships anymore. The root is kept as-is as the FreeAI reference
+> (its site, clients, and `api` function stay working until retired).
+
 > Get **Claude** for free with ads while you use **ChatGPT, Claude, Gemini, and Claude Code**. A share of the revenue comes back as Claude credits.
 
 FreeAI shows one clickable sponsored line while a web AI assistant or

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "DWELL.fyi — Earn from ChatGPT, Claude & Gemini",
-  "version": "0.6.2",
-  "description": "Earn money while you use AI. Ads appear while AI thinks — 50% of revenue goes to you.",
+  "name": "Dwell Protocol — Earn from ChatGPT, Claude & Gemini",
+  "version": "0.7.0",
+  "description": "Earn while you use AI. One sponsored line shows while the AI is thinking — you earn DWELL points for watching.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -20,10 +20,14 @@
   "background": {
     "service_worker": "src/background.js"
   },
-  "permissions": ["storage", "alarms"],
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
   "host_permissions": [
     "https://wpjfhezklpczxzocgxsb.supabase.co/*",
-    "https://dwell-protocol.vercel.app/*",
+    "https://dwellprotocol.com/*",
+    "https://www.dwellprotocol.com/*",
     "https://claude.ai/*",
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
@@ -37,13 +41,23 @@
         "https://chat.openai.com/*",
         "https://gemini.google.com/*"
       ],
-      "js": ["src/ads.js", "src/content.js"],
-      "css": ["src/inject.css"],
+      "js": [
+        "src/ads.js",
+        "src/content.js"
+      ],
+      "css": [
+        "src/inject.css"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://dwell-protocol.vercel.app/*"],
-      "js": ["src/link.js"],
+      "matches": [
+        "https://dwellprotocol.com/*",
+        "https://www.dwellprotocol.com/*"
+      ],
+      "js": [
+        "src/link.js"
+      ],
       "run_at": "document_idle"
     }
   ]

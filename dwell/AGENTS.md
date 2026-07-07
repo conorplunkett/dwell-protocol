@@ -14,15 +14,20 @@ merged (by review or by the user) before treating the change as shipped.
 
 DWELL shows **one sponsored line** while an AI assistant (ChatGPT, Claude,
 Gemini) is thinking, and **pays the person watching**. Earnings accrue as
-**DWELL points** (1,000 points = $1.00 of earned ad value, backed 1:1 by a
-USDC reserve) and convert to the **$DWELL token** at launch (venue: star.fun,
-Solana — see `docs/07-starfun-launch.md`). Advertisers pay fixed dollar CPMs
-by card; **90% of every ad dollar** goes to the earn side, splitting
+**DWELL points** (1,000 points = $1.00 of earned ad value) and convert to the
+**$DWELL token** at launch (venue: star.fun, Solana — see
+`docs/07-starfun-launch.md`). Advertisers pay fixed dollar CPMs by card;
+**90% of every ad dollar** goes to the earn side, splitting
 **60% viewer / 10% referrer / 30% protocol treasury (held, never sold)**.
+Canonical domain: **dwellprotocol.com**.
 
 State mechanics as facts. No price talk, ever — the banned-language grep in CI
-(`moon|price will|appreciat|going up|invest` over `web/`) enforces the copy
-rules in `docs/05-legal-structure.md`.
+(`moon|price will|appreciat|going up|invest` over `dwell/web`) enforces the
+copy rules in `docs/05-legal-structure.md`. **Never claim points are "backed"
+or "escrowed" until the USDC reserve actually exists** — say points are
+recorded on the ledger / earmarked, not guaranteed. CI for this tree runs from
+the **root** `.github/workflows/dwell-ci.yml`; `dwell/` must stay free of any
+reference to the frozen root product's brand (CI greps for it).
 
 ## Layout
 
