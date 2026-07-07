@@ -1491,3 +1491,5 @@ a { color: inherit; text-decoration: none; }
 
 /* "Want to advertise?" spans the full waitlist row (input + button width). */
 .wl-adv-row .wl-adv { width: 100%; }
+
+/* deploy-trigger: 2026-07-07 rebrand cutover — safe to remove */
