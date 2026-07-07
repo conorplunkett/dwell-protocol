@@ -517,6 +517,100 @@ if (adForm) {
   });
 }
 
+// --- USDC checkout (dwell/docs/08) ---------------------------------------
+// Non-custodial pay-and-swap: the backend builds ONE atomic Solana transaction
+// (10% USDC protocol fee to the treasury + 90% market-bought into $DWELL for
+// the rewards pool) and the advertiser signs it from their own wallet via a
+// Solana Pay link. Fully wired, but HIDDEN: the backend 404s the whole surface
+// until the $DWELL mint exists (DWELL_MINT env), so this flag stays false
+// until launch — flip it to reveal the button.
+const USDC_CHECKOUT = false;
+(() => {
+  const btn = document.getElementById("usdc-btn");
+  const panel = document.getElementById("usdc-panel");
+  if (!btn || !panel || !adForm) return;
+  if (!USDC_CHECKOUT || !API_BASE) return; // stays hidden pre-launch (and in dev mode)
+  btn.hidden = false;
+
+  const statusEl = document.getElementById("usdc-status");
+  const payLink = document.getElementById("usdc-paylink");
+  const setStatus = (text, cls) => { statusEl.textContent = text; statusEl.className = "usdc-status" + (cls ? " " + cls : ""); };
+  const usd = (n) => "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  let pollTimer = null;
+
+  const poll = (orderId) => {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/v1/ads/usdc/orders/${orderId}`);
+        if (!res.ok) return;
+        const o = await res.json();
+        if (o.status === "confirmed") {
+          clearInterval(pollTimer);
+          setStatus("Payment confirmed — your ad is in review and goes live once approved.", "ok");
+          payLink.hidden = true;
+        } else if (o.status === "expired") {
+          clearInterval(pollTimer);
+          setStatus("This order expired. Reopen USDC checkout to price a fresh one.", "err");
+        } else if (o.status === "failed") {
+          clearInterval(pollTimer);
+          setStatus("That payment didn't verify (" + (o.failReason || "unknown") + "). Reopen USDC checkout to retry.", "err");
+        }
+      } catch (_) { /* offline — keep polling */ }
+    }, 3500);
+  };
+
+  btn.addEventListener("click", async () => {
+    const get = (sel) => adForm.querySelector(sel)?.value?.trim() || "";
+    const payload = {
+      email: get('input[name="email"]'),
+      adLine: document.getElementById("adline")?.value?.trim() || "",
+      url: normalizeUrl(get('input[name="url"]')),
+      brand: get('input[name="organization"]'),
+      color: document.getElementById("adcolor")?.value?.trim() || "",
+      budget: parseFloat(document.getElementById("budget")?.value || "0") || SUGGESTED_BUDGET,
+      cpm: parseInt(document.getElementById("cpm")?.value || "0", 10),
+      showOnLeaderboard: adForm.querySelector('input[type="checkbox"]')?.checked !== false,
+    };
+    btn.disabled = true;
+    const old = btn.innerHTML;
+    btn.textContent = "Pricing your campaign…";
+    try {
+      const res = await fetch(`${API_BASE}/v1/ads/usdc/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        btn.textContent = data.error || "Something went wrong";
+        setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2600);
+        return;
+      }
+      btn.innerHTML = old;
+      btn.disabled = false;
+      document.getElementById("usdc-price").textContent = usd(data.priceUsdc);
+      document.getElementById("usdc-fee").textContent = usd(data.feeUsdc);
+      document.getElementById("usdc-tranche").textContent = usd(data.trancheUsdc);
+      payLink.hidden = false;
+      payLink.href = data.solanaPayUrl;
+      const copyBtn = document.getElementById("usdc-copy");
+      copyBtn.onclick = () => {
+        navigator.clipboard?.writeText(data.solanaPayUrl).then(
+          () => { copyBtn.textContent = "Copied"; setTimeout(() => (copyBtn.textContent = "Copy payment link"), 1600); },
+          () => {}
+        );
+      };
+      setStatus("Open the link in your Solana wallet and approve the transaction — one signature pays the fee and funds the rewards pool.");
+      panel.hidden = false;
+      poll(data.orderId);
+    } catch (_) {
+      btn.textContent = "Network error — try again";
+      setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2600);
+    }
+  });
+})();
+
 // --- Surfaces showcase: provider-tab cross-fade ("Native everywhere it
 // appears"). Clicking a tab swaps the active screenshot within that surface
 // row only. Scoped to .surfaces so it can't touch anything else on the page. ---

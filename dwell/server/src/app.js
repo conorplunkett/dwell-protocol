@@ -79,7 +79,10 @@ function receiptStats(row) {
   };
 }
 
-function createApp({ repo, stripe, mailer, rateLimiter, config }) {
+function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
+  // USDC checkout helpers (dwell/docs/08). Lazily created so legacy callers
+  // (and tests that don't exercise the surface) need not pass one in.
+  if (!solana) solana = require("./solana").createSolana({ config });
   // Killswitch: when off, /v1/config tells extensions to stop serving and
   // /v1/ads returns an empty list (covers older extensions that never check
   // config). Toggled at runtime by an admin; resets to the env default
@@ -362,6 +365,205 @@ function createApp({ repo, stripe, mailer, rateLimiter, config }) {
     if (!config.tokenMode) return tokenModeOff(res);
     if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
     return liveOnly(res);
+  });
+
+  // ---------- USDC advertiser checkout (dwell/docs/08) ----------
+  // Non-custodial pay-and-swap: POST /orders prices the campaign and quotes the
+  // swap; POST /orders/:id/transaction builds ONE atomic unsigned transaction
+  // (10% USDC fee -> treasury, 90% Jupiter-swapped into DWELL -> distributor
+  // vault) that the advertiser signs from their own wallet; GET /orders/:id
+  // polls, discovers the payment by its Solana Pay reference key, verifies the
+  // finalized transaction read-only, and activates the campaign. The backend
+  // holds no keys and no funds at any point. The whole surface 404s until the
+  // $DWELL mint exists (DWELL_MINT unset — the launch gate).
+  const usdcCheckoutOff = () =>
+    !config.tokenMode || !config.dwellMint || !config.treasuryUsdcAta || !config.distributorDwellAta;
+  // The reference server has no admin pricing surface (the edge function reads
+  // the settings-backed repo.getPricing()); these mirror its defaults.
+  const USDC_PRICING = { minCpmCents: 500, maxCpmCents: 10000, minBudgetCents: 10000, maxBudgetCents: 10000000 };
+  const microUsd = (micro) => Number(micro) / 1e6;
+  const shapeUsdcOrder = (o) => ({
+    orderId: o.id,
+    campaignId: o.campaign_id,
+    status: o.status,
+    campaignStatus: o.campaign_status,
+    priceUsdc: microUsd(o.price_micro_usdc),
+    feeUsdc: microUsd(o.fee_micro_usdc),
+    trancheUsdc: microUsd(o.tranche_micro_usdc),
+    minDwellOut: String(o.min_dwell_out),
+    reference: o.reference_pubkey,
+    txSignature: o.tx_signature || null,
+    failReason: o.fail_reason || null,
+    expiresAt: o.expires_at,
+  });
+
+  route("POST", "/v1/ads/usdc/orders", async (req, res, body) => {
+    if (usdcCheckoutOff()) return json(res, 404, { error: "not found" });
+    // Same budget+CPM campaign shape as the card checkout — only the rail differs.
+    const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard } = body || {};
+    const budgetCents = Math.round(Number(budget) * 100);
+    const cpmCents = Math.round(Number(cpm) * 100);
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(res, 400, { error: "valid email required" });
+    if (!isCleanAdLine(adLine)) return json(res, 400, { error: "ad line must be 3-60 printable chars, no < >" });
+    if (!/^https:\/\/[^\s]+$/.test(url || "")) return json(res, 400, { error: "https url required" });
+    const P = USDC_PRICING;
+    if (!(cpmCents >= P.minCpmCents && cpmCents <= P.maxCpmCents)) {
+      return json(res, 400, { error: `CPM must be $${(P.minCpmCents / 100).toFixed(2)}–$${(P.maxCpmCents / 100).toFixed(2)}` });
+    }
+    if (!(budgetCents >= P.minBudgetCents && budgetCents <= P.maxBudgetCents)) {
+      return json(res, 400, { error: `budget must be $${(P.minBudgetCents / 100).toFixed(0)}–$${(P.maxBudgetCents / 100).toLocaleString("en-US")}` });
+    }
+    const impressions = Math.floor((budgetCents * 1000) / cpmCents);
+    if (!(impressions >= 1)) return json(res, 400, { error: "budget too small for this CPM" });
+
+    // 90/10 in micro-USDC, exact: the fee is the 10000-RESERVE_TRANCHE_BPS
+    // remainder, the tranche keeps every leftover micro unit.
+    const priceMicro = BigInt(budgetCents) * 10000n;
+    const feeMicro = (priceMicro * BigInt(10000 - config.reserveTrancheBps)) / 10000n;
+    const trancheMicro = priceMicro - feeMicro;
+
+    let quote;
+    try {
+      quote = await solana.jupiterQuote(trancheMicro.toString());
+    } catch (err) {
+      console.error("[dwell] usdc order quote failed:", err?.message);
+      return json(res, 502, { error: "couldn't quote the swap — try again" });
+    }
+
+    const blocks = Math.max(1, Math.round(impressions / 1000));
+    const campaignId = await repo.createPendingCampaign({
+      email, brand, adLine, url, category, color: normalizeHexColor(color),
+      pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard,
+    });
+    const order = await repo.createUsdcOrder({
+      campaignId,
+      priceMicroUsdc: priceMicro.toString(),
+      feeMicroUsdc: feeMicro.toString(),
+      trancheMicroUsdc: trancheMicro.toString(),
+      quote,
+      minDwellOut: String(quote.otherAmountThreshold || quote.outAmount),
+      referencePubkey: solana.newReferencePubkey(),
+      ttlMinutes: config.usdcOrderTtlMinutes,
+    });
+    json(res, 200, {
+      orderId: order.id,
+      campaignId,
+      priceUsdc: microUsd(priceMicro),
+      feeUsdc: microUsd(feeMicro),
+      trancheUsdc: microUsd(trancheMicro),
+      estDwellOut: String(quote.outAmount),
+      minDwellOut: String(quote.otherAmountThreshold || quote.outAmount),
+      expiresAt: order.expires_at,
+      // Solana Pay transaction request: wallets GET label/icon then POST
+      // {account} to this link and receive the unsigned transaction.
+      solanaPayUrl: `solana:${encodeURIComponent(`${config.apiBaseUrl}/v1/ads/usdc/orders/${order.id}/transaction`)}`,
+    });
+  });
+
+  // Order status — the checkout page poller. Discovery + verification ride the
+  // poll (Solana Pay findReference), so no webhook is needed for the scaffold;
+  // a Helius webhook can shortcut this later without changing the contract.
+  route("GET", "/v1/ads/usdc/orders/:id", async (req, res, body, rawBody, query, pathParams) => {
+    if (usdcCheckoutOff()) return json(res, 404, { error: "not found" });
+    const order = await repo.getUsdcOrder(pathParams.id);
+    if (!order) return json(res, 404, { error: "order not found" });
+    if (order.status !== "awaiting_signature") return json(res, 200, shapeUsdcOrder(order));
+
+    // Optional hint from the paying client; otherwise look up by reference.
+    let signatures = [];
+    const hinted = query.get("signature");
+    try {
+      signatures = hinted ? [hinted] : await solana.findReferenceSignatures(order.reference_pubkey);
+    } catch (err) {
+      console.error("[dwell] usdc order signature lookup failed:", err?.message);
+      return json(res, 200, shapeUsdcOrder(order)); // RPC hiccup — stay awaiting, client re-polls
+    }
+    for (const signature of signatures) {
+      let v;
+      try {
+        v = await solana.verifyOrderTransaction({ signature, order });
+      } catch (err) {
+        console.error("[dwell] usdc order verify failed:", err?.message);
+        continue;
+      }
+      if (!v.ok) {
+        // A landed-but-wrong transaction (fee short, slippage floor breached)
+        // permanently fails the order; not-yet-final ones keep the order open.
+        if (["tx_failed", "fee_short", "no_dwell_out", "slippage_floor", "reference_missing"].includes(v.reason) && !hinted) {
+          await repo.failUsdcOrder(order.id, v.reason, signature);
+        }
+        continue;
+      }
+      try {
+        const paid = await repo.confirmUsdcOrder({
+          orderId: order.id,
+          txSignature: signature,
+          dwellOut: v.dwellOut.toString(),
+          tokenSplit,
+          viewerShareBps: config.viewerShareBps,
+        });
+        if (paid) {
+          try {
+            await mailer.sendAdvertiserReceiptEmail(paid.email, {
+              campaignId: order.campaign_id,
+              brand: paid.brand,
+              adLine: paid.adLine,
+              pricePerBlockCents: paid.pricePerBlockCents,
+              blocks: paid.blocks,
+            });
+          } catch (err) {
+            console.error("[dwell] usdc advertiser receipt email failed", err);
+          }
+        }
+      } catch (err) {
+        if (err.code === "CAMPAIGN_NOT_FUNDABLE") {
+          await repo.failUsdcOrder(order.id, "campaign_not_fundable", signature);
+        } else {
+          throw err;
+        }
+      }
+      break;
+    }
+    const fresh = await repo.getUsdcOrder(order.id);
+    json(res, 200, shapeUsdcOrder(fresh));
+  });
+
+  // Solana Pay transaction request (GET half): wallet-facing metadata.
+  route("GET", "/v1/ads/usdc/orders/:id/transaction", async (req, res) => {
+    if (usdcCheckoutOff()) return json(res, 404, { error: "not found" });
+    json(res, 200, { label: `${config.brandName} ad campaign`, icon: `${config.siteUrl}/og.png` });
+  });
+
+  // Solana Pay transaction request (POST half): build the atomic unsigned
+  // transaction for the paying wallet. Re-quotes on every build — a built
+  // transaction is only ~60s of blockhash validity — and pins the refreshed
+  // slippage floor to the order so the verifier enforces what the wallet saw.
+  route("POST", "/v1/ads/usdc/orders/:id/transaction", async (req, res, body, rawBody, query, pathParams) => {
+    if (usdcCheckoutOff()) return json(res, 404, { error: "not found" });
+    const order = await repo.getUsdcOrder(pathParams.id);
+    if (!order) return json(res, 404, { error: "order not found" });
+    if (order.status === "expired") return json(res, 410, { error: "order expired — start a new one" });
+    if (order.status !== "awaiting_signature") return json(res, 409, { error: `order is ${order.status}` });
+    const payer = String(body?.account || "");
+    if (!solana.isPubkey(payer)) return json(res, 400, { error: "account must be a Solana pubkey" });
+    try {
+      const quote = await solana.jupiterQuote(String(order.tranche_micro_usdc));
+      await repo.refreshUsdcOrderQuote(order.id, quote, String(quote.otherAmountThreshold || quote.outAmount));
+      const transaction = await solana.buildOrderTransaction({
+        order: { ...order, min_dwell_out: quote.otherAmountThreshold || quote.outAmount },
+        payer,
+        quoteResponse: quote,
+      });
+      json(res, 200, {
+        transaction,
+        message: `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} DWELL buy to the rewards pool`,
+      });
+    } catch (err) {
+      if (err.code === "NO_USDC") return json(res, 400, { error: err.message });
+      if (err.code === "BAD_ACCOUNT") return json(res, 400, { error: err.message });
+      console.error("[dwell] usdc order build failed:", err?.message);
+      json(res, 502, { error: "couldn't build the transaction — try again" });
+    }
   });
 
   // ---------- pre-account email capture (launch waitlist) ----------

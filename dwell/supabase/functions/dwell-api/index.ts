@@ -95,6 +95,20 @@ function loadConfig() {
     referrerShareBps: parseInt(env("REFERRER_SHARE_BPS", "1000"), 10), // referrer's share (falls to protocol when unreferred)
     reserveTrancheBps: parseInt(env("RESERVE_TRANCHE_BPS", "9000"), 10), // slice of gross routed to the token side
 
+    // ---- USDC advertiser checkout (dwell/docs/08) — non-custodial pay-and-swap ----
+    // The whole surface is gated on DWELL_MINT: until the $DWELL SPL mint exists
+    // (star.fun launch), every /v1/ads/usdc route 404s and none of this is read.
+    // No signing keys here or anywhere — the backend only builds unsigned
+    // transactions and verifies finalized ones read-only.
+    dwellMint: env("DWELL_MINT"),
+    usdcMint: env("USDC_MINT", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // canonical USDC on Solana mainnet (6 dp)
+    solanaRpcUrl: env("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
+    jupiterBaseUrl: env("JUPITER_BASE_URL", "https://lite-api.jup.ag/swap/v1"),
+    treasuryUsdcAta: env("TREASURY_USDC_ATA"),           // Squads treasury vault's USDC token account — the 10% leg
+    distributorDwellAta: env("DISTRIBUTOR_DWELL_ATA"),   // rewards distributor vault's DWELL token account — the swap output
+    maxSlippageBps: parseInt(env("MAX_SLIPPAGE_BPS", "100"), 10), // swap slippage bound; the verifier enforces the implied minOut
+    usdcOrderTtlMinutes: parseInt(env("USDC_ORDER_TTL_MINUTES", "30"), 10), // price validity window; each built tx is only ~60s (blockhash)
+
     // ---- brand — the DWELL deployment bills and writes copy under its own name ----
     brandName: env("BRAND_NAME", "DWELL"),
     stripeProductName: env("STRIPE_PRODUCT_NAME", "DWELL ad campaign"),
@@ -107,6 +121,11 @@ if (config.viewerShareBps + config.referrerShareBps > 10000) {
   throw new Error("VIEWER_SHARE_BPS + REFERRER_SHARE_BPS must be <= 10000");
 }
 if (config.reserveTrancheBps > 10000) throw new Error("RESERVE_TRANCHE_BPS must be <= 10000");
+// USDC checkout (dwell/docs/08): enabling it needs the full account triple —
+// half-configured would build transactions that can never verify.
+if (config.dwellMint && !(config.treasuryUsdcAta && config.distributorDwellAta)) {
+  throw new Error("DWELL_MINT is set — TREASURY_USDC_ATA and DISTRIBUTOR_DWELL_ATA are required too");
+}
 // When TOKEN_MODE is set, impressions split three ways into points entries
 // instead of the legacy two-way credit (passed into ingestBatch/redeem/paid).
 const tokenSplit = config.tokenMode
@@ -1590,6 +1609,136 @@ function createRepo(pool: any) {
       }));
     },
 
+    // ---------- USDC advertiser checkout (dwell/docs/08) ----------
+    // Mirrors server/src/repo.js. The order row is the verification contract:
+    // the API builds a transaction matching these amounts, the advertiser's
+    // wallet signs it, and the verifier confirms the finalized transaction
+    // against this row read-only.
+
+    async createUsdcOrder({ campaignId, priceMicroUsdc, feeMicroUsdc, trancheMicroUsdc, quote, minDwellOut, referencePubkey, ttlMinutes }: any) {
+      const { rows } = await pool.query(
+        `insert into usdc_orders
+           (campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc,
+            quote, min_dwell_out, reference_pubkey, expires_at)
+         values ($1,$2,$3,$4,$5,$6,$7, now() + make_interval(mins => $8))
+         returning id, expires_at`,
+        [campaignId, priceMicroUsdc, feeMicroUsdc, trancheMicroUsdc,
+         JSON.stringify(quote), minDwellOut, referencePubkey, ttlMinutes]
+      );
+      return rows[0];
+    },
+
+    // Lazy expiry rides every read: an unsigned order past its window flips to
+    // 'expired' (nothing happened on-chain, so there is nothing to clean up).
+    async getUsdcOrder(orderId: string) {
+      await pool.query(
+        `update usdc_orders set status = 'expired'
+          where id = $1 and status = 'awaiting_signature' and expires_at < now()`,
+        [orderId]
+      );
+      const { rows } = await pool.query(
+        `select o.*, c.status as campaign_status, c.impressions_total, c.budget_cents
+           from usdc_orders o join campaigns c on c.id = o.campaign_id
+          where o.id = $1`,
+        [orderId]
+      );
+      return rows[0] || null;
+    },
+
+    // Each build re-quotes (a built transaction is only ~60s of blockhash
+    // validity); the stored quote + slippage floor track the latest build so
+    // the verifier checks what the wallet was actually shown.
+    async refreshUsdcOrderQuote(orderId: string, quote: any, minDwellOut: string) {
+      await pool.query(
+        `update usdc_orders set quote = $2, min_dwell_out = $3
+          where id = $1 and status = 'awaiting_signature'`,
+        [orderId, JSON.stringify(quote), minDwellOut]
+      );
+    },
+
+    async failUsdcOrder(orderId: string, reason: string, txSignature?: string) {
+      await pool.query(
+        `update usdc_orders set status = 'failed', fail_reason = $2,
+                tx_signature = coalesce($3, tx_signature)
+          where id = $1 and status = 'awaiting_signature'`,
+        [orderId, String(reason).slice(0, 120), txSignature || null]
+      );
+    },
+
+    // The one state transition that funds a campaign from a verified on-chain
+    // payment. Mirrors markCampaignPaid's exactly-once shape (only an
+    // awaiting_signature order and a pending_payment campaign transition) and
+    // adds the token_campaign_pools row — the locked-rate source of truth:
+    //   locked rate = dwellOut × viewer share ÷ impressions bought.
+    // All bought DWELL goes to the distributor; the treasury's 30–40% leg
+    // settles via the Merkle root's treasury shortfall leaf (docs/04 §A).
+    async confirmUsdcOrder({ orderId, txSignature, dwellOut, tokenSplit, viewerShareBps }: any) {
+      return tx(async (c: any) => {
+        const ord = await c.query(
+          `update usdc_orders set status = 'confirmed', tx_signature = $2
+            where id = $1 and status = 'awaiting_signature'
+            returning campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc`,
+          [orderId, txSignature]
+        );
+        if (!ord.rows[0]) return false; // already confirmed/expired/failed — idempotent no-op
+        const o = ord.rows[0];
+
+        const { rows } = await c.query(
+          `update campaigns cmp set status = 'pending_review', paid_at = now()
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_payment'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line, cmp.price_per_block_cents,
+                      cmp.blocks, cmp.impressions_total, cmp.budget_cents`,
+          [o.campaign_id]
+        );
+        if (!rows[0]) {
+          // Campaign no longer fundable (cancelled, or a sibling order won the
+          // race). Throw so the whole tx — including the order flip above —
+          // rolls back; the caller marks the order failed with the signature.
+          throw Object.assign(new Error("campaign not fundable"), { code: "CAMPAIGN_NOT_FUNDABLE" });
+        }
+
+        // Fund with the EXACT charge. USDC micro units -> millicents is /10.
+        const funded = BigInt(o.price_micro_usdc) / 10n;
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+           values ('campaign_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+          [funded.toString(), o.campaign_id,
+           JSON.stringify({ impressions: rows[0].impressions_total, rail: "usdc", tx: txSignature })]
+        );
+        if (tokenSplit) {
+          const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+             values ('reserve_allocation', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+            [tranche.toString(), o.campaign_id,
+             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: "usdc" })]
+          );
+        }
+
+        const impressions = BigInt(rows[0].impressions_total);
+        const lockedRate = (BigInt(dwellOut) * BigInt(viewerShareBps)) / 10000n / impressions;
+        await c.query(
+          `insert into token_campaign_pools
+             (campaign_id, usdc_in_micro, dwell_out_wei, to_distributor_wei,
+              to_treasury_wei, locked_rate_wei, tx_hash)
+           values ($1,$2,$3,$3,0,$4,$5)`,
+          [o.campaign_id, o.tranche_micro_usdc, String(dwellOut), lockedRate.toString(), txSignature]
+        );
+
+        return {
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+          impressionsTotal: rows[0].impressions_total,
+          budgetCents: rows[0].budget_cents != null ? Number(rows[0].budget_cents) : null,
+        };
+      });
+    },
+
     async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, feeCents = 0, recipientEmail, referralRewardMillicents, referralCap }: any) {
       return tx(async (c: any) => {
         await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, `user:${userId}`]);
@@ -2929,6 +3078,445 @@ route("POST", "/v1/admin/epochs/publish-root", async (ctx: any) => {
   if (!config.tokenMode) return tokenModeOff();
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   return liveOnly();
+});
+
+// ── USDC advertiser checkout (dwell/docs/08) — mirrors server/src/solana.js + app.js ──
+// Non-custodial pay-and-swap: the backend BUILDS unsigned transactions and
+// VERIFIES finalized ones read-only; the advertiser's wallet is the only
+// signer. One atomic transaction pays the 10% USDC fee to the treasury and
+// market-buys DWELL via a Jupiter route straight to the distributor vault.
+// The whole surface 404s until DWELL_MINT is configured (the launch gate).
+
+const SOL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const SOL_MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMZWEyttqmoTLK";
+const USDC_DECIMALS = 6;
+const B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const B58_MAP = Object.fromEntries([...B58_ALPHABET].map((c, i) => [c, BigInt(i)]));
+function base58Decode(s: string) {
+  if (typeof s !== "string" || !s.length) throw new Error("bad base58");
+  let n = 0n;
+  for (const c of s) {
+    const v = B58_MAP[c];
+    if (v === undefined) throw new Error("bad base58 char");
+    n = n * 58n + v;
+  }
+  const bytes: number[] = [];
+  while (n > 0n) { bytes.unshift(Number(n & 0xffn)); n >>= 8n; }
+  for (const c of s) { if (c === "1") bytes.unshift(0); else break; }
+  return Buffer.from(bytes);
+}
+function base58Encode(buf: Uint8Array) {
+  let n = 0n;
+  for (const b of buf) n = (n << 8n) | BigInt(b);
+  let out = "";
+  while (n > 0n) { out = B58_ALPHABET[Number(n % 58n)] + out; n /= 58n; }
+  for (const b of buf) { if (b === 0) out = "1" + out; else break; }
+  return out || "1";
+}
+function isPubkey(s: string) {
+  try { return base58Decode(s).length === 32; } catch { return false; }
+}
+// Fresh throwaway reference key (Solana Pay): appended read-only so the
+// payment is findable by getSignaturesForAddress; never signs, never holds.
+function newReferencePubkey() {
+  return base58Encode(crypto.randomBytes(32));
+}
+// Solana "compact-u16" (shortvec) length prefix.
+function compactU16(n: number) {
+  const out: number[] = [];
+  let rem = n;
+  for (;;) {
+    const byte = rem & 0x7f;
+    rem >>= 7;
+    if (rem === 0) { out.push(byte); break; }
+    out.push(byte | 0x80);
+  }
+  return Buffer.from(out);
+}
+function u64le(v: any) {
+  const b = Buffer.alloc(8);
+  b.writeBigUInt64LE(BigInt(v));
+  return b;
+}
+// Compile instructions into a LEGACY message + serialize an unsigned
+// transaction (signature slots zeroed; the wallet fills them).
+function serializeUnsignedTransaction({ feePayer, recentBlockhash, instructions }: any) {
+  const metas = new Map<string, { isSigner: boolean; isWritable: boolean }>();
+  const touch = (pubkey: string, isSigner: boolean, isWritable: boolean) => {
+    const m = metas.get(pubkey) || { isSigner: false, isWritable: false };
+    m.isSigner = m.isSigner || isSigner;
+    m.isWritable = m.isWritable || isWritable;
+    metas.set(pubkey, m);
+  };
+  touch(feePayer, true, true);
+  for (const ix of instructions) {
+    touch(ix.programId, false, false);
+    for (const a of ix.accounts) touch(a.pubkey, !!a.isSigner, !!a.isWritable);
+  }
+  const rank = (k: string, m: any) => {
+    if (k === feePayer) return 0;
+    if (m.isSigner && m.isWritable) return 1;
+    if (m.isSigner) return 2;
+    if (m.isWritable) return 3;
+    return 4;
+  };
+  const keys = [...metas.entries()]
+    .sort((a, b) => rank(a[0], a[1]) - rank(b[0], b[1]) || (a[0] < b[0] ? -1 : 1))
+    .map(([k]) => k);
+  const index = new Map(keys.map((k, i) => [k, i]));
+  let numSigners = 0, numReadonlySigned = 0, numReadonlyUnsigned = 0;
+  for (const k of keys) {
+    const m: any = metas.get(k);
+    if (m.isSigner) { numSigners++; if (!m.isWritable) numReadonlySigned++; }
+    else if (!m.isWritable) numReadonlyUnsigned++;
+  }
+  const parts = [
+    Buffer.from([numSigners, numReadonlySigned, numReadonlyUnsigned]),
+    compactU16(keys.length),
+    ...keys.map((k) => base58Decode(k)),
+    base58Decode(recentBlockhash),
+    compactU16(instructions.length),
+  ];
+  for (const ix of instructions) {
+    const data = Buffer.from(ix.data, "base64");
+    parts.push(
+      Buffer.from([index.get(ix.programId)!]),
+      compactU16(ix.accounts.length),
+      Buffer.from(ix.accounts.map((a: any) => index.get(a.pubkey)!)),
+      compactU16(data.length),
+      data
+    );
+  }
+  const message = Buffer.concat(parts);
+  const txBytes = Buffer.concat([compactU16(numSigners), Buffer.alloc(64 * numSigners), message]);
+  return txBytes.toString("base64");
+}
+// SPL Token TransferChecked (ix 12): fee leg, USDC -> treasury vault. The
+// Solana Pay reference key rides as an extra read-only account.
+function transferCheckedInstruction({ source, mint, destination, owner, amount, decimals, reference }: any) {
+  return {
+    programId: SOL_TOKEN_PROGRAM,
+    accounts: [
+      { pubkey: source, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: destination, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: true, isWritable: false },
+      ...(reference ? [{ pubkey: reference, isSigner: false, isWritable: false }] : []),
+    ],
+    data: Buffer.concat([Buffer.from([12]), u64le(amount), Buffer.from([decimals])]).toString("base64"),
+  };
+}
+function memoInstruction(text: string) {
+  return { programId: SOL_MEMO_PROGRAM, accounts: [], data: Buffer.from(text, "utf8").toString("base64") };
+}
+async function solanaRpc(method: string, params: any[]) {
+  const res = await fetch(config.solanaRpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  if (!res.ok) throw new Error(`solana rpc ${method}: HTTP ${res.status}`);
+  const body = await res.json();
+  if (body.error) throw new Error(`solana rpc ${method}: ${body.error.message}`);
+  return body.result;
+}
+// The payer's USDC token account with the largest balance — RPC lookup instead
+// of ATA derivation keeps this free of PDA/curve math.
+async function findUsdcAccount(owner: string) {
+  const result = await solanaRpc("getTokenAccountsByOwner", [
+    owner, { mint: config.usdcMint }, { encoding: "jsonParsed" },
+  ]);
+  const accounts = (result?.value || [])
+    .map((a: any) => ({ pubkey: a.pubkey, amount: BigInt(a.account?.data?.parsed?.info?.tokenAmount?.amount || "0") }))
+    .sort((a: any, b: any) => (a.amount > b.amount ? -1 : 1));
+  return accounts[0] || null;
+}
+async function jupiterQuote(amountMicroUsdc: string) {
+  const q = new URLSearchParams({
+    inputMint: config.usdcMint,
+    outputMint: config.dwellMint,
+    amount: String(amountMicroUsdc),
+    slippageBps: String(config.maxSlippageBps),
+    swapMode: "ExactIn",
+    asLegacyTransaction: "true", // no ALTs -> the legacy encoder above suffices
+  });
+  const res = await fetch(`${config.jupiterBaseUrl}/quote?${q}`);
+  if (!res.ok) throw new Error(`jupiter quote: HTTP ${res.status}`);
+  const quote = await res.json();
+  if (quote.error) throw new Error(`jupiter quote: ${quote.error}`);
+  if (!quote.outAmount) throw new Error("jupiter quote: no route");
+  return quote;
+}
+async function jupiterSwapInstructions({ quoteResponse, userPublicKey }: any) {
+  const res = await fetch(`${config.jupiterBaseUrl}/swap-instructions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      quoteResponse,
+      userPublicKey,
+      // The whole point: the bought DWELL lands in the distributor vault,
+      // never in a company hot wallet and never back with the payer.
+      destinationTokenAccount: config.distributorDwellAta,
+      asLegacyTransaction: true,
+      wrapAndUnwrapSol: false, // USDC in, SPL out — no SOL legs
+    }),
+  });
+  if (!res.ok) throw new Error(`jupiter swap-instructions: HTTP ${res.status}`);
+  const body = await res.json();
+  if (body.error) throw new Error(`jupiter swap-instructions: ${body.error}`);
+  if (body.addressLookupTableAddresses?.length) {
+    throw new Error("jupiter returned a v0-only route — re-quote");
+  }
+  return body;
+}
+// One atomic unsigned transaction for an order: fee transfer (with reference
+// key) + order-id memo + the Jupiter swap of the 90% tranche.
+async function buildOrderTransaction({ order, payer, quoteResponse }: any) {
+  if (!isPubkey(payer)) throw Object.assign(new Error("payer must be a Solana pubkey"), { code: "BAD_ACCOUNT" });
+  const usdcAccount = await findUsdcAccount(payer);
+  if (!usdcAccount) throw Object.assign(new Error("no USDC account for this wallet"), { code: "NO_USDC" });
+  const need = BigInt(order.price_micro_usdc);
+  if (usdcAccount.amount < need) {
+    throw Object.assign(new Error(`insufficient USDC: need ${need}, have ${usdcAccount.amount}`), { code: "NO_USDC" });
+  }
+  const swap = await jupiterSwapInstructions({ quoteResponse, userPublicKey: payer });
+  const bh = await solanaRpc("getLatestBlockhash", [{ commitment: "finalized" }]);
+  const value = bh.value || bh;
+  const instructions = [
+    ...(swap.computeBudgetInstructions || []),
+    transferCheckedInstruction({
+      source: usdcAccount.pubkey,
+      mint: config.usdcMint,
+      destination: config.treasuryUsdcAta,
+      owner: payer,
+      amount: order.fee_micro_usdc,
+      decimals: USDC_DECIMALS,
+      reference: order.reference_pubkey,
+    }),
+    memoInstruction(`dwell-usdc-order:${order.id}`),
+    ...(swap.setupInstructions || []),
+    swap.swapInstruction,
+    ...(swap.cleanupInstruction ? [swap.cleanupInstruction] : []),
+  ];
+  return serializeUnsignedTransaction({ feePayer: payer, recentBlockhash: value.blockhash, instructions });
+}
+// Signatures that touched the order's reference key (Solana Pay findReference).
+async function findReferenceSignatures(referencePubkey: string) {
+  const result = await solanaRpc("getSignaturesForAddress", [referencePubkey, { limit: 5 }]);
+  return (result || []).map((r: any) => r.signature);
+}
+// Read-only verification of a finalized transaction against the order. Amount
+// deltas come from the runtime's own pre/post token balances — never from
+// anything the client claims.
+async function verifyOrderTransaction({ signature, order }: any) {
+  const txr = await solanaRpc("getTransaction", [
+    signature,
+    { encoding: "jsonParsed", commitment: "finalized", maxSupportedTransactionVersion: 0 },
+  ]);
+  if (!txr) return { ok: false, reason: "not_found" };
+  if (txr.meta?.err) return { ok: false, reason: "tx_failed" };
+  const keys = (txr.transaction?.message?.accountKeys || []).map((k: any) => (typeof k === "string" ? k : k.pubkey));
+  if (!keys.includes(order.reference_pubkey)) return { ok: false, reason: "reference_missing" };
+  const delta = (account: string, mint: string) => {
+    const find = (list: any[]) => (list || []).find((b: any) => keys[b.accountIndex] === account && b.mint === mint);
+    const pre = find(txr.meta?.preTokenBalances);
+    const post = find(txr.meta?.postTokenBalances);
+    if (!post && !pre) return null; // account untouched by this tx
+    return BigInt(post?.uiTokenAmount?.amount || "0") - BigInt(pre?.uiTokenAmount?.amount || "0");
+  };
+  const feePaid = delta(config.treasuryUsdcAta, config.usdcMint);
+  if (feePaid === null || feePaid < BigInt(order.fee_micro_usdc)) return { ok: false, reason: "fee_short" };
+  const dwellOut = delta(config.distributorDwellAta, config.dwellMint);
+  if (dwellOut === null || dwellOut <= 0n) return { ok: false, reason: "no_dwell_out" };
+  if (dwellOut < BigInt(order.min_dwell_out)) return { ok: false, reason: "slippage_floor" };
+  return { ok: true, dwellOut, feePaid, slot: txr.slot ?? null, blockTime: txr.blockTime ?? null };
+}
+
+const usdcCheckoutOff = () =>
+  !config.tokenMode || !config.dwellMint || !config.treasuryUsdcAta || !config.distributorDwellAta;
+const microUsd = (micro: any) => Number(micro) / 1e6;
+const shapeUsdcOrder = (o: any) => ({
+  orderId: o.id,
+  campaignId: o.campaign_id,
+  status: o.status,
+  campaignStatus: o.campaign_status,
+  priceUsdc: microUsd(o.price_micro_usdc),
+  feeUsdc: microUsd(o.fee_micro_usdc),
+  trancheUsdc: microUsd(o.tranche_micro_usdc),
+  minDwellOut: String(o.min_dwell_out),
+  reference: o.reference_pubkey,
+  txSignature: o.tx_signature || null,
+  failReason: o.fail_reason || null,
+  expiresAt: o.expires_at,
+});
+
+route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
+  if (usdcCheckoutOff()) return json(404, { error: "not found" });
+  // Same budget+CPM campaign shape as the card checkout — only the rail differs.
+  const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard } = ctx.body || {};
+  const budgetCents = Math.round(Number(budget) * 100);
+  const cpmCents = Math.round(Number(cpm) * 100);
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(400, { error: "valid email required" });
+  if (!isCleanAdLine(adLine)) return json(400, { error: "ad line must be 3-60 printable chars, no < >" });
+  if (!/^https:\/\/[^\s]+$/.test(url || "")) return json(400, { error: "https url required" });
+  const P = await repo.getPricing();
+  if (!(cpmCents >= P.minCpmCents && cpmCents <= P.maxCpmCents)) {
+    return json(400, { error: `CPM must be $${(P.minCpmCents / 100).toFixed(2)}–$${(P.maxCpmCents / 100).toFixed(2)}` });
+  }
+  if (!(budgetCents >= P.minBudgetCents && budgetCents <= P.maxBudgetCents)) {
+    return json(400, { error: `budget must be $${(P.minBudgetCents / 100).toFixed(0)}–$${(P.maxBudgetCents / 100).toLocaleString("en-US")}` });
+  }
+  const impressions = Math.floor((budgetCents * 1000) / cpmCents);
+  if (!(impressions >= 1)) return json(400, { error: "budget too small for this CPM" });
+
+  // 90/10 in micro-USDC, exact: the fee is the 10000-RESERVE_TRANCHE_BPS
+  // remainder, the tranche keeps every leftover micro unit.
+  const priceMicro = BigInt(budgetCents) * 10000n;
+  const feeMicro = (priceMicro * BigInt(10000 - config.reserveTrancheBps)) / 10000n;
+  const trancheMicro = priceMicro - feeMicro;
+
+  let quote: any;
+  try {
+    quote = await jupiterQuote(trancheMicro.toString());
+  } catch (err: any) {
+    console.error("[dwell] usdc order quote failed:", err?.message);
+    return json(502, { error: "couldn't quote the swap — try again" });
+  }
+
+  const blocks = Math.max(1, Math.round(impressions / 1000));
+  const campaignId = await repo.createPendingCampaign({
+    email, brand, adLine, url, category, color: normalizeHexColor(color),
+    pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard,
+  });
+  const order = await repo.createUsdcOrder({
+    campaignId,
+    priceMicroUsdc: priceMicro.toString(),
+    feeMicroUsdc: feeMicro.toString(),
+    trancheMicroUsdc: trancheMicro.toString(),
+    quote,
+    minDwellOut: String(quote.otherAmountThreshold || quote.outAmount),
+    referencePubkey: newReferencePubkey(),
+    ttlMinutes: config.usdcOrderTtlMinutes,
+  });
+  return json(200, {
+    orderId: order.id,
+    campaignId,
+    priceUsdc: microUsd(priceMicro),
+    feeUsdc: microUsd(feeMicro),
+    trancheUsdc: microUsd(trancheMicro),
+    estDwellOut: String(quote.outAmount),
+    minDwellOut: String(quote.otherAmountThreshold || quote.outAmount),
+    expiresAt: order.expires_at,
+    // Solana Pay transaction request: wallets GET label/icon then POST
+    // {account} to this link and receive the unsigned transaction.
+    solanaPayUrl: `solana:${encodeURIComponent(`${config.apiBaseUrl}/v1/ads/usdc/orders/${order.id}/transaction`)}`,
+  });
+});
+
+// Order status — the checkout page poller. Discovery + verification ride the
+// poll (Solana Pay findReference), so no webhook is needed for the scaffold;
+// a Helius webhook can shortcut this later without changing the contract.
+route("GET", "/v1/ads/usdc/orders/:id", async (ctx: any) => {
+  if (usdcCheckoutOff()) return json(404, { error: "not found" });
+  const order = await repo.getUsdcOrder(ctx.params.id);
+  if (!order) return json(404, { error: "order not found" });
+  if (order.status !== "awaiting_signature") return json(200, shapeUsdcOrder(order));
+
+  // Optional hint from the paying client; otherwise look up by reference.
+  let signatures: string[] = [];
+  const hinted = ctx.query.get("signature");
+  try {
+    signatures = hinted ? [hinted] : await findReferenceSignatures(order.reference_pubkey);
+  } catch (err: any) {
+    console.error("[dwell] usdc order signature lookup failed:", err?.message);
+    return json(200, shapeUsdcOrder(order)); // RPC hiccup — stay awaiting, client re-polls
+  }
+  for (const signature of signatures) {
+    let v: any;
+    try {
+      v = await verifyOrderTransaction({ signature, order });
+    } catch (err: any) {
+      console.error("[dwell] usdc order verify failed:", err?.message);
+      continue;
+    }
+    if (!v.ok) {
+      // A landed-but-wrong transaction (fee short, slippage floor breached)
+      // permanently fails the order; not-yet-final ones keep the order open.
+      if (["tx_failed", "fee_short", "no_dwell_out", "slippage_floor", "reference_missing"].includes(v.reason) && !hinted) {
+        await repo.failUsdcOrder(order.id, v.reason, signature);
+      }
+      continue;
+    }
+    try {
+      const paid = await repo.confirmUsdcOrder({
+        orderId: order.id,
+        txSignature: signature,
+        dwellOut: v.dwellOut.toString(),
+        tokenSplit,
+        viewerShareBps: config.viewerShareBps,
+      });
+      if (paid) {
+        try {
+          await mailer.sendAdvertiserReceiptEmail((paid as any).email, {
+            campaignId: order.campaign_id,
+            brand: (paid as any).brand,
+            adLine: (paid as any).adLine,
+            cpmCents: (paid as any).pricePerBlockCents,
+            impressionsTotal: (paid as any).impressionsTotal,
+            budgetCents: (paid as any).budgetCents,
+          });
+        } catch (err) {
+          console.error("[dwell] usdc advertiser receipt email failed", err);
+        }
+      }
+    } catch (err: any) {
+      if (err.code === "CAMPAIGN_NOT_FUNDABLE") {
+        await repo.failUsdcOrder(order.id, "campaign_not_fundable", signature);
+      } else {
+        throw err;
+      }
+    }
+    break;
+  }
+  const fresh = await repo.getUsdcOrder(order.id);
+  return json(200, shapeUsdcOrder(fresh));
+});
+
+// Solana Pay transaction request (GET half): wallet-facing metadata.
+route("GET", "/v1/ads/usdc/orders/:id/transaction", async () => {
+  if (usdcCheckoutOff()) return json(404, { error: "not found" });
+  return json(200, { label: `${config.brandName} ad campaign`, icon: `${config.siteUrl}/og.png` });
+});
+
+// Solana Pay transaction request (POST half): build the atomic unsigned
+// transaction for the paying wallet. Re-quotes on every build — a built
+// transaction is only ~60s of blockhash validity — and pins the refreshed
+// slippage floor to the order so the verifier enforces what the wallet saw.
+route("POST", "/v1/ads/usdc/orders/:id/transaction", async (ctx: any) => {
+  if (usdcCheckoutOff()) return json(404, { error: "not found" });
+  const order = await repo.getUsdcOrder(ctx.params.id);
+  if (!order) return json(404, { error: "order not found" });
+  if (order.status === "expired") return json(410, { error: "order expired — start a new one" });
+  if (order.status !== "awaiting_signature") return json(409, { error: `order is ${order.status}` });
+  const payer = String(ctx.body?.account || "");
+  if (!isPubkey(payer)) return json(400, { error: "account must be a Solana pubkey" });
+  try {
+    const quote = await jupiterQuote(String(order.tranche_micro_usdc));
+    await repo.refreshUsdcOrderQuote(order.id, quote, String(quote.otherAmountThreshold || quote.outAmount));
+    const transaction = await buildOrderTransaction({
+      order: { ...order, min_dwell_out: quote.otherAmountThreshold || quote.outAmount },
+      payer,
+      quoteResponse: quote,
+    });
+    return json(200, {
+      transaction,
+      message: `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} DWELL buy to the rewards pool`,
+    });
+  } catch (err: any) {
+    if (err.code === "NO_USDC" || err.code === "BAD_ACCOUNT") return json(400, { error: err.message });
+    console.error("[dwell] usdc order build failed:", err?.message);
+    return json(502, { error: "couldn't build the transaction — try again" });
+  }
 });
 
 // ── advertiser checkout ──

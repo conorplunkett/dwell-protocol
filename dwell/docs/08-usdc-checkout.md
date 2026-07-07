@@ -5,8 +5,12 @@ funds ever held by our system**. The protocol takes the **same 10% cut** as the
 card path; the other **90% is market-bought into $DWELL in the advertiser's own
 transaction**; viewers earn DWELL points from the campaign exactly as today.
 Research date: July 2026 — re-verify provider pricing/APIs before integration.
-Status: **plan only** — implementation follows once the DWELL mint address
-exists on Solana ([07-starfun-launch.md](07-starfun-launch.md)).
+Status: **scaffolded and gated** (2026-07-07). The full backend (both
+`server/src` and the edge function), schema, tests, and lander UI are in the
+tree; every `/v1/ads/usdc` route 404s until `DWELL_MINT` is configured — the
+mint doesn't exist until the star.fun launch
+([07-starfun-launch.md](07-starfun-launch.md)) — and the lander's "Pay with
+USDC" button stays hidden behind the `USDC_CHECKOUT` flag in `web/script.js`.
 
 > Copy rules apply unchanged ([05-legal-structure.md](05-legal-structure.md)):
 > mechanics as facts, no price talk. The checkout page says what the
@@ -63,7 +67,7 @@ a flat **90/10 on every path** — one split, one story, no per-rail pricing.
 
 The card path reviews creatives *after* payment because Stripe can refund.
 Onchain there is no refund rail that doesn't mean treasury outflow, so the
-USDC path **reviews before payment**:
+USDC path should eventually **review before payment**:
 
 ```
 draft ──▶ pending_review ──▶ approved_awaiting_payment ──▶ active ──▶ exhausted
@@ -77,6 +81,14 @@ draft ──▶ pending_review ──▶ approved_awaiting_payment ──▶ act
                                    │      → markCampaignPaid → active
                                    └─ order expires unsigned → nothing happened onchain, no cleanup
 ```
+
+> **Scaffold note:** the landed scaffold reuses the card lifecycle
+> (`pending_payment → pay → pending_review → active`) so no campaign status,
+> admin approve flow, or admin UI had to fork while the surface is dark.
+> Flipping to review-before-pay (the `approved_awaiting_payment` status above)
+> is an enablement-gate task alongside setting `DWELL_MINT` — until then a
+> rejected USDC campaign's refund is a treasury-multisig decision, documented
+> below either way.
 
 Verification (read-only, idempotent by tx signature, `finalized` commitment):
 
@@ -132,38 +144,47 @@ the advertiser's own Solana wallet, then the normal checkout runs. A later
 V2 can use DLN order hooks to make bridge-and-pay one action; not a launch
 requirement.
 
-## Backend spec (implements later, both backends in the same commit)
+## Backend spec (landed — both backends in the same commit, per AGENTS.md)
 
-New tables (`server/db/schema.sql` + dated migration):
+Implemented in `server/src/solana.js` (RPC/Jupiter clients, legacy-transaction
+encoder, read-only verifier — mirrored inline in the edge function),
+`server/src/{app,repo,boot}.js`, `supabase/functions/dwell-api/index.ts`, and
+covered by the `usdc checkout:` checks in `server/test/run.js`. Discovery is
+verify-on-poll via the order's reference key (Solana Pay `findReference`); a
+Helius webhook can shortcut the poll later without changing the contract.
+
+New table (`server/db/schema.sql`, idempotent):
 
 ```sql
-create table usdc_orders (
+create table if not exists usdc_orders (
   id uuid primary key default gen_random_uuid(),
   campaign_id uuid not null references campaigns(id),
   price_micro_usdc bigint not null,          -- gross, 6-dp
   fee_micro_usdc bigint not null,            -- the 10% treasury leg
-  tranche_micro_usdc bigint not null,        -- the 90% swap leg
-  quote jsonb not null,                      -- Jupiter quote at order time
-  min_dwell_out numeric(78,0) not null,
+  tranche_micro_usdc bigint not null,        -- the 90% swap leg (price - fee)
+  quote jsonb not null,                      -- Jupiter quote at order/build time
+  min_dwell_out numeric(78,0) not null,      -- slippage floor the verifier enforces
   reference_pubkey text unique not null,     -- Solana Pay reference key
   tx_signature text unique,
   status text not null default 'awaiting_signature'
-    check (status in ('awaiting_signature','submitted','confirmed','expired','failed')),
+    check (status in ('awaiting_signature','confirmed','expired','failed')),
+  fail_reason text,
   expires_at timestamptz not null,
   created_at timestamptz not null default now()
 );
 ```
 
-`token_campaign_pools` is reused as-is. Routes (added to `server/src/app.js`
-and the edge function; verification is read-only so **no signing keys enter
-the Edge Function**, per the existing rule):
+`token_campaign_pools` is reused as-is (`tx_hash` takes the Solana signature).
+Routes — same public shape as the card `POST /v1/checkout`; verification is
+read-only so **no signing keys enter the Edge Function**, per the existing
+rule:
 
 | Route | Auth | Purpose |
 |---|---|---|
-| `POST /v1/ads/usdc/orders` | advertiser session | Create order for an approved campaign: price breakdown, Jupiter quote, TTL |
-| `POST /v1/ads/usdc/orders/:id/transaction` | advertiser session | Build a fresh unsigned tx (Solana Pay transaction-request shape, base64) |
-| `GET /v1/ads/usdc/orders/:id` | advertiser session | Order status for the checkout page poller |
-| webhook / poller | Helius signature | Verify finalized tx → `token_campaign_pools` → `markCampaignPaid` |
+| `POST /v1/ads/usdc/orders` | public (like card checkout) | Create campaign + order: exact 90/10 breakdown, Jupiter quote, TTL, `solana:` pay link |
+| `POST /v1/ads/usdc/orders/:id/transaction` | Solana Pay (wallet posts `{account}`) | Build a fresh atomic unsigned tx (re-quotes; base64) |
+| `GET /v1/ads/usdc/orders/:id/transaction` | public | Solana Pay metadata (`label`, `icon`) |
+| `GET /v1/ads/usdc/orders/:id` | public (unguessable order id) | Status poller — runs `findReference` + verify → `token_campaign_pools` → campaign paid |
 
 Config knobs (extend §C of
 [04-backend-adaptation.md](04-backend-adaptation.md)): `SOLANA_RPC_URL`,
@@ -173,10 +194,12 @@ Config knobs (extend §C of
 `USDC_ORDER_TTL_MINUTES` (default 30). Gate: routes 404 unless `DWELL_MINT`
 is set — mirroring the `TOKEN_MODE` gating style.
 
-Web: the portal's advertiser tab gets **Pay with USDC** beside the card
-button — static vanilla JS per the repo rule, Solana Pay QR + deeplink first
-(no heavy wallet deps), wallet-adapter connect as the enhancement. All colors
-via `theme.css` tokens.
+Web: the lander's ad form (`web/index.html` + `script.js`) has **Pay with
+USDC** under the Stripe button — static vanilla JS per the repo rule, Solana
+Pay link + copy first (no heavy wallet deps; QR and wallet-adapter connect are
+enhancements for enablement). All colors via `theme.css` tokens. **Hidden for
+now**: the button only renders when the `USDC_CHECKOUT` flag in `script.js` is
+flipped, and the backend 404s regardless until `DWELL_MINT` is set.
 
 ## Optional Phase 0 — USDC before the token exists
 
