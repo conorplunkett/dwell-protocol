@@ -453,8 +453,13 @@ html.auth-pending #portal-loading { display: flex; }
 /* Account cluster — wallet chip + Home + Sign out, kept quiet so the
    segmented tabs below read as the primary navigation. */
 .dash-account { display: flex; align-items: center; gap: 6px; }
+.dash-account-who {
+  font-size: 13px; font-weight: 600; color: var(--gray);
+  padding: 7px 10px; margin-right: 2px; max-width: 260px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
 .dash-account-link {
-  font-size: 13.5px; font-weight: 600; color: var(--gray);
+  font-size: 13.5px; font-weight: 600; color: var(--gray); white-space: nowrap;
   padding: 7px 12px; border: none; border-radius: var(--radius-pill); background: transparent;
   cursor: pointer; text-decoration: none; transition: color .15s, background .15s;
 }
@@ -489,6 +494,17 @@ html.auth-pending #portal-loading { display: flex; }
   background: var(--warn-fg);
   box-shadow: 0 0 0 3px var(--warn-bg);
 }
+
+/* out-of-inventory notice — informational, not an error: --bg-tint keeps it calm */
+.dash-notice {
+  display: flex; align-items: flex-start; gap: 10px;
+  width: min(756px, 100% - 28px); margin: 18px auto 0; padding: 13px 16px;
+  background: var(--bg-tint); border: 1px solid var(--line); border-radius: 14px;
+  font-size: 13.5px; color: var(--ink-2); line-height: 1.5;
+}
+/* flex outranks the UA [hidden] rule — same pattern as the auth steps above. */
+.dash-notice[hidden] { display: none; }
+.dash-notice-ico { flex: none; font-size: 15px; line-height: 1.5; }
 
 /* Section tabs — one segmented control, one active view at a time. */
 .dash-tabs {
@@ -960,6 +976,7 @@ html.auth-pending #portal-loading { display: flex; }
   .nav .brand-name { font-size: 15px; letter-spacing: -.03em; }
   .brand-sub { display: none; }
   .dash-home { display: none; }
+  .dash-account-who { display: none; }
   .dash-account { gap: 2px; }
   .wallet-chip { font-size: 11px; padding: 7px 10px; gap: 6px; }
   .portal-main { padding: 22px 14px 0; }

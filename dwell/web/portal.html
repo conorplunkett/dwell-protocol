@@ -314,6 +314,7 @@
         <span class="brand-sub">— Portal</span>
       </a>
       <div class="dash-account">
+        <span class="dash-account-who" id="nav-signed-in" hidden></span>
         <button class="wallet-chip" id="wallet-chip" type="button">
           <span class="wallet-dot" aria-hidden="true"></span>
           Wallet · at token launch
@@ -323,11 +324,24 @@
       </div>
     </header>
 
-    <!-- Primary section nav — one active view at a time. -->
+    <!-- Out-of-inventory notice — shown only when the live auction has nothing
+         to serve. Toggled by checkInventory() in portal.js against the public
+         /v1/ads endpoint; text mirrors the extension popup's version. -->
+    <div class="dash-notice" id="inventory-notice" hidden>
+      <span class="dash-notice-ico" aria-hidden="true">⏳</span>
+      <span>Out of ad inventory right now - they will be back tomorrow.</span>
+    </div>
+
+    <!-- Primary section nav — one active view at a time. Same order as the
+         FreeAI dashboard; Cash out sits in the Redeem slot. -->
     <nav class="dash-tabs" id="dash-tabs" role="tablist" aria-label="Portal sections">
       <button class="dash-tab active" data-section="earnings" type="button" role="tab" aria-selected="true">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M17 8h4v4"/></svg></span>
         <span class="dash-tab-label">Earnings</span>
+      </button>
+      <button class="dash-tab" data-section="referrals" type="button" role="tab" aria-selected="false">
+        <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.5"/><path d="M17.5 19a5 5 0 0 0-3-4.6"/></svg></span>
+        <span class="dash-tab-label">Referrals</span>
       </button>
       <button class="dash-tab" data-section="activity" type="button" role="tab" aria-selected="false">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12"/><path d="M8 12h12"/><path d="M8 18h12"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg></span>
@@ -336,10 +350,6 @@
       <button class="dash-tab" data-section="cashout" type="button" role="tab" aria-selected="false">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M3.5 10h17"/><path d="M7 14.5h4"/></svg></span>
         <span class="dash-tab-label">Cash out</span>
-      </button>
-      <button class="dash-tab" data-section="referrals" type="button" role="tab" aria-selected="false">
-        <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.5"/><path d="M17.5 19a5 5 0 0 0-3-4.6"/></svg></span>
-        <span class="dash-tab-label">Referrals</span>
       </button>
       <button class="dash-tab" data-section="install" type="button" role="tab" aria-selected="false">
         <span class="dash-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4.5 20.5h15"/></svg></span>
