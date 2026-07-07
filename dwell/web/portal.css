@@ -453,8 +453,13 @@ html.auth-pending #portal-loading { display: flex; }
 /* Account cluster — wallet chip + Home + Sign out, kept quiet so the
    segmented tabs below read as the primary navigation. */
 .dash-account { display: flex; align-items: center; gap: 6px; }
+.dash-account-who {
+  font-size: 13px; font-weight: 600; color: var(--gray);
+  padding: 7px 10px; margin-right: 2px; max-width: 260px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
 .dash-account-link {
-  font-size: 13.5px; font-weight: 600; color: var(--gray);
+  font-size: 13.5px; font-weight: 600; color: var(--gray); white-space: nowrap;
   padding: 7px 12px; border: none; border-radius: var(--radius-pill); background: transparent;
   cursor: pointer; text-decoration: none; transition: color .15s, background .15s;
 }
@@ -960,6 +965,7 @@ html.auth-pending #portal-loading { display: flex; }
   .nav .brand-name { font-size: 15px; letter-spacing: -.03em; }
   .brand-sub { display: none; }
   .dash-home { display: none; }
+  .dash-account-who { display: none; }
   .dash-account { gap: 2px; }
   .wallet-chip { font-size: 11px; padding: 7px 10px; gap: 6px; }
   .portal-main { padding: 22px 14px 0; }

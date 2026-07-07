@@ -309,6 +309,12 @@ function showPortalPage(email) {
   $("portal-page").hidden = false;
   accountEmail = email;
   $("balance-email").textContent = email;
+  // Portal nav: surface who's signed in, to the left of the wallet chip.
+  const who = $("nav-signed-in");
+  if (who) {
+    who.textContent = "Signed in as " + email;
+    who.hidden = false;
+  }
   showSection("earnings");
 }
 
