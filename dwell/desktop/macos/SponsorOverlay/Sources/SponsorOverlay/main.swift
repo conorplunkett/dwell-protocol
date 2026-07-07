@@ -818,7 +818,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let w = NSWindow(contentRect: NSRect(origin: .zero, size: contentSize),
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        w.title = "Set up DWELL"
+        w.title = "Set up Dwell"
         w.isReleasedWhenClosed = false
         w.contentView = webView
         w.delegate = self
@@ -938,12 +938,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         w.center()
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 440, height: 320))
-        let heading = NSTextField(labelWithString: "Earn dwells while you work")
+        let heading = NSTextField(labelWithString: "Earn crypto while you work")
         heading.font = .systemFont(ofSize: 16, weight: .bold)
         heading.frame = NSRect(x: 28, y: 268, width: 384, height: 24)
 
         let steps = NSTextField(wrappingLabelWithString: """
-        1.  Keep DWELL running — it lives in your menu bar (the D$ icon).
+        1.  Keep Dwell running — it lives in your menu bar (the D$ icon).
 
         2.  Open your preferred app — ChatGPT or Claude — and grant \
         Accessibility access if prompted (System Settings ▸ Privacy & \
@@ -954,8 +954,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         icon. Each app remembers its own height.
 
         4.  Done — the card appears only while the assistant is generating, \
-        and your dwells build automatically (1,000 dwells = $1.00 of earned \
-        ad value).
+        and your dwells build automatically.
         """)
         steps.font = .systemFont(ofSize: 13)
         steps.frame = NSRect(x: 28, y: 64, width: 384, height: 196)

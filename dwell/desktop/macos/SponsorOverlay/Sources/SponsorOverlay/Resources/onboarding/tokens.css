@@ -1,4 +1,4 @@
-/* Dwell Protocol — design tokens for the desktop onboarding window.
+/* Dwell — design tokens for the desktop onboarding window.
  *
  * A self-contained bundle of the design system's tokens so the onboarding
  * renders identically inside the app's WKWebView without reaching the network
@@ -7,7 +7,7 @@
  * from the Claude Design handoff. Keep colours in sync with ../../../../theme.css.
  */
 
-/* Inter + JetBrains Mono, matching every other DWELL surface. Loads from
+/* Inter + JetBrains Mono, matching every other Dwell surface. Loads from
  * Google Fonts when online; falls back to the system stack offline. */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap");
 
@@ -77,13 +77,14 @@
   --ease-pop: cubic-bezier(0.5, 1.5, 0.4, 1);
 }
 
-/* The "D$" brand mark — coral wordmark on the accent gradient (from base.css). */
+/* The brand mark — the eight-dot clock sweep (web/assets/logo.svg) on a white
+ * chip, matching the app icon and favicon. */
 .logo {
   width: 30px; height: 30px; border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, var(--accent-grad-a), var(--accent-grad-b));
-  color: #fff; font-family: var(--mono); font-weight: 700; font-size: 14px;
+  background: #fff;
   display: grid; place-items: center; box-shadow: var(--shadow-logo);
 }
+.logo svg { width: 68%; height: 68%; display: block; }
 
 /* Mono eyebrow — the recurring uppercase section label (from base.css). */
 .eyebrow {

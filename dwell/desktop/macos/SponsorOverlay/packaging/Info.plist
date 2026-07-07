@@ -6,9 +6,9 @@
   <key>CFBundleIdentifier</key>          <string>fyi.dwell.SponsorOverlay</string>
   <!-- Name shown to the user (menu-bar About, and the System Settings ▸ Login
        Items row). LaunchServices shows CFBundleDisplayName/CFBundleName here, so
-       both read "dwellprotocol.com" rather than the internal "SponsorOverlay". -->
-  <key>CFBundleName</key>                <string>dwellprotocol.com</string>
-  <key>CFBundleDisplayName</key>         <string>dwellprotocol.com</string>
+       both read "Dwell" rather than the internal "SponsorOverlay". -->
+  <key>CFBundleName</key>                <string>Dwell</string>
+  <key>CFBundleDisplayName</key>         <string>Dwell</string>
   <key>CFBundlePackageType</key>         <string>APPL</string>
   <key>CFBundleIconFile</key>            <string>AppIcon</string>
   <key>CFBundleShortVersionString</key>  <string>__VERSION__</string>

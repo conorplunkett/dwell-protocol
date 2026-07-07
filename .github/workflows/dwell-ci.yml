@@ -104,8 +104,8 @@ jobs:
         with:
           name: SponsorOverlay-macos
           path: |
-            dwell/desktop/macos/SponsorOverlay/build/SponsorOverlay.zip
-            dwell/desktop/macos/SponsorOverlay/build/SponsorOverlay.dmg
+            dwell/desktop/macos/SponsorOverlay/build/Dwell.zip
+            dwell/desktop/macos/SponsorOverlay/build/Dwell.dmg
 
   contracts:
     runs-on: ubuntu-latest

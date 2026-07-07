@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wrap the SwiftPM executable into dwellprotocol.com.app, code-sign it, and produce
+# Wrap the SwiftPM executable into Dwell.app, code-sign it, and produce
 # a drag-to-Applications .dmg (and a .zip) for distribution.
 #
 # Local use (no Apple Developer account needed) — ad-hoc signature, runs on the
@@ -11,9 +11,9 @@
 #   SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./packaging/bundle.sh
 #
 # Then notarize + staple the .dmg (one-time setup of an app-specific password):
-#   xcrun notarytool submit build/SponsorOverlay.dmg \
+#   xcrun notarytool submit build/Dwell.dmg \
 #     --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PASSWORD" --wait
-#   xcrun stapler staple build/SponsorOverlay.dmg
+#   xcrun stapler staple build/Dwell.dmg
 #
 # Builds are universal2 (arm64 + x86_64) by default so one dmg runs on Intel and
 # Apple Silicon. Set UNIVERSAL=0 for a quicker host-arch-only bundle when iterating.
@@ -21,9 +21,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."        # -> SponsorOverlay package root
 
-APP_NAME="SponsorOverlay"             # SwiftPM product: executable, zip + dmg names
-PRODUCT_NAME="dwellprotocol.com"             # user-facing .app bundle name (Finder + Login Items)
-VOL_NAME="DWELL Sponsor Overlay"
+APP_NAME="SponsorOverlay"             # SwiftPM product: the executable's internal name
+PRODUCT_NAME="Dwell"                  # user-facing .app bundle name (Finder + Login Items)
+VOL_NAME="Dwell"
 VERSION="${VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"   # default "-" = ad-hoc
@@ -32,10 +32,10 @@ SIGN_IDENTITY="${SIGN_IDENTITY:--}"   # default "-" = ad-hoc
 UNIVERSAL="${UNIVERSAL:-1}"
 
 BUILD_DIR="build"
-# The bundle on disk is "dwellprotocol.com.app" so Finder + System Settings ▸ Login
-# Items show "dwellprotocol.com", not the internal executable name. The executable
-# inside stays "$APP_NAME" (matches CFBundleExecutable); the zip/dmg keep the
-# "$APP_NAME" name so CI artifact paths are unchanged.
+# The bundle on disk is "Dwell.app" so Finder + System Settings ▸ Login
+# Items show "Dwell", not the internal executable name. The executable
+# inside stays "$APP_NAME" (matches CFBundleExecutable); the zip/dmg are
+# named "$PRODUCT_NAME" too, which is what /download/mac serves.
 APP="$BUILD_DIR/$PRODUCT_NAME.app"
 MACOS_DIR="$APP/Contents/MacOS"
 RES_DIR="$APP/Contents/Resources"
@@ -111,15 +111,15 @@ fi
 codesign --verify --strict --verbose=2 "$APP"
 
 echo "==> zipping (notarization-friendly)"
-ditto -c -k --keepParent "$APP" "$BUILD_DIR/$APP_NAME.zip"
+ditto -c -k --keepParent "$APP" "$BUILD_DIR/$PRODUCT_NAME.zip"
 
 echo "==> building .dmg (drag-to-Applications)"
 # Fancy layout (background image + positioned icons) needs Finder scripting,
 # which is unreliable headless — default on for local builds, off in CI.
 DMG_FANCY="${DMG_FANCY:-1}"
 DMG_STAGE="$BUILD_DIR/dmg"
-DMG="$BUILD_DIR/$APP_NAME.dmg"
-RW_DMG="$BUILD_DIR/$APP_NAME-rw.dmg"
+DMG="$BUILD_DIR/$PRODUCT_NAME.dmg"
+RW_DMG="$BUILD_DIR/$PRODUCT_NAME-rw.dmg"
 rm -rf "$DMG_STAGE" "$DMG" "$RW_DMG"
 mkdir -p "$DMG_STAGE/.background"
 cp -R "$APP" "$DMG_STAGE/"
@@ -182,5 +182,5 @@ fi
 
 echo "==> done"
 echo "    $APP"
-echo "    $BUILD_DIR/$APP_NAME.zip"
+echo "    $BUILD_DIR/$PRODUCT_NAME.zip"
 echo "    $DMG"
