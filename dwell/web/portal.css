@@ -178,7 +178,7 @@ html.auth-pending #portal-loading { display: flex; }
     var(--shadow-card);
 }
 
-/* ── Provider buttons (Google / Apple) ── */
+/* ── Provider buttons (Google) ── */
 .auth-btn-provider {
   display: flex;
   align-items: center;
@@ -203,18 +203,6 @@ html.auth-pending #portal-loading { display: flex; }
   border-color: var(--border-strong);
   box-shadow: var(--shadow-sm);
   color: var(--ink);
-}
-
-/* Apple button — inverted (near-white on the dark canvas) */
-.auth-btn-apple {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--bg-cream);
-}
-.auth-btn-apple:hover {
-  background: var(--ink-2);
-  border-color: var(--ink-2);
-  color: var(--bg-cream);
 }
 
 /* Provider icon — monochrome mark, follows the button's text color */
