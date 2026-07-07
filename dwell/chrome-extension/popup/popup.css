@@ -20,12 +20,14 @@ body {
   border-bottom: 1px solid var(--line);
 }
 .pbrand { display: flex; align-items: center; gap: 8px; }
+/* eight-dot brand mark — same treatment as the site nav's .logo (web/styles.css) */
 .plogo {
   width: 26px; height: 26px; border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, var(--accent-grad-a), var(--accent-grad-b));
-  color: #fff; font-family: var(--mono); font-weight: 700; font-size: 12px;
+  background: var(--card-dark);
+  border: 1px solid var(--line);
   display: grid; place-items: center; box-shadow: var(--shadow-logo);
 }
+.plogo img { width: 72%; height: 72%; object-fit: contain; display: block; }
 .pname { font-weight: 800; font-size: 15px; letter-spacing: -.02em; }
 .pname .dim { color: var(--gray-2); font-weight: 600; }
 

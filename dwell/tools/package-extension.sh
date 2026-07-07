@@ -38,6 +38,7 @@ FILES=(
   popup/popup.css
   popup/popup.js
   popup/theme.css
+  popup/logo.svg
 )
 
 # Fail early if any expected file is missing.

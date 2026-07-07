@@ -5,10 +5,7 @@ const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": 
 
 // Viewers earn dwells: 1,000 dwells = $1.00 of earned ad value. The backend
 // stays dollar-denominated (balanceUsd etc.); we convert at the display edge
-// only. The fuel ring tracks dwells earned toward a 20,000-dwell monthly goal
-// (≈ $20 — a month of Claude Pro at the gift-card redemption), so progress
-// stays meaningful at real balances.
-const MONTH_TARGET_DWELLS = 20000;
+// only.
 
 // Ring geometry — must match the <svg> in popup.html (r=69, stroke=14).
 const RING_R = 69;
@@ -31,7 +28,6 @@ const money = (n) => "$" + (n || 0).toLocaleString(undefined, { minimumFractionD
 // Dwell display: API amounts arrive in USD; dwells = round(usd × 1000).
 const toDwells = (usd) => Math.round((usd || 0) * 1000);
 const dwells = (usd) => toDwells(usd).toLocaleString("en-US");
-const fmtDwells = (n) => (n || 0).toLocaleString("en-US");
 
 function setRing(pct) {
   const arc = $("ring-arc");
@@ -52,21 +48,16 @@ function paintHero() {
   const s = lastState;
   const earnings = lastLinked ? (s.earnings || 0) : 0;
 
-  // Hero ring — dwells earned, and progress toward this month's goal. The
-  // subtitle keeps the published legend visible: 1,000 dwells = $1.00.
+  // Hero ring — dwells earned. No invented goal: the arc stays full as a brand
+  // ring, and the subtitle keeps the published legend visible: 1,000 dwells = $1.00.
   setText("earnings", dwells(earnings));
-  setText("goal", "of " + fmtDwells(MONTH_TARGET_DWELLS) + " dwells");
-  const pct = toDwells(earnings) / MONTH_TARGET_DWELLS;
-  setRing(pct);
+  setRing(1);
   const progress = $("progress");
   if (progress) {
     if (!lastLinked) {
       progress.innerHTML = "<b>Connect your account</b> to start earning";
     } else {
-      const whole = Math.min(100, Math.round(pct * 100));
-      progress.innerHTML = whole >= 100
-        ? `<b>Ready</b> — redeem your dwells · ≈ ${money(earnings)}`
-        : `<b>${whole}%</b> of ${fmtDwells(MONTH_TARGET_DWELLS)} dwells this month · ≈ ${money(earnings)}`;
+      progress.innerHTML = `<b>1,000 dwells</b> = $1.00 · ≈ ${money(earnings)} earned`;
     }
   }
 
