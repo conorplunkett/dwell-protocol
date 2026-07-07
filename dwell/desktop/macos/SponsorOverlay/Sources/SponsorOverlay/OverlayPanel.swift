@@ -16,7 +16,10 @@ struct SponsorCard {
 
 final class OverlayPanelController {
     static let height: CGFloat = 34
-    static let maxWidth: CGFloat = 560
+    /// Width cap for the content-fitted pill. Wide enough that typical
+    /// "Brand · message" lines render whole; only unusually long copy
+    /// ellipsizes. (Was 560 — real campaign lines were getting truncated.)
+    static let maxWidth: CGFloat = 720
     /// Gap between the card's bottom edge and the composer's top edge. Only the
     /// composer-anchored path (Claude) uses it; ChatGPT anchors off the window
     /// bottom. Sized so a locked card clears Claude's prompt box rather than

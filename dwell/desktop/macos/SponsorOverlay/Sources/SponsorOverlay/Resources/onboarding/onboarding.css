@@ -427,8 +427,11 @@ body {
   line-height: 1.55;
 }
 .callout .mb-wire {
-  width: 26px;
-  height: 17px;
-  vertical-align: -4px;
+  width: 15px;
+  height: 15px;
+  vertical-align: -3px;
   margin: 0 3px;
 }
+
+/* Step 4 "Save dwells" — menu-bar reminder pinned above the title. */
+.callout.callout-top { margin: 0 0 18px; }
