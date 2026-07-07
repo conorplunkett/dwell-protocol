@@ -277,7 +277,7 @@ function createMailer(cfg: any) {
   // Per-audience senders, all on the Resend-verified contact.dwellprotocol.com domain.
   // User mail comes from hello@ with replies routed to support@; advertiser mail
   // comes from ads@. Overridable via MAIL_FROM / MAIL_FROM_ADS.
-  const userFrom = cfg.mailFrom || "DWELL <hello@dwellprotocol.com>";
+  const userFrom = cfg.mailFrom || "DWELL <hello@contact.dwellprotocol.com>";
   const adsFrom = cfg.mailFromAds || "DWELL <ads@contact.dwellprotocol.com>";
   const supportReplyTo = "support@contact.dwellprotocol.com";
   const adsReplyTo = "ads@contact.dwellprotocol.com";
