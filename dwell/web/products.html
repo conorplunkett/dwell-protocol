@@ -177,7 +177,7 @@
     <nav class="nav-btns" aria-label="Primary">
       <a href="/products" class="navbtn is-active" aria-current="page">Products</a>
       <a href="/tokenomics" class="navbtn">Tokenomics</a>
-      <a href="/portal" class="navbtn"><span class="nav-txt-opt">Open </span>Portal</a>
+      <a href="/portal" class="navbtn"><span class="nav-txt-opt">User </span>Login</a>
       <a href="/#advertisers" class="navbtn navbtn-cta">Advertise</a>
     </nav>
   </header>
@@ -240,7 +240,7 @@
       </div>
 
       <div class="prod-cta">
-        <a href="#" class="btn-green" aria-disabled="true">
+        <a href="https://chromewebstore.google.com/detail/freeaifyi-%E2%80%94-earn-from-cha/himeomhnejkhdjcilclhmemkppipoiaj" class="btn-green" target="_blank" rel="noopener">
           <svg class="btn-chrome" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
             <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
             <circle cx="12" cy="12" r="3.4" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -248,8 +248,7 @@
           </svg>
           Add to Chrome
         </a>
-        <span class="note"><strong>In Chrome Web Store review</strong> — link goes live when approved.</span>
-        <a class="text-link" href="/portal">Open your portal →</a>
+        <span class="note"><strong>In Chrome Web Store review.</strong></span>
       </div>
     </section>
 
@@ -407,13 +406,6 @@
       <p class="faq-sub">What dwells are, how the published split works, what the protocol charges, and how to turn it all off.</p>
 
       <details class="faq-item">
-        <summary class="faq-q">What are dwells?</summary>
-        <div class="faq-a">
-          <p class="faq-lead">Dwells are the protocol's earning unit. You earn them by watching one sponsored line while an AI assistant thinks. Dwells are non-transferable until the token launch; you redeem them in your <a href="/portal">portal</a>.</p>
-        </div>
-      </details>
-
-      <details class="faq-item">
         <summary class="faq-q">Is DWELL really free?</summary>
         <div class="faq-a">
           <p class="faq-lead">Yes. There is no subscription and nothing to pay to start earning. You install once, keep using the AI tools you already use, and earn dwells while they think. The protocol only charges a fee when you redeem for a gift card or cash — see the fees question below.</p>
@@ -494,20 +486,6 @@
       </details>
 
       <details class="faq-item">
-        <summary class="faq-q">Will the ads get in my way?</summary>
-        <div class="faq-a">
-          <p class="faq-lead">The sponsored line only appears <em>while</em> the assistant is thinking, then gets out of the way when the answer arrives. No pop-ups, no autoplay, no takeovers. You can opt out any time.</p>
-        </div>
-      </details>
-
-      <details class="faq-item">
-        <summary class="faq-q"><span>Does DWELL change my real <code>claude</code> command?</span></summary>
-        <div class="faq-a">
-          <p class="faq-lead">No — <code>dwell claude setup</code> adds a reversible wrapper and never edits your Claude install or settings. Undo with <code>dwell claude restore</code>.</p>
-        </div>
-      </details>
-
-      <details class="faq-item">
         <summary class="faq-q">Are you affiliated with Anthropic, OpenAI, or Google?</summary>
         <div class="faq-a">
           <p class="faq-lead">No. DWELL is an independent product and is not affiliated with Anthropic, OpenAI, or Google. "Claude," "ChatGPT," and "Gemini" are trademarks of their respective owners.</p>
@@ -547,7 +525,6 @@
     "@context": "https://schema.org",
     "@type": "FAQPage",
     "mainEntity": [
-      { "@type": "Question", "name": "What are dwells?", "acceptedAnswer": { "@type": "Answer", "text": "Dwells are the protocol's earning unit. You earn them by watching one sponsored line while an AI assistant thinks. Dwells are non-transferable until the token launch; you redeem them in your portal at dwellprotocol.com/portal." } },
       { "@type": "Question", "name": "Is DWELL really free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. There is no subscription and nothing to pay to start earning. You install once, keep using the AI tools you already use, and earn dwells while they think. The protocol only charges a fee when you redeem for a gift card or cash." } },
       { "@type": "Question", "name": "How much can I earn?", "acceptedAnswer": { "@type": "Answer", "text": "It depends on how much you use AI. The published split is fixed: advertisers pay fixed dollar CPMs, 90% of every ad dollar goes to the campaign pool, and 60% of that pool goes to the viewer — credited as dwells. 10% of the pool goes to your referrer (to the protocol treasury when unreferred) and 30% to the protocol treasury." } },
       { "@type": "Question", "name": "How do I redeem dwells?", "acceptedAnswer": { "@type": "Answer", "text": "Three ways in the portal: (1) $DWELL tokens at token launch — the claim is free; (2) Claude gift cards, with a 10% protocol fee on top of face value; (3) cash via Stripe, with a 10% protocol fee and a $10 payout minimum." } },
@@ -558,8 +535,6 @@
       { "@type": "Question", "name": "Which AI tools does it work with?", "acceptedAnswer": { "@type": "Answer", "text": "ChatGPT, Claude and Gemini in your browser via the Chrome extension, Claude Code in your terminal, and the native Claude and ChatGPT desktop apps on macOS. The sponsored line is styled to look native on each surface and only appears while the AI is working." } },
       { "@type": "Question", "name": "Do I need an account to start earning?", "acceptedAnswer": { "@type": "Answer", "text": "No — you start earning the moment you install. An email is only needed to link your devices together and to redeem. Sign in with Google or an email magic link at dwellprotocol.com/portal." } },
       { "@type": "Question", "name": "How do my terminal earnings reach my account?", "acceptedAnswer": { "@type": "Answer", "text": "Link by email during dwell claude setup (or later with dwell claude link). Your dwells then show up in the portal alongside your browser and desktop earnings." } },
-      { "@type": "Question", "name": "Will the ads get in my way?", "acceptedAnswer": { "@type": "Answer", "text": "The sponsored line only appears while the assistant is thinking, then gets out of the way when the answer arrives. No pop-ups, no autoplay, no takeovers. You can opt out any time." } },
-      { "@type": "Question", "name": "Does DWELL change my real claude command?", "acceptedAnswer": { "@type": "Answer", "text": "No — dwell claude setup adds a reversible wrapper and never edits your Claude install or settings. Undo with dwell claude restore." } },
       { "@type": "Question", "name": "Are you affiliated with Anthropic, OpenAI, or Google?", "acceptedAnswer": { "@type": "Answer", "text": "No. DWELL is an independent product and is not affiliated with Anthropic, OpenAI, or Google. Claude, ChatGPT, and Gemini are trademarks of their respective owners." } },
       { "@type": "Question", "name": "Can I advertise on DWELL?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. You bid for the sponsored line that shows while ChatGPT, Claude and Gemini think. You're billed for impressions only; clicks are tracked, never billed." } },
       { "@type": "Question", "name": "How do I uninstall DWELL?", "acceptedAnswer": { "@type": "Answer", "text": "Chrome extension — chrome://extensions then Remove. Terminal — dwell claude restore, then npm rm -g @dwell-protocol/terminal. macOS app — drag Dwell Sponsor Overlay from Applications to the Trash." } }
