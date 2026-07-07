@@ -6,13 +6,16 @@ const { escapeHtml } = require("./util");
 
 function createMailer(config) {
   const provider = config.mailProvider || "console";
-  // Per-audience senders, all on the Resend-verified contact.dwellprotocol.com domain.
-  // User mail comes from hello@ with replies routed to support@; advertiser mail
-  // comes from ads@. Overridable via MAIL_FROM / MAIL_FROM_ADS.
-  const userFrom = config.mailFrom || "DWELL <hello@dwellprotocol.com>";
-  const adsFrom = config.mailFromAds || "DWELL <ads@contact.dwellprotocol.com>";
-  const supportReplyTo = "support@contact.dwellprotocol.com";
-  const adsReplyTo = "ads@contact.dwellprotocol.com";
+  // Per-audience senders. Outbound mail still goes through the legacy
+  // Resend-verified contact.freeai.fyi domain (DWELL grew out of freeai.fyi and
+  // inherited its verified sending domain) — so recipients see freeai.fyi in the
+  // From address even though the brand is DWELL. User mail comes from hello@ with
+  // replies routed to support@; advertiser mail comes from ads@. Overridable via
+  // MAIL_FROM / MAIL_FROM_ADS.
+  const userFrom = config.mailFrom || "DWELL <hello@contact.freeai.fyi>";
+  const adsFrom = config.mailFromAds || "DWELL <ads@contact.freeai.fyi>";
+  const supportReplyTo = "support@contact.freeai.fyi";
+  const adsReplyTo = "ads@contact.freeai.fyi";
 
   async function send(to, subject, htmlBody, opts = {}) {
     const from = opts.from || userFrom;
