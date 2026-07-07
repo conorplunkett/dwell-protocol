@@ -610,11 +610,6 @@ $("google-btn").addEventListener("click", (e) => {
   if (!API_BASE) return showError("Sign-in is unavailable right now.");
   window.location.href = oauthUrl("google");
 });
-$("apple-btn").addEventListener("click", (e) => {
-  e.preventDefault();
-  if (!API_BASE) return showError("Sign-in is unavailable right now.");
-  window.location.href = oauthUrl("apple");
-});
 
 // ── Send magic link ──
 let lastEmail = "";
