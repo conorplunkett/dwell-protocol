@@ -530,7 +530,30 @@ const USDC_CHECKOUT = false;
   const panel = document.getElementById("usdc-panel");
   if (!btn || !panel || !adForm) return;
   if (!USDC_CHECKOUT || !API_BASE) return; // stays hidden pre-launch (and in dev mode)
-  btn.hidden = false;
+
+  // Reveal the payment-method slider and wire the two tabs. Card is the default
+  // (its pane holds the Stripe button); Crypto reveals the USDC/SOL pane. While
+  // the toggle is hidden the card pane shows alone, identical to production.
+  const tabs = document.getElementById("paytabs");
+  const cardPane = document.getElementById("pay-card");
+  const cryptoPane = document.getElementById("pay-crypto");
+  if (tabs && cardPane && cryptoPane) {
+    tabs.hidden = false;
+    const tabCard = document.getElementById("paytab-card");
+    const tabCrypto = document.getElementById("paytab-crypto");
+    const select = (which) => {
+      const crypto = which === "crypto";
+      tabs.classList.toggle("crypto", crypto);
+      tabCard.classList.toggle("active", !crypto);
+      tabCrypto.classList.toggle("active", crypto);
+      tabCard.setAttribute("aria-selected", String(!crypto));
+      tabCrypto.setAttribute("aria-selected", String(crypto));
+      cardPane.hidden = crypto;
+      cryptoPane.hidden = !crypto;
+    };
+    tabCard.addEventListener("click", () => select("card"));
+    tabCrypto.addEventListener("click", () => select("crypto"));
+  }
 
   const statusEl = document.getElementById("usdc-status");
   const payLink = document.getElementById("usdc-paylink");
