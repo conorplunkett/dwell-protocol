@@ -14,16 +14,22 @@ merged (by review or by the user) before treating the change as shipped.
 
 DWELL shows **one sponsored line** while an AI assistant (ChatGPT, Claude,
 Gemini) is thinking, and **pays the person watching**. Earnings accrue as
-**DWELL points** (1,000 points = $1.00 of earned ad value) and convert to the
-**$DWELL token** at launch (venue: star.fun, Solana — see
-`docs/07-starfun-launch.md`). Advertisers pay fixed dollar CPMs by card;
-**90% of every ad dollar** goes to the earn side, splitting
-**60% viewer / 10% referrer / 30% protocol treasury (held, never sold)**.
-Canonical domain: **dwellprotocol.com**.
+**DWELL points** (token-denominated — **no dollar peg**; 1,000 points = 12,000
+$DWELL at launch, value floats with the market) and convert to the
+**$DWELL token** at launch (venue: star.fun × Bedrock, Solana — see
+`docs/07-starfun-launch.md` and `docs/08-securities-framework.md`).
+Advertisers pay fixed dollar CPMs by card; the token-side tranche (currently
+~90% — configuration, never a promise) settles what earners are owed,
+splitting **60% viewer / 10% referrer / 30% protocol treasury (reserve,
+held)**. The token confers **zero equity rights** (Bedrock). Canonical
+domain: **dwellprotocol.com**.
 
 State mechanics as facts. No price talk, ever — the banned-language grep in CI
 (`moon|price will|appreciat|going up|invest` over `dwell/web`) enforces the
-copy rules in `docs/05-legal-structure.md`. **Never claim points are "backed"
+copy rules in `docs/05-legal-structure.md`; also banned: "buyback"/"price
+support"/"value accrual"/forward-looking buy statements, any "1,000 dwells =
+$1.00" peg, quantified earnings claims, and any ownership/equity framing of
+the token. **Never claim points are "backed"
 or "escrowed" until the USDC reserve actually exists** — say points are
 recorded on the ledger / earmarked, not guaranteed. CI for this tree runs from
 the **root** `.github/workflows/dwell-ci.yml`; `dwell/` must stay free of any
@@ -113,4 +119,4 @@ red (#FF0000) on pure white, near-black ink, broadcast-blue links, Sora type,
 The product is **one sponsored line** shown while an assistant is thinking.
 Never hedge it with a diminutive ("subtle", "tiny"). "While the AI thinks /
 is thinking" is fine — that wait is the moment the product owns. Points copy
-always carries the legend: **1,000 points = $1.00 of earned ad value**.
+never shows a dollar peg: points are token-denominated (1,000 points = 12,000 $DWELL at launch; value floats with the market) and any dollar figure is labeled an estimate.

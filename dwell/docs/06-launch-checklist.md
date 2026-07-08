@@ -122,7 +122,9 @@ both brands.
       separate from the points reserve.
 - [ ] Securities + tax counsel engaged; sign-off on entity structure (issuer
       subsidiary formed), token allocations, vesting docs, and every public
-      copy surface.
+      copy surface — **including the [08-securities-framework.md](08-securities-framework.md)
+      counsel gate: Bedrock constitutional-document diligence and the raise
+      geofence/KYC decision (recommended: exclude US persons from the raise).**
 - [ ] Contract audit booked (see below) — budget $30–80K.
 
 ## Phase 2 — TGE runbook (ordered)
@@ -197,7 +199,9 @@ millicent balance *is* the points number).
       own GitHub releases; wire `/download/mac` in the DWELL site's
       `vercel.json` when it exists.
 - [ ] All DWELL clients display "points" with the 1,000 points = 12,000
-      $DWELL legend (value floats with the market — no dollar peg anywhere).
+      $DWELL legend (value floats with the market — no dollar peg anywhere;
+      the legacy "1,000 dwells = $1.00" legend is banned and must not appear
+      in any client, store listing, or README).
 
 ## Standing rules after launch
 

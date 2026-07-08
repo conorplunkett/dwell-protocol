@@ -1,15 +1,34 @@
 # star.fun launch — assessment and adaptation
 
-> **Update (July 2026):** the equity structure below is superseded. The project
-> adopts the **Bedrock framework**: DWELL confers **zero equity rights**; the
-> independent Bedrock Foundation holds preference equity (10–30%, founder's
-> election) plus a golden share in the project company, founders retain ≥70%
-> ordinary shares, and the only token→equity path is Bedrock's constitutional
-> buyout (≥30% supply triggers a mandatory buyout at 7-day TWAP × 1.30;
-> acquirer must be accredited and pass KYC/AML). References below to
-> "$1M company valuation / tokens = 8.3% of the company" describe the prior
-> star.fun-native structure and no longer apply. ✎ Confirm Bedrock preference
-> percentage and star.fun × Bedrock integration mechanics before the raise.
+> **Update (July 2026): Bedrock structure adopted — verified against
+> Bedrock's published materials** (bedrock.meteora.ag/learn; Bedrock is a
+> Meteora × GVRN AI venture launched Mar 2026; star.fun is a confirmed
+> integrated launchpad, alongside Bags and Collateralize). The equity terms
+> below are superseded:
+>
+> - DWELL confers **zero equity rights** — Bedrock's docs verbatim: "Holding
+>   tokens from a project that has opted into the Bedrock framework confers
+>   zero equity rights."
+> - The independent **Bedrock Foundation** holds preference equity (10–30%,
+>   founder's election) + a golden share in the BVI project company; founders
+>   retain ≥70% ordinary shares and full operational control. Enforcement
+>   fund up to US$2M; activates only for fraud/bad-faith/unauthorized value
+>   extraction, not failure.
+> - Token→equity path: ≥30% of supply may trigger the constitutional buyout
+>   of remaining tokens at (100% − % surrendered) × supply × (7-day TWAP ×
+>   1.30); **only at 100% of supply** may the acquirer seek the Foundation's
+>   preference equity, via SPA — a "standing invitation to treat" (not a
+>   binding offer), gated on accredited-investor status + KYC/AML/CTF. A
+>   token holder has a *path* to equity, not a *right* to equity.
+> - References below to "$1M company valuation / tokens = 8.3% of the
+>   company" describe the prior star.fun-native structure and **no longer
+>   apply**; that framing is banned on all surfaces.
+> - Raise-mitigation decisions + counsel gate:
+>   [08-securities-framework.md](08-securities-framework.md). ✎ Before the
+>   raise: confirm the executed constitutional documents match the published
+>   framework, the Foundation's directors, and the star.fun × Bedrock
+>   integration mechanics in writing; record the raise geofence/KYC decision
+>   (recommended: exclude US persons).
 
 Decision doc for launching DWELL on [star.fun](https://star.fun) instead of the
 self-directed Base TGE in [06-launch-checklist.md](06-launch-checklist.md).
@@ -30,7 +49,7 @@ ownership of the company via a BVI project company + Cayman SPC wrapper
 |---|---|
 | Chain | Solana (SPL token), liquidity on Meteora, USDC-denominated |
 | Supply | 1B fixed; curated raises set custom valuation and allocation buckets (the old fixed 60/20/20 preset no longer applies) |
-| Our raise (decided, confirmed with star) | **$1M company valuation**; the 1B tokens represent **8.3% of the company**. Total target ~$115K: ~$50K founder proceeds / ~$65K pool liquidity / ~$7.5K BVI setup ✎ exact split from star. Buckets: 60% initial liquidity / 10% ad-rewards airdrop / 10% structured sell orders (execute at preset market-cap levels) / 20% team (3-mo cliff + 9-mo vest) |
+| Our raise (⚠ equity terms superseded by the Bedrock update above) | ~~**$1M company valuation**; the 1B tokens represent **8.3% of the company**~~ — now: $1M launch valuation, zero-equity token under Bedrock. Total target ~$115K: ~$50K founder proceeds / ~$65K pool liquidity / ~$7.5K BVI setup ✎ exact split from star. Buckets: 60% initial liquidity / 10% ad-rewards airdrop / 10% structured sell orders (execute at preset market-cap levels) / 20% team (3-mo cliff + 9-mo vest) |
 | Raise mechanics | 5-day deposit window, funds in escrow; full refund if the target isn't met; the Meteora pool is seeded with 60% of supply plus the pool leg of the raise proceeds |
 | Fees | 1% of in-raise trades; 0.5% post-launch — and **the founder earns 0.5% of every trade, forever** |
 | Failure mode | Refunds if the raise misses thresholds |
@@ -113,9 +132,11 @@ bucket and the founder's 0.5% of all trading volume sit on top.
 - [ ] star.fun team Q&A ✎: Delaware C-Corp alternative? Custom vesting?
       Pre-graduation buy API or supported onchain path? Current curve
       parameters (docs have changed once already)? Geofencing options?
-- [x] Raise terms decided and confirmed with star: $1M company valuation,
-      token = 8.3% of the company, 60/10/10/20 buckets, points convert at the
-      fixed $1M-valuation price ($0.0000833/DWELL) from the airdrop.
+- [ ] Raise terms re-confirmed with star under Bedrock (supersedes the earlier
+      confirmation of $1M company valuation / token = 8.3% of the company):
+      $1M launch valuation, zero-equity token, Bedrock preference percentage
+      elected, 60/10/10/20 buckets, points convert at the fixed
+      $1M-launch-valuation price ($0.0000833/DWELL) from the airdrop.
 - [ ] Accept the Solana port scope: Jupiter keeper + Solana Merkle
       distributor + Squads treasury ([04-backend-adaptation.md](04-backend-adaptation.md)
       knobs gain `SOLANA_RPC_URL` / `JUPITER_API` variants).

@@ -66,14 +66,14 @@ manifest and pre-fills name, version, and icons. Then complete the tabs below.
 
 ```
 DWELL turns the AI "thinking" spinner into a tiny ad marketplace and pays
-the person watching, in dwells (1,000 dwells = $1.00 of earned ad value).
+the person watching, in dwells (token-denominated; they convert to $DWELL at token launch and their value floats with the market).
 
 While ChatGPT, Claude, or Gemini is generating an answer, instead of sitting
 idle, DWELL shows a sponsored line right by the reply. That's it. When the
 model finishes, it goes away. You receive 60% of each campaign's pool — 90%
 of every ad dollar goes to the earn side — credited to you as dwells. Redeem
-them in the web portal: $DWELL tokens at launch, Claude gift cards, or cash
-via Stripe (10% protocol fee on gift cards and cash).
+them in the web portal: $DWELL tokens at launch, Claude credits, or cash
+via Stripe (10% protocol fee on Claude credits and cash).
 
 WHAT IT DOES
 • Shows a sponsored line only while the assistant is thinking.
@@ -104,8 +104,8 @@ the #1 cause of rejection. Answer it to match what the code actually does
 - **Single purpose** (paste):
   > DWELL displays a sponsored line of text while an AI assistant is generating a
   > response, and credits the user their share of that ad revenue as dwells
-  > (1,000 dwells = $1.00 of earned ad value), redeemable in the DWELL web portal
-  > for $DWELL tokens at launch, Claude gift cards, or cash.
+  > (token-denominated; value floats with the market), redeemable in the DWELL web portal
+  > for $DWELL tokens at launch, Claude credits, or cash.
 
 - **Data usage disclosures** — check honestly. In the "What user data do you
   collect?" checklist, **tick exactly these** (and nothing else):

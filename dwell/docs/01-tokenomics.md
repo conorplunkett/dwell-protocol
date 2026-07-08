@@ -1,13 +1,18 @@
 # DWELL tokenomics
 
-DWELL pays people for their attention. Advertisers buy ad impressions for fixed
-dollar prices; 90% of every ad dollar is converted into DWELL and split between
-the person who watched the ad, the person who referred them, and the protocol.
+DWELL pays people for their attention. Advertisers buy ad impressions for
+fixed dollar prices; the token-side tranche of each campaign (currently 90% —
+configuration, not a commitment) is converted into DWELL and split between the
+person who watched the ad, the person who referred them, and the protocol.
 No minting, no emissions schedule, no oracle.
 
 > **Copy rule (every public surface):** describe the mechanics as facts. Never
-> state or imply that the price will rise, that buys are "price support," or
-> that holding is an investment. See [05-legal-structure.md](05-legal-structure.md).
+> state or imply that the price will rise, that buys are "price support" or a
+> "buyback," or that holding is an investment. Campaign buys are **settlement**
+> — tokens bought to be delivered to earners — never supply reduction. No
+> public surface promises a percentage of revenue. See
+> [05-legal-structure.md](05-legal-structure.md) and
+> [08-securities-framework.md](08-securities-framework.md).
 
 ## Token facts
 
@@ -16,10 +21,10 @@ No minting, no emissions schedule, no oracle.
 | Name / symbol | DWELL |
 | Chain | Solana (SPL token, minted by star.fun) |
 | Supply | 1,000,000,000 — fixed, no mint authority after launch |
-| Equity | The 1B tokens collectively represent **8.3% of the company** |
-| Launch | star.fun curated raise at a **$1M company valuation**; total target ~$115K: ~$50K founder proceeds, ~$65K pool liquidity, ~$7.5K BVI setup ✎ exact split from star |
-| Raise mechanics | 5-day deposit window; full refund if the target isn't met |
-| Points conversion price | Fixed at the $1M valuation: **$0.0000833/DWELL** (1B tokens = 8.3% of $1M = $83.3K) — set in advance, independent of where the pool opens |
+| Equity rights | **None.** DWELL confers zero equity, dividend, or governance rights. The project uses the **Bedrock framework**: the independent Bedrock Foundation holds preference equity + a golden share in the BVI project company; founders retain ≥70% ordinary shares. The only token→equity path is Bedrock's constitutional buyout (≥30% supply → mandatory buyout at 7-day TWAP × 1.30; equity SPA only at 100% of supply, accredited + KYC, at the Foundation's discretion). See [08-securities-framework.md](08-securities-framework.md). |
+| Launch | star.fun curated raise at a **$1M launch valuation**; total target ~$115K: ~$50K founder proceeds, ~$65K pool liquidity, ~$7.5K BVI setup ✎ exact split from star |
+| Raise mechanics | 5-day deposit window; full refund if the target isn't met. Geofence/KYC decision for the raise: see [08](08-securities-framework.md) counsel gate (recommended: exclude US persons) |
+| Points conversion price | Fixed at the $1M launch valuation: **$0.0000833/DWELL** — set in advance, independent of where the pool opens |
 
 The EVM contracts in `../contracts` remain the reference implementation; on
 Solana the same roles are filled by a Jupiter buy-keeper, a Merkle distributor,
@@ -46,10 +51,14 @@ Advertisers pay a **fixed dollar CPM** by card. Per $100 of ad spend:
 | Card processing (Stripe) | ~$2.50 | Stripe |
 | Provider fees (USD→USDC, swap, gas) | ~$2.50 | Coinbase / DEX / network |
 | Business margin (fiat) | $5.00 | The operating company |
-| **Token side** | **$90.00** | Points phase: earmarked to the token side on the protocol ledger. Live: market-buys DWELL immediately |
+| **Token side** | **$90.00** | Points phase: earmarked to the token side on the protocol ledger. Live: converted to DWELL at market to settle what the campaign's viewers/referrers earn |
 
-Knob: `RESERVE_TRANCHE_BPS = 9000`. An advertiser paying in USDC directly
-skips the card leg, pushing ~$97.50 to the token side.
+Knob: `RESERVE_TRANCHE_BPS = 9000` — **current configuration, changeable, and
+never stated as a promise on any public surface** ("currently ~90%"). An
+advertiser paying in USDC directly skips the card leg, pushing ~$97.50 to the
+token side. Completed campaign conversions are reported retroactively on a
+public transparency ledger; the report is hygiene, not the legal argument —
+see [08-securities-framework.md](08-securities-framework.md).
 
 ## The pool split — 60 / 10 / 30
 
@@ -59,15 +68,18 @@ The $90 tranche (points: its dollar value; live: the tokens it bought) splits:
 |---|---|---|
 | Viewer | **60%** | `VIEWER_SHARE_BPS = 6000` |
 | Viewer's referrer | **10%** | `REFERRER_SHARE_BPS = 1000` |
-| Protocol treasury | **30%** (40% when the viewer has no referrer). **Held, never sold.** | remainder |
+| Protocol treasury | **30%** (40% when the viewer has no referrer). Protocol reserve — held; never described publicly as scarcity, burn, or price support. | remainder |
 
 The referrer share is carved out of the pool, not paid on top. The protocol
 share is the business's second revenue stream alongside the 5% fiat margin.
 
 ## Campaign-locked rate — the core mechanism
 
-There is no "earn rate" to set. When a campaign's payment clears (live phase),
-the $90 is market-bought into DWELL via Jupiter, and:
+There is no "earn rate" to set. Campaign buys are **settlement**: the tokens
+are bought because they are immediately owed to the campaign's viewers and
+referrers — a payment flow, not treasury management, supply reduction, or
+price support. When a campaign's payment clears (live phase), the $90 is
+market-bought into DWELL via Jupiter, and:
 
 ```
 locked rate = tokens the buy received ÷ impressions the campaign bought
@@ -113,7 +125,7 @@ Points sit on the existing append-only millicent ledger:
 When the raise opens, the points ledger is snapshotted (snapshot time
 announced at the snapshot, not before):
 
-1. Points convert at a **fixed rate set by the $1M valuation**
+1. Points convert at a **fixed rate set by the $1M launch valuation**
    ($0.0000833/DWELL): **1,000 points = 12,000 DWELL** — announced in advance
    and independent of where the pool opens.
 2. Converted tokens come from the **10% ad-rewards airdrop**, so conversion is

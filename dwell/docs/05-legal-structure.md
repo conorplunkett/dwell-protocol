@@ -82,20 +82,44 @@ Florida LLC (opco)               Florida LLC or DE C-corp (opco)
   July 2026. The interpretive release is the solid ground.
 - Comfort precedents: Permission.io (US company paying US users its own token
   for ad-watching since ~2018, never enforced against); Brave/BAT (Delaware,
-  2017); Zora (2025, US-facing, "no rights" disclaimers). Caution precedents:
+  2017); Zora (2025, US-facing, "no rights" disclaimers); **Fuse no-action
+  letter (Dec 2025)** — in-ecosystem earned rewards are "a type of rebate,"
+  not profits (accord TurnKey Jet and Pocketful of Quarters, 2019) — the
+  consumptive framing that backstops the earn side if "prospective
+  earn-for-services" is ever argued to be consideration. Caution precedents:
   LBRY; Reddit MOON (killed by its own regulatory overhead — a live tradeable
   token cannot be gracefully un-shipped, which is half the argument for
   points-first).
+- **Buyback framing (see [08-securities-framework.md](08-securities-framework.md)):**
+  campaign buys are settlement of earner liabilities, not a buyback program.
+  Retroactive-only disclosure of buys is *not* a shield (the 2019 SEC
+  framework counts buybacks as "efforts of others" regardless of announcement;
+  Terraform/Coinbase treat publicized past buys as feeding expectations) —
+  the defense is the settlement purpose plus the copy rules below.
 
 ## Copy rules by phase (extends AGENTS.md ▸ Voice & copy)
 
 **Always (every public surface, including this repo):**
-- State mechanics as facts ("90% of every ad dollar buys DWELL on the open
-  market; 60% of the pool goes to the viewer"). Never say or imply the price
-  will rise, that buys are "price support," or that holding is an investment.
+- State mechanics as facts ("the token-side tranche — currently ~90% — is
+  converted to DWELL at market and split; 60% of the pool goes to the
+  viewer"). Never say or imply the price will rise, that buys are "price
+  support" or "buybacks," or that holding is an investment. **Never promise a
+  percentage of revenue** — the tranche is configuration, described as
+  "currently," changeable at any time; discretion to change or stop the
+  mechanic is reserved in the terms.
 - Banned words/framings: "moon," "price will," "appreciate," "going up,"
-  "invest," "returns," "passive income," APY-anything.
+  "invest," "returns," "passive income," APY-anything — plus "buyback,"
+  "price support," "value accrual," "deflationary," "scarcity," burn framing,
+  and **any forward-looking statement about future buys**.
+- **No dollar peg, anywhere**: dwells/points are token-denominated; the old
+  "1,000 dwells = $1.00" legend is banned. Dollar figures are estimates at
+  current market price, labeled as such.
+- **Never describe DWELL as ownership, equity, or a claim on the company**
+  (the Bedrock structure separates token and equity — see
+  [08-securities-framework.md](08-securities-framework.md)).
 - The earn framing is compensation: "get paid for your attention."
+- No quantified earnings claims ("earn up to $X/mo") — FTC
+  deceptive-earnings-claims exposure, separate from securities.
 
 **Points phase:** points are described as what they are — a token-denominated
 earned balance (1,000 points = 12,000 DWELL at launch) with **no dollar peg
@@ -125,17 +149,23 @@ without advice in either direction.
 
 ## If launching via star.fun — read this first
 
-A star.fun raise ([07-starfun-launch.md](07-starfun-launch.md)) **breaches
-hard rule 1 in substance**: the platform's bonding curve publicly sells 60% of
-supply at the project's instigation, marketed as fractional company
-ownership, with no KYC and no US geofence — an offering in substance, wrapped
-in the BVI/Cayman structure this doc otherwise avoids, under English-law ToS.
-The earned-rewards shelter still covers the ad-viewing side, but the raise
-itself is a separate securities event. Consequences: the points-first shelter
-collapses (the token is live and priced from day one), and **counsel sign-off
-becomes a pre-raise hard gate** — on the raise, the wrapper, the copy, and the
-geofence decision. Hard rules 2–4 (no custody, partner offramps, geofences)
-apply unchanged on Solana.
+A star.fun raise ([07-starfun-launch.md](07-starfun-launch.md)) is a public
+sale of tokens for money — hard rule 1 does not cover it, and no
+documentation can. The framework treats the populations separately
+([08-securities-framework.md](08-securities-framework.md)): the
+**earned-rewards shelter covers earners only**; the **raise is its own
+securities event**, mitigated by (a) the **Bedrock structure** — the token
+carries zero equity rights; ownership framing is banned — replacing the old
+fractional-company-ownership framing this section previously warned about,
+(b) a facts-only raise page with no managerial-effort or value-accrual
+representations, and (c) the **geofence/KYC decision** (recommended: exclude
+US persons from the raise + KYC, the pump.fun mitigation — US users can still
+earn even where they cannot buy). Consequences stand: the points-first
+shelter's one-way door closes at the raise (the token is live and priced from
+day one), and **counsel sign-off is a pre-raise hard gate** — on the raise,
+the Bedrock constitutional documents, the copy, and the geofence decision.
+Hard rules 2–4 (no custody, partner offramps, geofences) apply unchanged on
+Solana.
 
 ## Phase gates
 

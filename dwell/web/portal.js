@@ -795,12 +795,12 @@ async function loadPointsSummary() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// REDEEM TAB — gift cards + cash payouts (the $DWELL claim card is
+// REDEEM TAB — Claude credits + cash payouts (the $DWELL claim card is
 // static until token launch). Prices are shown in dwells at face value
 // plus the protocol fee, mirroring exactly what the server charges.
 // ═══════════════════════════════════════════════════════════════════
 
-// ---- Claude gift cards ----
+// ---- Claude credits ----
 let giftCatalog = null;
 let giftSelected = null;
 
@@ -902,7 +902,7 @@ $("redeem-btn")?.addEventListener("click", async () => {
   if (status === 200) {
     result.className = "redeem-result ok";
     result.innerHTML =
-      `Done. Your <strong>${giftSelected.planName}</strong> gift card ` +
+      `Done. Your <strong>${giftSelected.planName}</strong> Claude credit ` +
       `(${giftSelected.months} month${giftSelected.months > 1 ? "s" : ""}) ` +
       `is on its way to <strong>${accountEmail}</strong> within <strong>48 hours</strong>. ` +
       `${pts(Math.round((body.totalUsd ?? 0) * 1000))} dwells spent.`;

@@ -1,13 +1,13 @@
 # Dwell Protocol — Chrome extension
 
-> Earn dwells while you use AI. One sponsored line appears while **ChatGPT, Claude & Gemini** think — 1,000 dwells = $1.00 of earned ad value.
+> Earn dwells while you use AI. One sponsored line appears while **ChatGPT, Claude & Gemini** think. Dwells are token-denominated — they convert to $DWELL at token launch and their value floats with the market.
 
 While the assistant is thinking/streaming, DWELL shows one clickable
 sponsored line near the composer — and your share of the revenue accrues as
-**dwells** (1,000 dwells = $1.00 of earned ad value). Redeem them in the web
+**dwells** (token-denominated; 1,000 dwells = 12,000 $DWELL at token launch, value floats with the market). Redeem them in the web
 portal at [dwellprotocol.com/portal](https://dwellprotocol.com/portal): $DWELL
-tokens at launch, Claude gift cards, or cash via Stripe (10% protocol fee on
-gift cards and cash). It reads none of your prompts or the model's output,
+tokens at launch, Claude credits, or cash via Stripe (10% protocol fee on
+Claude credits and cash). It reads none of your prompts or the model's output,
 only the on/off "is it generating" state.
 
 ## Install & test it live (developer mode)

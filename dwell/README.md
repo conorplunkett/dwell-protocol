@@ -6,14 +6,18 @@ assistant is thinking, and pays the person watching. Earnings accrue as
 Canonical domain: **[dwellprotocol.com](https://dwellprotocol.com)**.
 
 The mechanics, stated as facts (see the copy rules in
-[docs/05-legal-structure.md](docs/05-legal-structure.md)): advertisers pay
-fixed dollar CPMs by card; **90% of every ad dollar** goes to the token side —
-earmarked on the protocol ledger during the points phase, market-bought into $DWELL
-after launch — and each campaign's pool splits **60% to the viewer, 10% to
-their referrer, and 30% to the protocol treasury, which holds and never sells**
-(the referrer leg joins the treasury when a viewer has no referrer). Users are
-only ever paid what revenue already bought: no minting, no emissions schedule,
-no oracle. Launch venue: **star.fun (Solana)** — see
+[docs/05-legal-structure.md](docs/05-legal-structure.md) and the framework in
+[docs/08-securities-framework.md](docs/08-securities-framework.md)):
+advertisers pay fixed dollar CPMs by card; the token-side tranche of each
+campaign (currently ~90% — configuration, not a commitment) is earmarked on
+the protocol ledger during the points phase and, after launch, converted into
+$DWELL at market to settle what that campaign's earners are owed. Each
+campaign's pool splits **60% to the viewer, 10% to their referrer, and 30% to
+the protocol treasury (reserve, held)** — the referrer leg joins the treasury
+when a viewer has no referrer. Users are only ever paid what revenue already
+bought: no minting, no emissions schedule, no oracle. The token confers
+**zero equity rights** (Bedrock framework). Launch venue: **star.fun ×
+Bedrock (Solana)** — see
 [docs/07-starfun-launch.md](docs/07-starfun-launch.md); the Base/EVM contracts
 in `contracts/` are the CI-verified reference implementation and fallback.
 

@@ -6,7 +6,7 @@ account**. This is the "devnet / mock money" mode.
 
 Why it's safe to call it mock money: locally the ad budget comes from a **seeded
 campaign** (not a paid advertiser), Stripe is **never called** (checkout is the
-only Stripe path and it's disabled under `DEVNET=1`), and gift-card redemption is
+only Stripe path and it's disabled under `DEVNET=1`), and Claude-credit redemption is
 a **manual** email step that you simply don't run. Credits accrue through the
 exact same ledger code that runs in production — so what you see locally is the
 real earning math, just funded by play money.
@@ -84,7 +84,7 @@ go up.
   `stripe listen --forward-to localhost:8787/v1/webhooks/stripe`.
 - ⚠️ **Google/Apple sign-in** needs OAuth client credentials + redirect URIs;
   the email magic-link path works with no setup.
-- ⚠️ **Gift-card redemption** emails a fulfillment inbox and is fulfilled
+- ⚠️ **Claude-credit redemption** emails a fulfillment inbox and is fulfilled
   **manually** — locally the email just prints to the console.
 
 See [`LAUNCH.md`](LAUNCH.md) for the full production cutover checklist.

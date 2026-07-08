@@ -270,7 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// "Balance: 12,345 dwells" with the dwell amount in bold. The API stays
     /// USD-denominated (balanceUsd); dwells = round(usd × 1000), thousands-
-    /// separated (1,000 dwells = $1.00 of earned ad value).
+    /// separated (dwells are token-denominated; dollar figures are estimates).
     private static func balanceTitle(amountUsd: Double) -> NSAttributedString {
         let base = NSFont.menuFont(ofSize: 0)
         let bold = NSFontManager.shared.convert(base, toHaveTrait: .boldFontMask)
