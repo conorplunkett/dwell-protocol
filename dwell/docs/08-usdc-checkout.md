@@ -242,6 +242,32 @@ TGE; otherwise skip straight to Phase 1.
 | 1 | `DWELL_MINT` set (TGE) | Atomic pay+swap checkout, Solana wallets, Helius verification, portal UI |
 | 2 | Phase 1 stable | deBridge cross-chain entry; TRM screening; hosted-checkout alternate if demand warrants |
 
+## Verification (2026-07-08)
+
+The transaction encoder is hand-rolled (no `@solana/web3.js` on the server —
+it stays dependency-light), so it was validated end-to-end:
+
+- **Encoder cross-checked against `@solana/web3.js`.** Feeding the built
+  base64 into the real library's deserializer proved the message is
+  byte-identical to its own `compileMessage` for both fee-leg shapes (native
+  `SystemProgram` transfer and SPL `TransferChecked`), and that amounts decode
+  exactly. This caught a real bug: the `MEMO_PROGRAM` constant was mistyped and
+  decoded to 30 bytes, silently truncating every message so no wallet could
+  parse it — the faked-fetch unit tests never deserialized the bytes, so they
+  passed anyway. Fixed, plus a build-time guard that rejects any non-32-byte
+  key so the whole class fails loud.
+- **Real devnet landing + verification.** A fee-leg transaction built by the
+  encoder was signed by a real wallet, **accepted and finalized by devnet
+  validators**, then read back through the actual verifier: treasury lamport
+  delta exact, reference key present, unknown signature rejected
+  (`not_found`), and a real **underpayment rejected as `fee_short`** while the
+  exact amount clears the fee check. Amounts are read from the runtime's own
+  pre/post balances, never from client claims.
+- **Not yet testable:** the Jupiter swap → DWELL leg and its distributor DWELL
+  delta — nothing can route to a token that doesn't exist. That single leg
+  runs for the first time when `DWELL_MINT` is set at launch; everything around
+  it is verified.
+
 ## Risks
 
 - **Thin pool, big order**: a large `swapAndFund`-style buy against early
