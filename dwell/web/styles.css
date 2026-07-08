@@ -862,6 +862,27 @@ a { color: inherit; text-decoration: none; }
 .stripe-btn:active { transform: translateY(1px); }
 .stripe-btn-label { line-height: 1; }
 
+/* Payment-method toggle (dwell/docs/08) — a two-segment slider. A thumb slides
+   behind the active tab; each tab reveals its .paypane. Hidden until crypto
+   checkout is enabled (script.js). Theme tokens only. */
+.paytabs {
+  position: relative; display: grid; grid-template-columns: 1fr 1fr;
+  padding: 4px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface-inset);
+}
+.paytabs-thumb {
+  position: absolute; top: 4px; left: 4px; bottom: 4px; width: calc(50% - 4px);
+  background: var(--card-dark); border: 1px solid var(--border-strong); border-radius: 9px;
+  transition: transform .2s ease; z-index: 0;
+}
+.paytabs.crypto .paytabs-thumb { transform: translateX(100%); }
+.paytab {
+  position: relative; z-index: 1; background: none; border: none; cursor: pointer;
+  padding: 10px 8px; font-family: var(--sans); font-size: var(--type-body-size);
+  font-weight: 600; color: var(--gray); transition: color .15s;
+}
+.paytab.active { color: var(--ink); }
+
 /* USDC checkout (dwell/docs/08) — hidden until $DWELL mints (script.js flag).
    Quiet secondary treatment under the Stripe button: ink-on-white with the
    standard 1px hairline, no third-party brand color to carry. */
