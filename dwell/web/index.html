@@ -442,6 +442,26 @@
               <path d="M79.3,94.7c0-3.9,3.2-5.4,8.5-5.4c7.6,0,17.2,2.3,24.8,6.4V72.2c-8.3-3.3-16.5-4.6-24.8-4.6C67.5,67.6,54,78.2,54,95.9c0,27.6,38,23.2,38,35.1c0,4.6-4,6.1-9.6,6.1c-8.3,0-18.9-3.4-27.3-8v23.8c9.3,4,18.7,5.7,27.3,5.7c20.8,0,35.1-10.3,35.1-28.2C117.4,100.6,79.3,105.9,79.3,94.7z" />
             </svg>
           </button>
+
+          <!-- USDC checkout (dwell/docs/08) — fully wired to /v1/ads/usdc/*,
+               HIDDEN until the $DWELL mint exists. The backend 404s the whole
+               surface until DWELL_MINT is configured; the USDC_CHECKOUT flag in
+               script.js reveals this at launch. One atomic Solana transaction,
+               signed from the advertiser's own wallet: 10% USDC protocol fee to
+               the treasury + 90% market-bought into $DWELL for the rewards pool. -->
+          <button class="usdc-btn" id="usdc-btn" type="button" hidden>
+            <span class="usdc-btn-label">Pay with</span> <strong>USDC or SOL on Solana</strong>
+          </button>
+          <div class="usdc-panel" id="usdc-panel" hidden>
+            <div class="usdc-row"><span>Total</span><strong id="usdc-price">$0.00</strong></div>
+            <div class="usdc-row"><span>Protocol fee · 10%</span><strong id="usdc-fee">$0.00</strong></div>
+            <div class="usdc-row"><span>$DWELL buy to the rewards pool · 90%</span><strong id="usdc-tranche">$0.00</strong></div>
+            <div class="usdc-row" id="usdc-sol-row" hidden><span>≈ total in SOL</span><strong id="usdc-sol-total">—</strong></div>
+            <a class="usdc-paylink" id="usdc-paylink" href="#" rel="noopener">Open in your Solana wallet</a>
+            <button type="button" class="usdc-copy" id="usdc-copy">Copy payment link</button>
+            <button type="button" class="usdc-copy" id="usdc-switch">Pay with SOL instead</button>
+            <p class="usdc-status" id="usdc-status" role="status">Waiting for your wallet's signature…</p>
+          </div>
         </form>
       </div>
     </section>
