@@ -1,9 +1,10 @@
 # USDC advertiser checkout — plan
 
-Crypto-native advertisers buy ad space in USDC, wallet-to-chain, with **no
-funds ever held by our system**. The protocol takes the **same 10% cut** as the
-card path; the other **90% is market-bought into $DWELL in the advertiser's own
-transaction**; viewers earn DWELL points from the campaign exactly as today.
+Crypto-native advertisers buy ad space in **USDC or SOL**, wallet-to-chain,
+with **no funds ever held by our system**. The protocol takes the **same 10%
+cut** as the card path; the other **90% is market-bought into $DWELL in the
+advertiser's own transaction**; viewers earn DWELL points from the campaign
+exactly as today.
 Research date: July 2026 — re-verify provider pricing/APIs before integration.
 Status: **scaffolded and gated** (2026-07-07). The full backend (both
 `server/src` and the edge function), schema, tests, and lander UI are in the
@@ -40,6 +41,24 @@ Custody boundary, stated precisely: the only protocol-held assets are the
 same ones the architecture already holds — the DWELL rewards pool in the
 distributor and the treasury in Squads ([02-architecture.md](02-architecture.md)
 ▸ Key custody). No advertiser USDC and no user funds ever sit on our keys.
+
+### The SOL rail
+
+The same order can be paid in **native SOL** (`currency: "sol"`). Pricing
+stays in USD — the split, the ledger, the locked rate, and the points are
+identical — and only the wallet-facing legs change:
+
+1. the order's USD price is converted to lamports via a USDC→wSOL Jupiter
+   quote, **re-priced on every transaction build** (like the slippage floor),
+   so the wallet always approves a current number;
+2. the 10% fee leg is a **system-program lamport transfer** to the treasury's
+   SOL account (`TREASURY_SOL_ACCOUNT`; leaving it unset disables the rail
+   with a 400 while USDC keeps working);
+3. the 90% tranche swaps **wSOL → DWELL** (Jupiter wraps the payer's native
+   SOL inside the same atomic transaction) into the distributor vault;
+4. the verifier checks the treasury's **native lamport delta** from the
+   runtime's pre/post balances instead of a USDC token delta — the DWELL-side
+   check is unchanged.
 
 ## The advertiser dollar (USDC path)
 
@@ -159,10 +178,14 @@ New table (`server/db/schema.sql`, idempotent):
 create table if not exists usdc_orders (
   id uuid primary key default gen_random_uuid(),
   campaign_id uuid not null references campaigns(id),
-  price_micro_usdc bigint not null,          -- gross, 6-dp
-  fee_micro_usdc bigint not null,            -- the 10% treasury leg
-  tranche_micro_usdc bigint not null,        -- the 90% swap leg (price - fee)
-  quote jsonb not null,                      -- Jupiter quote at order/build time
+  price_micro_usdc bigint not null,          -- gross, 6-dp (USD pricing on every rail)
+  fee_micro_usdc bigint not null,            -- the 10% treasury leg, USD value
+  tranche_micro_usdc bigint not null,        -- the 90% swap leg (price - fee), USD value
+  pay_currency text not null default 'usdc'  -- 'usdc' | 'sol'
+    check (pay_currency in ('usdc', 'sol')),
+  pay_total_units bigint not null,           -- what the wallet pays, base units (micro-USDC / lamports)
+  pay_fee_units bigint not null,             -- the treasury leg the verifier enforces, base units
+  quote jsonb not null,                      -- Jupiter swap quote at order/build time
   min_dwell_out numeric(78,0) not null,      -- slippage floor the verifier enforces
   reference_pubkey text unique not null,     -- Solana Pay reference key
   tx_signature text unique,
@@ -181,7 +204,7 @@ rule:
 
 | Route | Auth | Purpose |
 |---|---|---|
-| `POST /v1/ads/usdc/orders` | public (like card checkout) | Create campaign + order: exact 90/10 breakdown, Jupiter quote, TTL, `solana:` pay link |
+| `POST /v1/ads/usdc/orders` | public (like card checkout) | Create campaign + order (`currency: usdc\|sol`): exact 90/10 breakdown, Jupiter quote, TTL, `solana:` pay link |
 | `POST /v1/ads/usdc/orders/:id/transaction` | Solana Pay (wallet posts `{account}`) | Build a fresh atomic unsigned tx (re-quotes; base64) |
 | `GET /v1/ads/usdc/orders/:id/transaction` | public | Solana Pay metadata (`label`, `icon`) |
 | `GET /v1/ads/usdc/orders/:id` | public (unguessable order id) | Status poller — runs `findReference` + verify → `token_campaign_pools` → campaign paid |
@@ -190,7 +213,8 @@ Config knobs (extend §C of
 [04-backend-adaptation.md](04-backend-adaptation.md)): `SOLANA_RPC_URL`,
 `HELIUS_API_KEY`, `JUPITER_BASE_URL`, `DWELL_MINT`, `USDC_MINT`
 (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` on mainnet),
-`TREASURY_USDC_ATA`, `DISTRIBUTOR_DWELL_ATA`, `MAX_SLIPPAGE_BPS` (reused),
+`TREASURY_USDC_ATA`, `TREASURY_SOL_ACCOUNT` (optional — enables the SOL
+rail), `DISTRIBUTOR_DWELL_ATA`, `MAX_SLIPPAGE_BPS` (reused),
 `USDC_ORDER_TTL_MINUTES` (default 30). Gate: routes 404 unless `DWELL_MINT`
 is set — mirroring the `TOKEN_MODE` gating style.
 

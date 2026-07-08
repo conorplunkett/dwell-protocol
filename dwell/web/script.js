@@ -517,13 +517,13 @@ if (adForm) {
   });
 }
 
-// --- USDC checkout (dwell/docs/08) ---------------------------------------
+// --- Crypto checkout: USDC or SOL (dwell/docs/08) --------------------------
 // Non-custodial pay-and-swap: the backend builds ONE atomic Solana transaction
-// (10% USDC protocol fee to the treasury + 90% market-bought into $DWELL for
-// the rewards pool) and the advertiser signs it from their own wallet via a
-// Solana Pay link. Fully wired, but HIDDEN: the backend 404s the whole surface
-// until the $DWELL mint exists (DWELL_MINT env), so this flag stays false
-// until launch — flip it to reveal the button.
+// (10% protocol fee to the treasury — a USDC transfer or native SOL — plus 90%
+// market-bought into $DWELL for the rewards pool) and the advertiser signs it
+// from their own wallet via a Solana Pay link. Fully wired, but HIDDEN: the
+// backend 404s the whole surface until the $DWELL mint exists (DWELL_MINT
+// env), so this flag stays false until launch — flip it to reveal the button.
 const USDC_CHECKOUT = false;
 (() => {
   const btn = document.getElementById("usdc-btn");
@@ -534,9 +534,11 @@ const USDC_CHECKOUT = false;
 
   const statusEl = document.getElementById("usdc-status");
   const payLink = document.getElementById("usdc-paylink");
+  const switchBtn = document.getElementById("usdc-switch");
   const setStatus = (text, cls) => { statusEl.textContent = text; statusEl.className = "usdc-status" + (cls ? " " + cls : ""); };
   const usd = (n) => "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   let pollTimer = null;
+  let payCurrency = "usdc"; // toggled by the "Pay with SOL/USDC instead" link
 
   const poll = (orderId) => {
     clearInterval(pollTimer);
@@ -549,18 +551,19 @@ const USDC_CHECKOUT = false;
           clearInterval(pollTimer);
           setStatus("Payment confirmed — your ad is in review and goes live once approved.", "ok");
           payLink.hidden = true;
+          switchBtn.hidden = true;
         } else if (o.status === "expired") {
           clearInterval(pollTimer);
-          setStatus("This order expired. Reopen USDC checkout to price a fresh one.", "err");
+          setStatus("This order expired. Reopen crypto checkout to price a fresh one.", "err");
         } else if (o.status === "failed") {
           clearInterval(pollTimer);
-          setStatus("That payment didn't verify (" + (o.failReason || "unknown") + "). Reopen USDC checkout to retry.", "err");
+          setStatus("That payment didn't verify (" + (o.failReason || "unknown") + "). Reopen crypto checkout to retry.", "err");
         }
       } catch (_) { /* offline — keep polling */ }
     }, 3500);
   };
 
-  btn.addEventListener("click", async () => {
+  const createOrder = async () => {
     const get = (sel) => adForm.querySelector(sel)?.value?.trim() || "";
     const payload = {
       email: get('input[name="email"]'),
@@ -571,6 +574,7 @@ const USDC_CHECKOUT = false;
       budget: parseFloat(document.getElementById("budget")?.value || "0") || SUGGESTED_BUDGET,
       cpm: parseInt(document.getElementById("cpm")?.value || "0", 10),
       showOnLeaderboard: adForm.querySelector('input[type="checkbox"]')?.checked !== false,
+      currency: payCurrency,
     };
     btn.disabled = true;
     const old = btn.innerHTML;
@@ -592,6 +596,11 @@ const USDC_CHECKOUT = false;
       document.getElementById("usdc-price").textContent = usd(data.priceUsdc);
       document.getElementById("usdc-fee").textContent = usd(data.feeUsdc);
       document.getElementById("usdc-tranche").textContent = usd(data.trancheUsdc);
+      const solRow = document.getElementById("usdc-sol-row");
+      solRow.hidden = payCurrency !== "sol";
+      if (payCurrency === "sol" && Number.isFinite(data.estPayTotalSol)) {
+        document.getElementById("usdc-sol-total").textContent = data.estPayTotalSol.toFixed(4) + " SOL";
+      }
       payLink.hidden = false;
       payLink.href = data.solanaPayUrl;
       const copyBtn = document.getElementById("usdc-copy");
@@ -601,13 +610,25 @@ const USDC_CHECKOUT = false;
           () => {}
         );
       };
-      setStatus("Open the link in your Solana wallet and approve the transaction — one signature pays the fee and funds the rewards pool.");
+      switchBtn.hidden = false;
+      switchBtn.textContent = payCurrency === "sol" ? "Pay with USDC instead" : "Pay with SOL instead";
+      setStatus(
+        payCurrency === "sol"
+          ? "Open the link in your Solana wallet and approve — one signature pays the fee in SOL and funds the rewards pool. The SOL amount re-prices when the wallet fetches the transaction."
+          : "Open the link in your Solana wallet and approve the transaction — one signature pays the fee and funds the rewards pool."
+      );
       panel.hidden = false;
       poll(data.orderId);
     } catch (_) {
       btn.textContent = "Network error — try again";
       setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2600);
     }
+  };
+
+  btn.addEventListener("click", createOrder);
+  switchBtn.addEventListener("click", () => {
+    payCurrency = payCurrency === "sol" ? "usdc" : "sol";
+    createOrder(); // fresh order + campaign on the other rail; the old one just expires
   });
 })();
 

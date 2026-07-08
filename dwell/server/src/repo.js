@@ -1388,14 +1388,16 @@ function createRepo(pool) {
     // matching these amounts, the advertiser's wallet signs it, and the
     // verifier confirms the finalized transaction against this row read-only.
 
-    async createUsdcOrder({ campaignId, priceMicroUsdc, feeMicroUsdc, trancheMicroUsdc, quote, minDwellOut, referencePubkey, ttlMinutes }) {
+    async createUsdcOrder({ campaignId, priceMicroUsdc, feeMicroUsdc, trancheMicroUsdc, payCurrency = "usdc", payTotalUnits, payFeeUnits, quote, minDwellOut, referencePubkey, ttlMinutes }) {
       const { rows } = await pool.query(
         `insert into usdc_orders
            (campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc,
+            pay_currency, pay_total_units, pay_fee_units,
             quote, min_dwell_out, reference_pubkey, expires_at)
-         values ($1,$2,$3,$4,$5,$6,$7, now() + make_interval(mins => $8))
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now() + make_interval(mins => $11))
          returning id, expires_at`,
         [campaignId, priceMicroUsdc, feeMicroUsdc, trancheMicroUsdc,
+         payCurrency, payTotalUnits ?? priceMicroUsdc, payFeeUnits ?? feeMicroUsdc,
          JSON.stringify(quote), minDwellOut, referencePubkey, ttlMinutes]
       );
       return rows[0];
@@ -1419,13 +1421,16 @@ function createRepo(pool) {
     },
 
     // Each build re-quotes (a built transaction is only ~60s of blockhash
-    // validity); the stored quote + slippage floor track the latest build so
-    // the verifier checks what the wallet was actually shown.
-    async refreshUsdcOrderQuote(orderId, quote, minDwellOut) {
+    // validity); the stored quote + slippage floor — and, on the SOL rail, the
+    // re-priced lamport amounts — track the latest build so the verifier
+    // checks what the wallet was actually shown.
+    async refreshUsdcOrderQuote(orderId, quote, minDwellOut, { payTotalUnits, payFeeUnits } = {}) {
       await pool.query(
-        `update usdc_orders set quote = $2, min_dwell_out = $3
+        `update usdc_orders set quote = $2, min_dwell_out = $3,
+                pay_total_units = coalesce($4, pay_total_units),
+                pay_fee_units = coalesce($5, pay_fee_units)
           where id = $1 and status = 'awaiting_signature'`,
-        [orderId, JSON.stringify(quote), minDwellOut]
+        [orderId, JSON.stringify(quote), minDwellOut, payTotalUnits ?? null, payFeeUnits ?? null]
       );
     },
 

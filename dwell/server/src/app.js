@@ -8,6 +8,7 @@ const { verifyWebhookSignature } = require("./stripe");
 const { GIFT_PLANS, GIFT_MONTHS, giftPriceCents } = require("./giftcards");
 const { runPayouts } = require("./payouts");
 const { escapeHtml, isCleanAdLine, normalizeHexColor } = require("./util");
+const { WSOL_MINT } = require("./solana");
 
 // Crew = the affiliate "earn with your friends" panel in the extension popup.
 // Ten slots: each is a joined friend, a pending invite, or an open invite form.
@@ -390,6 +391,11 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     priceUsdc: microUsd(o.price_micro_usdc),
     feeUsdc: microUsd(o.fee_micro_usdc),
     trancheUsdc: microUsd(o.tranche_micro_usdc),
+    payCurrency: o.pay_currency,
+    // Pay-currency base units (micro-USDC / lamports); SOL re-prices per build.
+    payTotalUnits: String(o.pay_total_units),
+    payFeeUnits: String(o.pay_fee_units),
+    ...(o.pay_currency === "sol" ? { estPayTotalSol: Number(o.pay_total_units) / 1e9 } : {}),
     minDwellOut: String(o.min_dwell_out),
     reference: o.reference_pubkey,
     txSignature: o.tx_signature || null,
@@ -399,8 +405,15 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
 
   route("POST", "/v1/ads/usdc/orders", async (req, res, body) => {
     if (usdcCheckoutOff()) return json(res, 404, { error: "not found" });
-    // Same budget+CPM campaign shape as the card checkout — only the rail differs.
-    const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard } = body || {};
+    // Same budget+CPM campaign shape as the card checkout — only the rail
+    // differs. currency picks what the wallet pays with: 'usdc' (default) or
+    // 'sol' (native transfer fee leg + wSOL->DWELL swap; needs the treasury's
+    // SOL account configured).
+    const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency } = body || {};
+    const payCurrency = currency === "sol" ? "sol" : "usdc";
+    if (payCurrency === "sol" && !config.treasurySolAccount) {
+      return json(res, 400, { error: "SOL payments aren't enabled — pay with USDC" });
+    }
     const budgetCents = Math.round(Number(budget) * 100);
     const cpmCents = Math.round(Number(cpm) * 100);
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(res, 400, { error: "valid email required" });
@@ -417,14 +430,24 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     if (!(impressions >= 1)) return json(res, 400, { error: "budget too small for this CPM" });
 
     // 90/10 in micro-USDC, exact: the fee is the 10000-RESERVE_TRANCHE_BPS
-    // remainder, the tranche keeps every leftover micro unit.
+    // remainder, the tranche keeps every leftover micro unit. The USD split is
+    // the pricing truth on every rail; SOL amounts derive from it per quote.
     const priceMicro = BigInt(budgetCents) * 10000n;
     const feeMicro = (priceMicro * BigInt(10000 - config.reserveTrancheBps)) / 10000n;
     const trancheMicro = priceMicro - feeMicro;
 
-    let quote;
+    let quote, payTotalUnits, payFeeUnits;
     try {
-      quote = await solana.jupiterQuote(trancheMicro.toString());
+      if (payCurrency === "sol") {
+        const sol = await solana.priceOrderInSol(priceMicro.toString(), 10000 - config.reserveTrancheBps);
+        payTotalUnits = sol.totalLamports.toString();
+        payFeeUnits = sol.feeLamports.toString();
+        quote = await solana.jupiterQuote({ inputMint: WSOL_MINT, outputMint: config.dwellMint, amount: sol.trancheLamports.toString() });
+      } else {
+        payTotalUnits = priceMicro.toString();
+        payFeeUnits = feeMicro.toString();
+        quote = await solana.jupiterQuote({ inputMint: config.usdcMint, outputMint: config.dwellMint, amount: trancheMicro.toString() });
+      }
     } catch (err) {
       console.error("[dwell] usdc order quote failed:", err?.message);
       return json(res, 502, { error: "couldn't quote the swap — try again" });
@@ -440,6 +463,9 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       priceMicroUsdc: priceMicro.toString(),
       feeMicroUsdc: feeMicro.toString(),
       trancheMicroUsdc: trancheMicro.toString(),
+      payCurrency,
+      payTotalUnits,
+      payFeeUnits,
       quote,
       minDwellOut: String(quote.otherAmountThreshold || quote.outAmount),
       referencePubkey: solana.newReferencePubkey(),
@@ -451,6 +477,8 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       priceUsdc: microUsd(priceMicro),
       feeUsdc: microUsd(feeMicro),
       trancheUsdc: microUsd(trancheMicro),
+      payCurrency,
+      ...(payCurrency === "sol" ? { estPayTotalSol: Number(payTotalUnits) / 1e9 } : {}),
       estDwellOut: String(quote.outAmount),
       minDwellOut: String(quote.otherAmountThreshold || quote.outAmount),
       expiresAt: order.expires_at,
@@ -547,20 +575,30 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const payer = String(body?.account || "");
     if (!solana.isPubkey(payer)) return json(res, 400, { error: "account must be a Solana pubkey" });
     try {
-      const quote = await solana.jupiterQuote(String(order.tranche_micro_usdc));
-      await repo.refreshUsdcOrderQuote(order.id, quote, String(quote.otherAmountThreshold || quote.outAmount));
+      // SOL rail: re-price the lamport legs first (the USD split is fixed;
+      // what that costs in SOL floats), then quote the swap of the tranche.
+      let built = { ...order };
+      if (order.pay_currency === "sol") {
+        const sol = await solana.priceOrderInSol(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
+        built.pay_total_units = sol.totalLamports.toString();
+        built.pay_fee_units = sol.feeLamports.toString();
+      }
+      const quote = await solana.jupiterQuote(solana.tranchQuoteParams(built));
+      const minOut = String(quote.otherAmountThreshold || quote.outAmount);
+      await repo.refreshUsdcOrderQuote(order.id, quote, minOut, order.pay_currency === "sol"
+        ? { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units }
+        : {});
       const transaction = await solana.buildOrderTransaction({
-        order: { ...order, min_dwell_out: quote.otherAmountThreshold || quote.outAmount },
+        order: { ...built, min_dwell_out: minOut },
         payer,
         quoteResponse: quote,
       });
       json(res, 200, {
         transaction,
-        message: `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} DWELL buy to the rewards pool`,
+        message: `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} DWELL buy to the rewards pool${order.pay_currency === "sol" ? ` (≈ ${(Number(built.pay_total_units) / 1e9).toFixed(4)} SOL)` : ""}`,
       });
     } catch (err) {
-      if (err.code === "NO_USDC") return json(res, 400, { error: err.message });
-      if (err.code === "BAD_ACCOUNT") return json(res, 400, { error: err.message });
+      if (err.code === "NO_FUNDS" || err.code === "BAD_ACCOUNT") return json(res, 400, { error: err.message });
       console.error("[dwell] usdc order build failed:", err?.message);
       json(res, 502, { error: "couldn't build the transaction — try again" });
     }

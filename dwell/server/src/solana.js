@@ -15,10 +15,14 @@
 
 const crypto = require("node:crypto");
 
-// Well-known program ids.
+// Well-known program ids and mints.
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMZWEyttqmoTLK";
+const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const USDC_DECIMALS = 6;
+// Headroom the payer keeps for tx fees + wSOL rent when paying in SOL (~0.01 SOL).
+const SOL_GAS_HEADROOM_LAMPORTS = 10_000_000n;
 
 // ---------- base58 (Bitcoin alphabet) ----------
 const B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -159,6 +163,24 @@ function transferCheckedInstruction({ source, mint, destination, owner, amount, 
   };
 }
 
+// System-program transfer (ix 2): the fee leg when paying in SOL — native
+// lamports to the treasury. Same Solana Pay trick: the reference key rides as
+// an extra read-only account (the system program ignores extras).
+function systemTransferInstruction({ from, to, lamports, reference }) {
+  const data = Buffer.alloc(12);
+  data.writeUInt32LE(2, 0);
+  data.writeBigUInt64LE(BigInt(lamports), 4);
+  return {
+    programId: SYSTEM_PROGRAM,
+    accounts: [
+      { pubkey: from, isSigner: true, isWritable: true },
+      { pubkey: to, isSigner: false, isWritable: true },
+      ...(reference ? [{ pubkey: reference, isSigner: false, isWritable: false }] : []),
+    ],
+    data: data.toString("base64"),
+  };
+}
+
 // Memo carrying the order id — human-readable join handle in explorers.
 function memoInstruction(text) {
   return { programId: MEMO_PROGRAM, accounts: [], data: Buffer.from(text, "utf8").toString("base64") };
@@ -192,11 +214,11 @@ function createSolana({ config, fetchImpl }) {
     return accounts[0] || null;
   }
 
-  async function jupiterQuote(amountMicroUsdc) {
+  async function jupiterQuote({ inputMint, outputMint, amount }) {
     const q = new URLSearchParams({
-      inputMint: config.usdcMint,
-      outputMint: config.dwellMint,
-      amount: String(amountMicroUsdc),
+      inputMint,
+      outputMint,
+      amount: String(amount),
       slippageBps: String(config.maxSlippageBps),
       swapMode: "ExactIn",
       asLegacyTransaction: "true", // no ALTs -> our legacy encoder suffices
@@ -209,7 +231,25 @@ function createSolana({ config, fetchImpl }) {
     return quote;
   }
 
-  async function jupiterSwapInstructions({ quoteResponse, userPublicKey }) {
+  // The swap leg's quote for an order: USDC pays the tranche in micro-USDC;
+  // SOL pays it in lamports (priced first via priceOrderInSol).
+  function tranchQuoteParams(order) {
+    return order.pay_currency === "sol"
+      ? { inputMint: WSOL_MINT, outputMint: config.dwellMint, amount: BigInt(order.pay_total_units) - BigInt(order.pay_fee_units) }
+      : { inputMint: config.usdcMint, outputMint: config.dwellMint, amount: order.tranche_micro_usdc };
+  }
+
+  // How many lamports the order's USD price is worth right now, via a
+  // USDC -> wSOL quote of the exact price. Re-run on every build, like the
+  // slippage floor — the wallet always sees a current number.
+  async function priceOrderInSol(priceMicroUsdc, feeBps) {
+    const pricing = await jupiterQuote({ inputMint: config.usdcMint, outputMint: WSOL_MINT, amount: priceMicroUsdc });
+    const total = BigInt(pricing.outAmount);
+    const fee = (total * BigInt(feeBps)) / 10000n;
+    return { totalLamports: total, feeLamports: fee, trancheLamports: total - fee };
+  }
+
+  async function jupiterSwapInstructions({ quoteResponse, userPublicKey, wrapSol = false }) {
     const res = await doFetch(`${config.jupiterBaseUrl}/swap-instructions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -220,7 +260,8 @@ function createSolana({ config, fetchImpl }) {
         // never in a company hot wallet and never back with the payer.
         destinationTokenAccount: config.distributorDwellAta,
         asLegacyTransaction: true,
-        wrapAndUnwrapSol: false, // USDC in, SPL out — no SOL legs
+        // USDC in: no SOL legs. SOL in: Jupiter wraps the payer's native SOL.
+        wrapAndUnwrapSol: wrapSol,
       }),
     });
     if (!res.ok) throw new Error(`jupiter swap-instructions: HTTP ${res.status}`);
@@ -235,20 +276,33 @@ function createSolana({ config, fetchImpl }) {
   }
 
   // One atomic unsigned transaction for an order: fee transfer (with reference
-  // key) + order-id memo + the Jupiter swap of the 90% tranche.
+  // key) + order-id memo + the Jupiter swap of the 90% tranche. Rail-aware:
+  // USDC pays the fee as an SPL transfer; SOL as a native lamport transfer.
   async function buildOrderTransaction({ order, payer, quoteResponse }) {
     if (!isPubkey(payer)) throw Object.assign(new Error("payer must be a Solana pubkey"), { code: "BAD_ACCOUNT" });
-    const usdcAccount = await findUsdcAccount(payer);
-    if (!usdcAccount) throw Object.assign(new Error("no USDC account for this wallet"), { code: "NO_USDC" });
-    const need = BigInt(order.price_micro_usdc);
-    if (usdcAccount.amount < need) {
-      throw Object.assign(new Error(`insufficient USDC: need ${need}, have ${usdcAccount.amount}`), { code: "NO_USDC" });
-    }
-    const swap = await jupiterSwapInstructions({ quoteResponse, userPublicKey: payer });
-    const { value } = await rpc("getLatestBlockhash", [{ commitment: "finalized" }]).then((r) => ({ value: r.value || r }));
-    const instructions = [
-      ...(swap.computeBudgetInstructions || []),
-      transferCheckedInstruction({
+    const isSol = order.pay_currency === "sol";
+    let feeInstruction;
+    if (isSol) {
+      const bal = await rpc("getBalance", [payer, { commitment: "finalized" }]);
+      const lamports = BigInt(bal?.value ?? bal ?? 0);
+      const need = BigInt(order.pay_total_units) + SOL_GAS_HEADROOM_LAMPORTS;
+      if (lamports < need) {
+        throw Object.assign(new Error(`insufficient SOL: need ${need} lamports (incl. gas headroom), have ${lamports}`), { code: "NO_FUNDS" });
+      }
+      feeInstruction = systemTransferInstruction({
+        from: payer,
+        to: config.treasurySolAccount,
+        lamports: order.pay_fee_units,
+        reference: order.reference_pubkey,
+      });
+    } else {
+      const usdcAccount = await findUsdcAccount(payer);
+      if (!usdcAccount) throw Object.assign(new Error("no USDC account for this wallet"), { code: "NO_FUNDS" });
+      const need = BigInt(order.price_micro_usdc);
+      if (usdcAccount.amount < need) {
+        throw Object.assign(new Error(`insufficient USDC: need ${need}, have ${usdcAccount.amount}`), { code: "NO_FUNDS" });
+      }
+      feeInstruction = transferCheckedInstruction({
         source: usdcAccount.pubkey,
         mint: config.usdcMint,
         destination: config.treasuryUsdcAta,
@@ -256,7 +310,13 @@ function createSolana({ config, fetchImpl }) {
         amount: order.fee_micro_usdc,
         decimals: USDC_DECIMALS,
         reference: order.reference_pubkey,
-      }),
+      });
+    }
+    const swap = await jupiterSwapInstructions({ quoteResponse, userPublicKey: payer, wrapSol: isSol });
+    const { value } = await rpc("getLatestBlockhash", [{ commitment: "finalized" }]).then((r) => ({ value: r.value || r }));
+    const instructions = [
+      ...(swap.computeBudgetInstructions || []),
+      feeInstruction,
       memoInstruction(`dwell-usdc-order:${order.id}`),
       ...(swap.setupInstructions || []),
       swap.swapInstruction,
@@ -279,10 +339,11 @@ function createSolana({ config, fetchImpl }) {
   // Read-only verification of a finalized transaction against the order:
   //   - executed without error,
   //   - carries the order's reference key,
-  //   - treasury USDC account gained >= the fee leg,
+  //   - treasury gained >= the fee leg (USDC token delta, or native lamport
+  //     delta when the order pays in SOL),
   //   - distributor DWELL account gained >= the slippage floor (minDwellOut).
-  // Amount deltas come from the runtime's own pre/post token balances — never
-  // from anything the client claims. Returns { ok, dwellOut, feePaid } or
+  // Amount deltas come from the runtime's own pre/post balances — never from
+  // anything the client claims. Returns { ok, dwellOut, feePaid } or
   // { ok: false, reason }.
   async function verifyOrderTransaction({ signature, order }) {
     const tx = await rpc("getTransaction", [
@@ -303,8 +364,16 @@ function createSolana({ config, fetchImpl }) {
       return BigInt(post?.uiTokenAmount?.amount || "0") - BigInt(pre?.uiTokenAmount?.amount || "0");
     };
 
-    const feePaid = delta(config.treasuryUsdcAta, config.usdcMint);
-    if (feePaid === null || feePaid < BigInt(order.fee_micro_usdc)) return { ok: false, reason: "fee_short" };
+    let feePaid;
+    if (order.pay_currency === "sol") {
+      const idx = keys.indexOf(config.treasurySolAccount);
+      if (idx < 0) return { ok: false, reason: "fee_short" };
+      feePaid = BigInt(tx.meta?.postBalances?.[idx] ?? 0) - BigInt(tx.meta?.preBalances?.[idx] ?? 0);
+      if (feePaid < BigInt(order.pay_fee_units)) return { ok: false, reason: "fee_short" };
+    } else {
+      feePaid = delta(config.treasuryUsdcAta, config.usdcMint);
+      if (feePaid === null || feePaid < BigInt(order.fee_micro_usdc)) return { ok: false, reason: "fee_short" };
+    }
 
     const dwellOut = delta(config.distributorDwellAta, config.dwellMint);
     if (dwellOut === null || dwellOut <= 0n) return { ok: false, reason: "no_dwell_out" };
@@ -317,6 +386,8 @@ function createSolana({ config, fetchImpl }) {
     isPubkey,
     newReferencePubkey,
     jupiterQuote,
+    tranchQuoteParams,
+    priceOrderInSol,
     buildOrderTransaction,
     findReferenceSignatures,
     verifyOrderTransaction,
@@ -331,7 +402,10 @@ module.exports = {
   compactU16,
   serializeUnsignedTransaction,
   transferCheckedInstruction,
+  systemTransferInstruction,
   memoInstruction,
   TOKEN_PROGRAM,
   MEMO_PROGRAM,
+  SYSTEM_PROGRAM,
+  WSOL_MINT,
 };

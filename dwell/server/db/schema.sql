@@ -511,10 +511,17 @@ create table if not exists token_claims (
 create table if not exists usdc_orders (
   id uuid primary key default gen_random_uuid(),
   campaign_id uuid not null references campaigns(id),
-  price_micro_usdc bigint not null,           -- gross charge, 6-dp USDC units
-  fee_micro_usdc bigint not null,             -- the 10% treasury leg (10000 - RESERVE_TRANCHE_BPS)
-  tranche_micro_usdc bigint not null,         -- the 90% swap leg (price - fee, keeps micro exactness)
-  quote jsonb not null,                       -- Jupiter quote at order/build time
+  price_micro_usdc bigint not null,           -- gross charge, 6-dp USDC units (USD pricing on every rail)
+  fee_micro_usdc bigint not null,             -- the 10% treasury leg (10000 - RESERVE_TRANCHE_BPS), USD value
+  tranche_micro_usdc bigint not null,         -- the 90% swap leg (price - fee, keeps micro exactness), USD value
+  -- Pay rail: 'usdc' pays the fee as a USDC token transfer; 'sol' pays it as a
+  -- native lamport transfer and the swap leg runs wSOL -> DWELL. pay_*_units
+  -- are in the pay currency's base units (micro-USDC / lamports); for SOL they
+  -- re-price on every transaction build, like min_dwell_out.
+  pay_currency text not null default 'usdc' check (pay_currency in ('usdc', 'sol')),
+  pay_total_units bigint not null,            -- what the wallet pays in total, pay-currency base units
+  pay_fee_units bigint not null,              -- the treasury leg the verifier enforces, pay-currency base units
+  quote jsonb not null,                       -- Jupiter swap quote at order/build time
   min_dwell_out numeric(78, 0) not null,      -- slippage floor the verifier enforces (raw token units)
   reference_pubkey text unique not null,      -- Solana Pay reference key, detection + join handle
   tx_signature text unique,                   -- set when the finalized transaction verifies

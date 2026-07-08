@@ -1656,17 +1656,19 @@ const fakeMailer = {
   // A third app with the launch gate open (DWELL_MINT set) over the same
   // database, with Solana RPC + Jupiter faked at the fetch layer. The chain
   // object is the test's "blockchain": checks mutate it, then poll.
-  const { createSolana, base58Encode } = require("../src/solana");
+  const { createSolana, base58Encode, WSOL_MINT, SYSTEM_PROGRAM } = require("../src/solana");
   const pk = () => base58Encode(crypto.randomBytes(32));
-  const DWELL_MINT = pk(), USDC_MINT = pk(), TREASURY_ATA = pk(), DIST_ATA = pk(), PAYER = pk(), PAYER_USDC = pk();
+  const DWELL_MINT = pk(), USDC_MINT = pk(), TREASURY_ATA = pk(), TREASURY_SOL = pk(), DIST_ATA = pk(), PAYER = pk(), PAYER_USDC = pk();
   const BLOCKHASH = base58Encode(crypto.randomBytes(32));
 
   const chain = {
-    payerUsdc: "100000000000", // $100k — plenty
-    signatures: [],            // what getSignaturesForAddress returns
-    tx: null,                  // what getTransaction returns
-    quoteOut: "45000000000",   // Jupiter outAmount for the $90 tranche
-    quoteMin: "44550000000",   // otherAmountThreshold (slippage floor)
+    payerUsdc: "100000000000",     // $100k — plenty
+    payerSol: "2000000000",        // 2 SOL — plenty
+    signatures: [],                // what getSignaturesForAddress returns
+    tx: null,                      // what getTransaction returns
+    quoteOut: "45000000000",       // Jupiter outAmount for the $90 tranche
+    quoteMin: "44550000000",       // otherAmountThreshold (slippage floor)
+    solPriceLamports: "500000000", // USDC->wSOL pricing: $100 ≈ 0.5 SOL ($200/SOL)
   };
   const paidTx = ({ reference, fee, dwellOut }) => ({
     slot: 1234, blockTime: 1700000000,
@@ -1691,10 +1693,15 @@ const fakeMailer = {
     const reply = (body) => ({ ok: true, status: 200, json: async () => body });
     if (u.startsWith("http://jup.test/quote")) {
       const q = new URL(u).searchParams;
+      // USDC -> wSOL is the SOL rail's pricing quote; everything else is the
+      // tranche swap into DWELL.
+      const pricingSol = q.get("outputMint") === WSOL_MINT;
       return reply({
         inputMint: q.get("inputMint"), outputMint: q.get("outputMint"),
-        inAmount: q.get("amount"), outAmount: chain.quoteOut,
-        otherAmountThreshold: chain.quoteMin, swapMode: "ExactIn",
+        inAmount: q.get("amount"),
+        outAmount: pricingSol ? chain.solPriceLamports : chain.quoteOut,
+        otherAmountThreshold: pricingSol ? chain.solPriceLamports : chain.quoteMin,
+        swapMode: "ExactIn",
       });
     }
     if (u.startsWith("http://jup.test/swap-instructions")) {
@@ -1722,6 +1729,7 @@ const fakeMailer = {
       return rpcReply({ value: [{ pubkey: PAYER_USDC, account: { data: { parsed: { info: { tokenAmount: { amount: chain.payerUsdc } } } } } }] });
     }
     if (method === "getLatestBlockhash") return rpcReply({ value: { blockhash: BLOCKHASH, lastValidBlockHeight: 1 } });
+    if (method === "getBalance") return rpcReply({ value: Number(chain.payerSol) });
     if (method === "getSignaturesForAddress") return rpcReply(chain.signatures.map((signature) => ({ signature })));
     if (method === "getTransaction") return rpcReply(chain.tx);
     throw new Error("unexpected rpc method " + method);
@@ -1730,7 +1738,7 @@ const fakeMailer = {
   const cfgUsdc = {
     ...cfgToken, tokenMode: "live",
     dwellMint: DWELL_MINT, usdcMint: USDC_MINT,
-    treasuryUsdcAta: TREASURY_ATA, distributorDwellAta: DIST_ATA,
+    treasuryUsdcAta: TREASURY_ATA, treasurySolAccount: TREASURY_SOL, distributorDwellAta: DIST_ATA,
     solanaRpcUrl: "http://solana.test", jupiterBaseUrl: "http://jup.test",
     maxSlippageBps: 100, usdcOrderTtlMinutes: 30, brandName: "DWELL",
   };
@@ -1867,6 +1875,82 @@ const fakeMailer = {
     const got = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
     assert.strictEqual(got.body.status, "expired", "lazy expiry on read — nothing on-chain, nothing to clean up");
     assert.strictEqual((await apiU("POST", `/v1/ads/usdc/orders/${r.body.orderId}/transaction`, { account: PAYER })).status, 410);
+  });
+
+  // A landed SOL payment: native lamport deltas on the treasury (fee leg) +
+  // the DWELL token delta on the distributor (swap leg).
+  const paidSolTx = ({ reference, feeLamports, dwellOut }) => ({
+    slot: 1235, blockTime: 1700000100,
+    transaction: { message: { accountKeys: [
+      { pubkey: PAYER }, { pubkey: TREASURY_SOL }, { pubkey: DIST_ATA }, { pubkey: reference },
+    ] } },
+    meta: {
+      err: null,
+      preBalances: [2000000000, 0, 0, 0],
+      postBalances: [2000000000 - Number(feeLamports), Number(feeLamports), 0, 0],
+      preTokenBalances: [{ accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: "0" } }],
+      postTokenBalances: [{ accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: dwellOut } }],
+    },
+  });
+
+  await check("sol rail: USD-priced order pays a native fee leg in one atomic transaction", async () => {
+    // Gate: without a treasury SOL account, SOL orders are refused (configs are
+    // read at request time, so flip the knob in place).
+    cfgUsdc.treasurySolAccount = "";
+    assert.strictEqual((await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" })).status, 400);
+    cfgUsdc.treasurySolAccount = TREASURY_SOL;
+
+    chain.signatures = []; chain.tx = null;
+    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.payCurrency, "sol");
+    assert.strictEqual(r.body.priceUsdc, 100, "pricing stays USD on every rail");
+    assert.strictEqual(r.body.feeUsdc, 10, "same 10% cut");
+    assert.strictEqual(r.body.estPayTotalSol, 0.5, "$100 ≈ 0.5 SOL at the pricing quote");
+
+    const built = await apiU("POST", `/v1/ads/usdc/orders/${r.body.orderId}/transaction`, { account: PAYER });
+    assert.strictEqual(built.status, 200);
+    assert.ok(/≈ 0\.5000 SOL/.test(built.body.message), "wallet message shows the SOL estimate");
+    const tx = Buffer.from(built.body.transaction, "base64");
+    assert.strictEqual(tx[0], 1, "still exactly one signer — the advertiser");
+    const msg = tx.subarray(65);
+    const has = (b58) => msg.includes(require("../src/solana").base58Decode(b58));
+    assert.ok(has(SYSTEM_PROGRAM), "native transfer instruction present");
+    assert.ok(has(TREASURY_SOL), "fee leg targets the treasury's SOL account");
+    assert.ok(has(DIST_ATA), "swap output still targets the distributor vault");
+
+    // The advertiser signs; the transaction lands with the right amounts.
+    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(ord.payFeeUnits, "50000000", "10% of 0.5 SOL in lamports");
+    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
+    chain.signatures = [sig];
+    chain.tx = paidSolTx({ reference: ord.reference, feeLamports: "50000000", dwellOut: "45000000000" });
+    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(after.body.status, "confirmed");
+    assert.strictEqual(after.body.campaignStatus, "pending_review");
+
+    // Ledger + pool identical to the USDC rail: USD-exact funding, locked rate.
+    const led = await campLedger(r.body.campaignId);
+    assert.strictEqual(led.campaign_credit.sum, 10_000_000, "$100 in millicents");
+    assert.strictEqual(led.reserve_allocation.sum, 9_000_000, "the 90% earmark");
+    const pools = await apiU("GET", "/v1/token/pools");
+    const pool_ = pools.body.pools.find((p) => p.campaignId === r.body.campaignId);
+    assert.strictEqual(pool_.usdcInMicro, 90_000_000, "swap leg recorded at its USD value");
+    assert.strictEqual(pool_.dwellOutWei, "45000000000");
+    chain.signatures = []; chain.tx = null;
+  });
+
+  await check("sol rail: a landed transaction that shorts the native fee fails the order", async () => {
+    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" });
+    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
+    chain.signatures = [sig];
+    chain.tx = paidSolTx({ reference: ord.reference, feeLamports: "40000000", dwellOut: "45000000000" }); // 0.04 < 0.05 SOL
+    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(after.body.status, "failed");
+    assert.strictEqual(after.body.failReason, "fee_short");
+    assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit, undefined, "no funding on a short fee");
+    chain.signatures = []; chain.tx = null;
   });
 
   sU.close();

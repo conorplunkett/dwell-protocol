@@ -450,14 +450,16 @@
                signed from the advertiser's own wallet: 10% USDC protocol fee to
                the treasury + 90% market-bought into $DWELL for the rewards pool. -->
           <button class="usdc-btn" id="usdc-btn" type="button" hidden>
-            <span class="usdc-btn-label">Pay with</span> <strong>USDC on Solana</strong>
+            <span class="usdc-btn-label">Pay with</span> <strong>USDC or SOL on Solana</strong>
           </button>
           <div class="usdc-panel" id="usdc-panel" hidden>
             <div class="usdc-row"><span>Total</span><strong id="usdc-price">$0.00</strong></div>
             <div class="usdc-row"><span>Protocol fee · 10%</span><strong id="usdc-fee">$0.00</strong></div>
             <div class="usdc-row"><span>$DWELL buy to the rewards pool · 90%</span><strong id="usdc-tranche">$0.00</strong></div>
+            <div class="usdc-row" id="usdc-sol-row" hidden><span>≈ total in SOL</span><strong id="usdc-sol-total">—</strong></div>
             <a class="usdc-paylink" id="usdc-paylink" href="#" rel="noopener">Open in your Solana wallet</a>
             <button type="button" class="usdc-copy" id="usdc-copy">Copy payment link</button>
+            <button type="button" class="usdc-copy" id="usdc-switch">Pay with SOL instead</button>
             <p class="usdc-status" id="usdc-status" role="status">Waiting for your wallet's signature…</p>
           </div>
         </form>

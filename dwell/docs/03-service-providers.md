@@ -93,9 +93,9 @@ requirement.
 ## Advertiser USDC checkout
 
 Planned in [08-usdc-checkout.md](08-usdc-checkout.md): crypto-native
-advertisers pay in USDC from their own wallet via one atomic Solana
-transaction — 10% to the treasury, 90% Jupiter-swapped into DWELL straight to
-the distributor vault, no funds ever held by our system. Same 90/10 split as
+advertisers pay in USDC or native SOL from their own wallet via one atomic
+Solana transaction — 10% to the treasury, 90% Jupiter-swapped into DWELL
+straight to the distributor vault, no funds ever held by our system. Same 90/10 split as
 the card path (this supersedes the earlier ~97.5%-to-token-side sketch). Card
 checkout remains the default; this is an additive option, not a migration.
 Providers: Jupiter Swap API, Solana Pay, Helius, deBridge (cross-chain),

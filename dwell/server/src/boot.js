@@ -77,6 +77,7 @@ function loadConfig(env = process.env) {
     solanaRpcUrl: env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
     jupiterBaseUrl: env.JUPITER_BASE_URL || "https://lite-api.jup.ag/swap/v1",
     treasuryUsdcAta: env.TREASURY_USDC_ATA || "",           // Squads treasury vault's USDC token account — the 10% leg
+    treasurySolAccount: env.TREASURY_SOL_ACCOUNT || "",     // Squads treasury vault address for native-SOL fee legs; empty = SOL rail off
     distributorDwellAta: env.DISTRIBUTOR_DWELL_ATA || "",   // rewards distributor vault's DWELL token account — the swap output
     maxSlippageBps: parseInt(env.MAX_SLIPPAGE_BPS || "100", 10), // swap slippage bound; the verifier enforces the implied minOut
     usdcOrderTtlMinutes: parseInt(env.USDC_ORDER_TTL_MINUTES || "30", 10), // price validity window; each built tx is only ~60s (blockhash)
