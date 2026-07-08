@@ -3094,7 +3094,7 @@ route("POST", "/v1/admin/epochs/publish-root", async (ctx: any) => {
 // The whole surface 404s until DWELL_MINT is configured (the launch gate).
 
 const SOL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const SOL_MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMZWEyttqmoTLK";
+const SOL_MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 const SOL_SYSTEM_PROGRAM = "11111111111111111111111111111111";
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const USDC_DECIMALS = 6;
@@ -3174,6 +3174,13 @@ function serializeUnsignedTransaction({ feePayer, recentBlockhash, instructions 
     .sort((a, b) => rank(a[0], a[1]) - rank(b[0], b[1]) || (a[0] < b[0] ? -1 : 1))
     .map(([k]) => k);
   const index = new Map(keys.map((k, i) => [k, i]));
+  // Every account key AND the blockhash must be exactly 32 bytes, or the
+  // message is silently truncated and no wallet can parse it. A wrong program
+  // constant is the classic cause — fail loud at build time instead. (Verified
+  // against @solana/web3.js: correct keys serialize byte-identically.)
+  for (const k of [...keys, recentBlockhash]) {
+    if (base58Decode(k).length !== 32) throw new Error(`not a 32-byte Solana key: ${k}`);
+  }
   let numSigners = 0, numReadonlySigned = 0, numReadonlyUnsigned = 0;
   for (const k of keys) {
     const m: any = metas.get(k);
