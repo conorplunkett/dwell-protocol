@@ -216,7 +216,7 @@ function mockPost(path, payload) {
     const feeCents = Math.ceil(grossCents / 10);
     MOCK.summary.balancePoints = 0;
     return {
-      ok: true, grossUsd: grossCents / 100, feeUsd: feeCents / 100,
+      ok: true, requested: true, grossUsd: grossCents / 100, feeUsd: feeCents / 100,
       netUsd: (grossCents - feeCents) / 100, balanceUsd: 0,
     };
   }
@@ -999,10 +999,10 @@ function renderPayoutCard() {
       `<div class="payout-state">` +
       `<p>${under
         ? `Payouts open at $${info.thresholdUsd} of dwells (${pts(info.thresholdUsd * 1000)}). Keep earning — your balance is ${pts(balDwells)} dwells.`
-        : `Your full balance cashes out in one transfer. After the ${Math.round(info.payoutFeeBps / 100)}% protocol fee, ${pts(balDwells)} dwells become <strong>${usd(netCents / 100)}</strong> in your bank.`
+        : `Request a payout of your full balance. After the ${Math.round(info.payoutFeeBps / 100)}% protocol fee, ${pts(balDwells)} dwells become <strong>${usd(netCents / 100)}</strong> sent to your bank once reviewed.`
       }</p>` +
       `<button class="btn-accent" id="payout-request-btn" type="button" ${under ? "disabled" : ""}>` +
-      `Cash out → receive ${usd(netCents / 100)}</button>` +
+      `Request payout → ${usd(netCents / 100)}</button>` +
       `</div>`;
   }
   el.querySelector("#payout-setup-btn")?.addEventListener("click", startConnectOnboard);
@@ -1042,19 +1042,20 @@ async function requestPayout() {
   const feeCents = Math.ceil((grossCents * payoutInfo.payoutFeeBps) / 10000);
   const netCents = grossCents - feeCents;
   if (!confirm(
-    `Cash out ${pts(balDwells)} dwells?\n\nYou'll receive ${usd(netCents / 100)} after the ` +
-    `${Math.round(payoutInfo.payoutFeeBps / 100)}% protocol fee (${usd(feeCents / 100)}).`
+    `Request a payout of ${pts(balDwells)} dwells?\n\nYou'll receive ${usd(netCents / 100)} after the ` +
+    `${Math.round(payoutInfo.payoutFeeBps / 100)}% protocol fee (${usd(feeCents / 100)}). ` +
+    `Payouts are reviewed before they're sent.`
   )) return;
   const btn = document.getElementById("payout-request-btn");
-  if (btn) { btn.disabled = true; btn.textContent = "Transferring…"; }
+  if (btn) { btn.disabled = true; btn.textContent = "Requesting…"; }
   const { status, body } = await apiPost("/v1/web/payouts/request", {});
   const result = $("payout-result");
   result.hidden = false;
   if (status === 200) {
     result.className = "redeem-result ok";
     result.innerHTML =
-      `Transfer sent — <strong>${usd(body.netUsd)}</strong> is on its way to your bank. ` +
-      `${pts(Math.round((body.grossUsd || 0) * 1000))} dwells spent ` +
+      `Payout requested — <strong>${usd(body.netUsd)}</strong> will be sent to your bank once it's reviewed. ` +
+      `${pts(Math.round((body.grossUsd || 0) * 1000))} dwells held ` +
       `(${usd(body.feeUsd)} protocol fee).`;
     setBalance(Math.round((body.balanceUsd || 0) * 1000));
     loadPayoutStatus(); // refresh state + history

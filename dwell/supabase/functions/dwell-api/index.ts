@@ -76,6 +76,7 @@ function loadConfig() {
     applePrivateKey: env("APPLE_PRIVATE_KEY").replace(/\\n/g, "\n"),
     twitterClientId: env("TWITTER_CLIENT_ID"),
     twitterClientSecret: env("TWITTER_CLIENT_SECRET"),
+    twitterBearerToken: env("TWITTER_BEARER_TOKEN"),
     mailProvider: env("MAIL_PROVIDER", "console"),
     resendApiKey: env("RESEND_API_KEY"),
     mailFrom: env("MAIL_FROM"),
@@ -1880,6 +1881,24 @@ function createRepo(pool: any) {
         [userId]
       );
     },
+    // Record a server-side X verification of the onboarding post (admin-only).
+    async saveOnboardingPostVerification(userId: string, { url }: any) {
+      await pool.query(
+        `update users set onboarding_post_verified_at = case when $2::text is not null then now() else null end,
+                          onboarding_post_url = $2, onboarding_post_checked_at = now()
+           where id = $1`,
+        [userId, url || null]
+      );
+    },
+    async userForAdmin(userId: string) {
+      const r = await pool.query(
+        `select id, email, twitter_id, stripe_account_id, payouts_enabled,
+                onboarding_posted_at, onboarding_post_verified_at, onboarding_post_url, onboarding_post_checked_at
+           from users where id = $1`,
+        [userId]
+      );
+      return r.rows[0] || null;
+    },
     async referralStats(userId: string) {
       const stats = await pool.query(
         `select
@@ -2146,9 +2165,11 @@ function createRepo(pool: any) {
         if (BigInt(bal.rows[0].balance) < grossMillicents) return null;
 
         const netCents = grossCents - feeCents;
+        // Queue as 'requested': funds held via the debit, no transfer until an
+        // admin approves. See claimPayoutRequest / rejectPayoutRequest.
         const { rows } = await c.query(
           `insert into payouts (user_id, amount_cents, status)
-           values ($1, $2, 'pending') returning id`,
+           values ($1, $2, 'requested') returning id`,
           [userId, netCents]
         );
         await c.query(
@@ -2163,7 +2184,7 @@ function createRepo(pool: any) {
             [(BigInt(feeCents) * 1000n).toString(), JSON.stringify({ source: "payout_fee", payoutId: rows[0].id, userId })]
           );
         }
-        return { id: rows[0].id, netCents };
+        return { id: rows[0].id, netCents, grossCents, feeCents };
       });
     },
 
@@ -2192,6 +2213,78 @@ function createRepo(pool: any) {
             [payoutId, outcome.transferId]
           );
         }
+      });
+    },
+    // ── manual payout approval (admin) ──
+    async listPayoutRequests() {
+      const r = await pool.query(
+        `select p.id, p.user_id, p.amount_cents as net_cents, p.created_at,
+                (l.meta->>'grossCents')::int as gross_cents,
+                (l.meta->>'feeCents')::int as fee_cents,
+                u.email, u.twitter_id, u.stripe_account_id, u.payouts_enabled,
+                u.onboarding_posted_at, u.onboarding_post_verified_at,
+                u.onboarding_post_url, u.onboarding_post_checked_at
+           from payouts p
+           join users u on u.id = p.user_id
+           left join ledger l on l.entry_type = 'payout_debit' and l.meta->>'payoutId' = p.id::text
+          where p.status = 'requested'
+          order by p.created_at asc`
+      );
+      return r.rows;
+    },
+    async claimPayoutRequest(payoutId: string) {
+      return tx(async (c: any) => {
+        const p = await c.query(
+          "update payouts set status = 'pending' where id = $1 and status = 'requested' returning id, user_id, amount_cents",
+          [payoutId]
+        );
+        if (!p.rows[0]) return null;
+        const u = await c.query("select stripe_account_id, payouts_enabled from users where id = $1", [p.rows[0].user_id]);
+        const meta = await c.query(
+          "select meta from ledger where entry_type = 'payout_debit' and meta->>'payoutId' = $1::text",
+          [payoutId]
+        );
+        return {
+          id: p.rows[0].id, userId: p.rows[0].user_id, netCents: p.rows[0].amount_cents,
+          grossCents: Number(meta.rows[0]?.meta?.grossCents || 0),
+          feeCents: Number(meta.rows[0]?.meta?.feeCents || 0),
+          stripeAccountId: u.rows[0]?.stripe_account_id || null,
+          payoutsEnabled: !!u.rows[0]?.payouts_enabled,
+        };
+      });
+    },
+    async releasePayoutClaim(payoutId: string) {
+      await pool.query("update payouts set status = 'requested' where id = $1 and status = 'pending'", [payoutId]);
+    },
+    async rejectPayoutRequest(payoutId: string) {
+      return tx(async (c: any) => {
+        const p = await c.query(
+          "update payouts set status = 'rejected' where id = $1 and status = 'requested' returning id, user_id",
+          [payoutId]
+        );
+        if (!p.rows[0]) return null;
+        const userId = p.rows[0].user_id;
+        const meta = await c.query(
+          "select meta from ledger where entry_type = 'payout_debit' and meta->>'payoutId' = $1::text",
+          [payoutId]
+        );
+        const grossCents = Number(meta.rows[0]?.meta?.grossCents || 0);
+        const feeCents = Number(meta.rows[0]?.meta?.feeCents || 0);
+        if (grossCents > 0) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, user_id, meta)
+             values ('admin_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+            [(BigInt(grossCents) * 1000n).toString(), userId, JSON.stringify({ source: "payout_reversal", payoutId })]
+          );
+        }
+        if (feeCents > 0) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, meta)
+             values ('platform_fee', $1, ($2::jsonb #>> '{}')::jsonb)`,
+            [(-BigInt(feeCents) * 1000n).toString(), JSON.stringify({ source: "payout_fee_reversal", payoutId })]
+          );
+        }
+        return { ok: true, userId, grossCents };
       });
     },
     // Pre-account email capture from the public landers. Normalizes the email,
@@ -2760,6 +2853,58 @@ async function runPayouts() {
     }
   }
   return { paid: results.filter((r) => r.ok).length, results };
+}
+
+// Server-side X (Twitter) verification of a user's onboarding post — admin
+// payout review only, never called from an earner path or shown in the portal.
+function onboardingPostMatches(t: any) {
+  const text = String(t?.text || "");
+  if (/dwellprotocol\.com/i.test(text) || /@dwellprotocol/i.test(text)) return true;
+  const urls = (t && t.entities && t.entities.urls) || [];
+  return urls.some((u: any) => /dwellprotocol\.com/i.test((u && (u.expanded_url || u.url)) || ""));
+}
+async function verifyOnboardingPost(u: any) {
+  if (!u.twitter_id) return { status: "no_x_account" };
+  if (!config.twitterBearerToken) return { status: "unconfigured" };
+  try {
+    const url = `https://api.twitter.com/2/users/${encodeURIComponent(u.twitter_id)}/tweets` +
+      `?max_results=100&exclude=retweets,replies&tweet.fields=entities`;
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${config.twitterBearerToken}` } });
+    const data = await r.json();
+    const tweets = Array.isArray(data && data.data) ? data.data : [];
+    const hit = tweets.find((t: any) => onboardingPostMatches(t));
+    if (hit) {
+      const postUrl = `https://x.com/i/status/${hit.id}`;
+      await repo.saveOnboardingPostVerification(u.id, { url: postUrl });
+      return { status: "verified", url: postUrl };
+    }
+    await repo.saveOnboardingPostVerification(u.id, { url: null });
+    return { status: "not_found" };
+  } catch (err: any) {
+    console.error("[dwell] onboarding post verify:", err?.message);
+    return { status: "error", error: err?.message };
+  }
+}
+function onboardingPostStatus(u: any) {
+  if (u.onboarding_post_verified_at) return "verified";
+  if (!u.twitter_id) return "no_x_account";
+  if (u.onboarding_post_checked_at) return "not_found";
+  return "unchecked";
+}
+function payoutRequestView(r: any) {
+  return {
+    payoutId: r.id, userId: r.user_id, email: r.email,
+    twitterId: r.twitter_id || null,
+    grossUsd: (r.gross_cents || 0) / 100,
+    feeUsd: (r.fee_cents || 0) / 100,
+    netUsd: (r.net_cents || 0) / 100,
+    requestedAt: r.created_at,
+    stripeReady: !!(r.stripe_account_id && r.payouts_enabled),
+    postedAt: r.onboarding_posted_at,
+    postStatus: onboardingPostStatus(r),
+    postUrl: r.onboarding_post_url || null,
+    postCheckedAt: r.onboarding_post_checked_at,
+  };
 }
 
 // ─────────────────────────── http plumbing ─────────────────────────────────
@@ -4418,24 +4563,15 @@ route("POST", "/v1/web/payouts/request", async (ctx: any) => {
   const netCents = grossCents - feeCents;
   if (netCents <= 0) return json(403, { error: "balance too small to pay out" });
 
+  // Manual model: queue the request (funds held) and stop. No transfer fires
+  // until an admin approves; the response says nothing about how it's reviewed.
   const requested = await repo.recordPayoutRequest({ userId: user.id, grossCents, feeCents });
   if (!requested) return json(409, { error: "insufficient credits" });
-
-  try {
-    const transfer = await stripe.createTransfer({
-      amount: netCents, currency: "usd", destination: user.stripe_account_id,
-      transfer_group: `payout_${user.id}_${requested.id}`,
-    });
-    await repo.finalizePayout(requested.id, { transferId: transfer.id });
-  } catch (err: any) {
-    console.error("[dwell] payout transfer failed:", err?.message);
-    await repo.finalizePayout(requested.id, { failed: true, userId: user.id, grossCents, feeCents });
-    return json(502, { error: "transfer failed — your balance was not charged" });
-  }
 
   const after = await repo.balanceForUser(user.id);
   return json(200, {
     ok: true,
+    requested: true,
     grossUsd: grossCents / 100,
     feeUsd: feeCents / 100,
     netUsd: netCents / 100,
@@ -4569,6 +4705,46 @@ route("POST", "/v1/admin/earnings-killswitch", async (ctx: any) => {
 route("POST", "/v1/admin/payouts", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   return json(200, await runPayouts());
+});
+
+// ── manual payout approval (admin) ──
+route("GET", "/v1/admin/payouts/requests", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const rows = await repo.listPayoutRequests();
+  return json(200, { requests: rows.map(payoutRequestView) });
+});
+route("POST", "/v1/admin/payouts/verify-post", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const u = await repo.userForAdmin(ctx.body?.userId);
+  if (!u) return json(404, { error: "user not found" });
+  return json(200, await verifyOnboardingPost(u));
+});
+route("POST", "/v1/admin/payouts/requests/approve", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const claimed = await repo.claimPayoutRequest(ctx.body?.payoutId);
+  if (!claimed) return json(409, { error: "request not found or already handled" });
+  if (!claimed.stripeAccountId || !claimed.payoutsEnabled) {
+    await repo.releasePayoutClaim(claimed.id);
+    return json(409, { error: "user has no active Stripe payouts account" });
+  }
+  try {
+    const transfer = await stripe.createTransfer({
+      amount: claimed.netCents, currency: "usd", destination: claimed.stripeAccountId,
+      transfer_group: `payout_${claimed.userId}_${claimed.id}`,
+    });
+    await repo.finalizePayout(claimed.id, { transferId: transfer.id });
+  } catch (err: any) {
+    console.error("[dwell] payout approve transfer failed:", err?.message);
+    await repo.finalizePayout(claimed.id, { failed: true, userId: claimed.userId, grossCents: claimed.grossCents, feeCents: claimed.feeCents });
+    return json(502, { error: "transfer failed — the request was reversed and the balance restored" });
+  }
+  return json(200, { ok: true, netUsd: claimed.netCents / 100 });
+});
+route("POST", "/v1/admin/payouts/requests/reject", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const rejected = await repo.rejectPayoutRequest(ctx.body?.payoutId);
+  if (!rejected) return json(409, { error: "request not found or already handled" });
+  return json(200, { ok: true, restoredUsd: rejected.grossCents / 100 });
 });
 
 // ── advertiser pricing (min / suggested / top-bid anchor) ──

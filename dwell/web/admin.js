@@ -543,14 +543,70 @@ async function downloadEmailsCsv() {
   } catch (e) { toast(e.message, true); }
 }
 
+// Onboarding-post verification badge for a payout request. Admin-only — this is
+// the only place the X-post check surfaces (never in the earner portal).
+const POST_STATUS_LABEL = {
+  verified: "post verified", not_found: "post not found",
+  no_x_account: "no X account", unchecked: "not checked", unconfigured: "check unconfigured",
+};
+function postStatusCell(r, reload) {
+  const cls = r.postStatus === "verified" ? "verified"
+    : r.postStatus === "not_found" ? "failed"
+    : "pending"; // no_x_account / unchecked read as neutral-warning
+  const parts = [badge2(cls, POST_STATUS_LABEL[r.postStatus] || r.postStatus)];
+  if (r.postUrl) parts.push(h("a", { href: safeHref(r.postUrl), target: "_blank", rel: "noopener", class: "mono" }, "view"));
+  // Re-check only makes sense when we know the user's X id.
+  if (r.twitterId) parts.push(h("button", { class: "btn btn-ghost btn-sm", onclick: async () => {
+    try { const v = await api("/v1/admin/payouts/verify-post", { method: "POST", body: { userId: r.userId } });
+      toast("Re-checked: " + (POST_STATUS_LABEL[v.status] || v.status)); reload(); }
+    catch (e) { toast(e.message, true); }
+  } }, "Re-check"));
+  return h("div", { class: "actions" }, parts);
+}
+// Like badge() but with an explicit color class + free-text label (the label
+// differs from the status slug for the post-verification pills).
+const badge2 = (cls, label) => h("span", { class: "badge " + cls }, label);
+
 async function renderPayouts(view) {
   const d = await api("/v1/admin/payouts");
+  const rq = await tryApi("/v1/admin/payouts/requests");
+  const requests = (rq && rq.requests) || [];
+  navDot("payouts", requests.length || null);
   view.innerHTML = "";
   view.append(tiles([
-    { k: "Payable now", v: num(d.payable.count), s: "viewers over threshold", accent: true },
+    { k: "Requests to review", v: num(requests.length), s: "awaiting your approval", accent: true },
+    { k: "Payable now", v: num(d.payable.count), s: "viewers over threshold" },
     { k: "Payable total", v: usd(d.payable.totalUsd), s: pts(d.payable.totalUsd) },
     { k: "Threshold", v: usd(d.payable.thresholdUsd), s: pts(d.payable.thresholdUsd) },
   ]));
+
+  // Manual approval queue: every user-requested cash-out waits here. Funds are
+  // already held (debited); nothing transfers until you approve.
+  const reload = () => route(true);
+  view.append(h("div", { class: "card" },
+    h("div", { class: "card-head" }, h("h2", {}, "Payout requests"),
+      h("span", { class: "hint" }, "Approve to send via Stripe; reject to return the held balance.")),
+    table(
+      [{ label: "Requested" }, { label: "User" }, { label: "Net", num: true }, { label: "Onboarding post" }, { label: "Stripe" }, { label: "" }],
+      requests,
+      (r) => [
+        dt(r.requestedAt),
+        h("span", { class: "mono", title: r.userId }, r.email || short(r.userId)),
+        td(h("span", { title: `gross ${usd(r.grossUsd)} · fee ${usd(r.feeUsd)}` }, usd(r.netUsd)), "num"),
+        td(postStatusCell(r, reload)),
+        td(r.stripeReady ? badge2("verified", "ready") : badge2("failed", "not ready")),
+        td(h("div", { class: "actions" },
+          h("button", { class: "btn btn-accent btn-sm", onclick: async () => {
+            if (!confirm(`Approve and send ${usd(r.netUsd)} to ${r.email || short(r.userId)}?`)) return;
+            try { await api("/v1/admin/payouts/requests/approve", { method: "POST", body: { payoutId: r.payoutId } }); toast("Approved & paid"); reload(); }
+            catch (e) { toast(e.message, true); }
+          } }, "Approve"),
+          h("button", { class: "btn btn-ghost btn-sm", onclick: async () => {
+            if (!confirm(`Reject this request? ${usd(r.grossUsd)} of dwells is returned to the user.`)) return;
+            try { await api("/v1/admin/payouts/requests/reject", { method: "POST", body: { payoutId: r.payoutId } }); toast("Rejected & balance restored"); reload(); }
+            catch (e) { toast(e.message, true); }
+          } }, "Reject"))),
+      ])));
   view.append(h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Cash out points"),
       h("button", { class: "btn btn-accent", onclick: async () => {

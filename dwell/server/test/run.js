@@ -54,6 +54,19 @@ const fakeMailer = {
   sendWaitlistConfirmationEmail: async (to) => { mailbox.push({ to, kind: "waitlist" }); },
 };
 
+// ---------- stub the X (Twitter) API used by onboarding-post verification ----------
+// The app calls the global fetch for api.twitter.com; the api() helper's calls to
+// the local server pass straight through to the real fetch. twitterTweets is the
+// controllable "timeline" a verification read sees.
+let twitterTweets = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, opts) => {
+  if (/api\.twitter\.com\/2\/users\/.+\/tweets/.test(String(url))) {
+    return { ok: true, status: 200, json: async () => ({ data: twitterTweets }) };
+  }
+  return realFetch(url, opts);
+};
+
 (async () => {
   if (!process.env.DATABASE_URL) {
     console.error("DATABASE_URL required — e.g. docker compose up -d db");
@@ -78,6 +91,7 @@ const fakeMailer = {
     emailTokenTtlMs: 1800000, emailCooldownMs: 0, emailIpDailyCap: 0, webSessionTtlMs: 2592000000, clickTokenTtlMs: 120000, maxBodyBytes: 65536,
     impressionTokenTtlMs: 120000, impressionMinDwellMs: 0, // dwell off for the main suite; a dedicated test exercises it
     logRequests: false, giftFulfillmentEmail: "hello@dwellprotocol.com",
+    twitterBearerToken: "test-bearer",
   };
   const repo = createRepo(poolNs);
   const stripe = createStripe("sk_test_fake", { fetchImpl: fakeFetch });
@@ -661,7 +675,7 @@ const fakeMailer = {
     assert.strictEqual(r.body.balanceUsd, 20.79);
   });
 
-  await check("web payout: session onboarding, gross debit, net transfer, 10% fee row, history", async () => {
+  await check("web payout: request queues (held, no transfer); admin approves → net transfer + 10% fee; history", async () => {
     // $99 balance (1000 imps), linked + logged in
     const { auth, email } = await linkedSession("payout-web@example.com", 1000);
 
@@ -685,40 +699,140 @@ const fakeMailer = {
     const payload = JSON.stringify({ id: "evt_acct_web", type: "account.updated", data: { object: { id: accountId, charges_enabled: true, payouts_enabled: true } } });
     await api("POST", "/v1/webhooks/stripe", payload, { "stripe-signature": signWebhookPayload(payload, WEBHOOK_SECRET) });
 
-    // two simultaneous requests: exactly one pays (the other is stopped by the
+    const transfersBefore = stripeCalls.filter((c) => c.path === "/v1/transfers").length;
+
+    // two simultaneous requests: exactly one queues (the other is stopped by the
     // per-user throttle or the in-transaction balance recheck)
     const [a, b] = await Promise.all([
       api("POST", "/v1/web/payouts/request", {}, auth),
       api("POST", "/v1/web/payouts/request", {}, auth),
     ]);
     const ok = [a, b].filter((r) => r.status === 200);
-    assert.strictEqual(ok.length, 1, "exactly one payout settles");
+    assert.strictEqual(ok.length, 1, "exactly one request queues");
     assert.ok([409, 429].includes([a, b].find((r) => r.status !== 200).status));
 
-    // $99 gross → $9.90 fee → $89.10 transferred; balance fully drained
-    const paid = ok[0].body;
-    assert.strictEqual(paid.grossUsd, 99);
-    assert.strictEqual(paid.feeUsd, 9.9);
-    assert.strictEqual(paid.netUsd, 89.1);
-    assert.strictEqual(paid.balanceUsd, 0);
-    const transfer = [...stripeCalls].reverse().find((c) => c.path === "/v1/transfers");
-    assert.strictEqual(transfer.params.amount, "8910", "Stripe receives the net");
+    // the request is queued — funds held ($99 gross → $89.10 net), NOTHING transferred
+    const reqd = ok[0].body;
+    assert.strictEqual(reqd.requested, true, "queued, not paid");
+    assert.strictEqual(reqd.grossUsd, 99);
+    assert.strictEqual(reqd.feeUsd, 9.9);
+    assert.strictEqual(reqd.netUsd, 89.1);
+    assert.strictEqual(reqd.balanceUsd, 0, "funds are held immediately");
+    assert.strictEqual(stripeCalls.filter((c) => c.path === "/v1/transfers").length, transfersBefore,
+      "queuing a request never transfers — money is manual");
 
-    // fee row platform-side; payouts history shows the net as 'paid'
+    // the user sees it as 'requested' in their history
+    const hist1 = await api("GET", "/v1/web/payouts", undefined, auth);
+    assert.strictEqual(hist1.body.payouts[0].status, "requested");
+    assert.strictEqual(hist1.body.payouts[0].amountUsd, 89.1);
+    assert.strictEqual(hist1.body.balanceUsd, 0);
+
+    // admin review: the request is listed with gross/fee. This user signed in by
+    // email (no X account), so the onboarding-post check reads "no_x_account".
+    const list = await api("GET", "/v1/admin/payouts/requests?adminKey=test-admin");
+    assert.strictEqual(list.status, 200);
+    const mine = list.body.requests.find((r) => r.email === email);
+    assert.ok(mine, "the request shows up for admin review");
+    assert.strictEqual(mine.grossUsd, 99);
+    assert.strictEqual(mine.netUsd, 89.1);
+    assert.strictEqual(mine.postStatus, "no_x_account", "email-only user can't be X-verified");
+    assert.strictEqual(mine.stripeReady, true);
+
+    // a bad admin key can't approve
+    assert.strictEqual((await api("POST", "/v1/admin/payouts/requests/approve", { payoutId: mine.payoutId, adminKey: "nope" })).status, 401);
+
+    // admin approves → the net transfer fires now, and only now
+    const appr = await api("POST", "/v1/admin/payouts/requests/approve", { payoutId: mine.payoutId, adminKey: "test-admin" });
+    assert.strictEqual(appr.status, 200);
+    assert.strictEqual(appr.body.netUsd, 89.1);
+    const transfer = [...stripeCalls].reverse().find((c) => c.path === "/v1/transfers");
+    assert.strictEqual(transfer.params.amount, "8910", "Stripe receives the net on approval");
+
+    // fee row platform-side; payouts history flips to 'paid'
     const feeRow = await poolNs.query(
       "select amount_millicents from ledger where entry_type = 'platform_fee' and meta->>'source' = 'payout_fee' and meta->>'userId' is not null and meta->>'payoutId' is not null");
     assert.strictEqual(feeRow.rows.length, 1);
     assert.strictEqual(Number(feeRow.rows[0].amount_millicents), 990 * 1000);
     const hist = await api("GET", "/v1/web/payouts", undefined, auth);
-    assert.strictEqual(hist.body.payouts[0].amountUsd, 89.1);
     assert.strictEqual(hist.body.payouts[0].status, "paid");
+    assert.strictEqual(hist.body.payouts[0].amountUsd, 89.1);
     assert.strictEqual(hist.body.balanceUsd, 0);
 
+    // the approved request is no longer in the review queue, and double-approve 409s
+    const list2 = await api("GET", "/v1/admin/payouts/requests?adminKey=test-admin");
+    assert.ok(!list2.body.requests.find((r) => r.payoutId === mine.payoutId), "approved request leaves the queue");
+    assert.strictEqual((await api("POST", "/v1/admin/payouts/requests/approve", { payoutId: mine.payoutId, adminKey: "test-admin" })).status, 409);
+
     // drained: another request is refused for being under the threshold
-    // (wait out the 1/min per-user throttle by resetting it via a fresh app? no —
-    // 429 vs 403 both prove no second payment; accept either)
     const again = await api("POST", "/v1/web/payouts/request", {}, auth);
-    assert.ok([403, 429].includes(again.status), "no second payment from an empty balance");
+    assert.ok([403, 429].includes(again.status), "no second request from an empty balance");
+  });
+
+  await check("payout reject returns the held balance; the request leaves the queue", async () => {
+    const { auth, email } = await linkedSession("payout-reject@example.com", 1000);
+    await api("POST", "/v1/web/connect/onboard", {}, auth); // create the Stripe account
+    const accountId = (await poolNs.query("select stripe_account_id from users where email = $1", [email])).rows[0].stripe_account_id;
+    // enable payouts
+    const pl = JSON.stringify({ id: "evt_acct_rej", type: "account.updated", data: { object: { id: accountId, charges_enabled: true, payouts_enabled: true } } });
+    await api("POST", "/v1/webhooks/stripe", pl, { "stripe-signature": signWebhookPayload(pl, WEBHOOK_SECRET) });
+
+    const req = await api("POST", "/v1/web/payouts/request", {}, auth);
+    assert.strictEqual(req.status, 200);
+    assert.strictEqual(req.body.balanceUsd, 0, "held on request");
+
+    const list = await api("GET", "/v1/admin/payouts/requests?adminKey=test-admin");
+    const mine = list.body.requests.find((r) => r.email === email);
+    const transfersBefore = stripeCalls.filter((c) => c.path === "/v1/transfers").length;
+
+    const rej = await api("POST", "/v1/admin/payouts/requests/reject", { payoutId: mine.payoutId, adminKey: "test-admin" });
+    assert.strictEqual(rej.status, 200);
+    assert.strictEqual(rej.body.restoredUsd, 99);
+
+    // no transfer, balance restored to the full $99, request gone from the queue
+    assert.strictEqual(stripeCalls.filter((c) => c.path === "/v1/transfers").length, transfersBefore, "reject never transfers");
+    const bal = await api("GET", "/v1/web/payouts", undefined, auth);
+    assert.strictEqual(bal.body.balanceUsd, 99, "rejecting returns the held balance");
+    assert.strictEqual(bal.body.payouts[0].status, "rejected");
+    const list2 = await api("GET", "/v1/admin/payouts/requests?adminKey=test-admin");
+    assert.ok(!list2.body.requests.find((r) => r.payoutId === mine.payoutId), "rejected request leaves the queue");
+    // double-reject 409s
+    assert.strictEqual((await api("POST", "/v1/admin/payouts/requests/reject", { payoutId: mine.payoutId, adminKey: "test-admin" })).status, 409);
+  });
+
+  await check("onboarding-post verification: X timeline check flips no_x_account → verified, surfaced to admin only", async () => {
+    // an X-authed earner with a payable balance
+    const { sessionToken } = await repo.upsertUserByOAuth({ twitterId: "x_payout_9", emailVerified: false }, config.webSessionTtlMs);
+    const uid = (await poolNs.query("select id from users where twitter_id = 'x_payout_9'")).rows[0].id;
+    await poolNs.query("insert into ledger (entry_type, amount_millicents, user_id) values ('admin_credit', 9900000, $1)", [uid]); // $99
+    await poolNs.query("update users set onboarding_posted_at = now(), stripe_account_id = 'acct_x9', payouts_enabled = true where id = $1", [uid]);
+    const auth = { Authorization: `Bearer ${sessionToken}` };
+
+    const req = await api("POST", "/v1/web/payouts/request", {}, auth);
+    assert.strictEqual(req.status, 200, "X user can request a payout");
+
+    // before checking, the timeline has no matching post → verify reports not_found
+    twitterTweets = [{ id: "1", text: "gm" }];
+    const uidBody = { userId: uid, adminKey: "test-admin" };
+    let v = await api("POST", "/v1/admin/payouts/verify-post", uidBody);
+    assert.strictEqual(v.status, 200);
+    assert.strictEqual(v.body.status, "not_found");
+
+    // the earner posts the prebuilt note → the next check finds it and verifies
+    twitterTweets = [{ id: "42", text: "earning with @dwellprotocol — get paid at https://dwellprotocol.com" }];
+    v = await api("POST", "/v1/admin/payouts/verify-post", uidBody);
+    assert.strictEqual(v.body.status, "verified");
+    assert.ok(v.body.url.includes("42"));
+
+    // the admin review now shows verified + the post URL; the earner UI never does
+    const list = await api("GET", "/v1/admin/payouts/requests?adminKey=test-admin");
+    const mine = list.body.requests.find((r) => r.userId === uid);
+    assert.strictEqual(mine.postStatus, "verified");
+    assert.ok(mine.postUrl && mine.postUrl.includes("42"));
+    // the earner's own /v1/web/me carries no verification fields
+    const me = await api("GET", "/v1/web/me", undefined, auth);
+    assert.ok(!("postStatus" in me.body) && !("onboardingPostUrl" in me.body), "verification never leaks to the earner");
+
+    twitterTweets = [];
   });
 
   await check("magic-link sends are rate-limited per email (anti-bomb / anti-enumeration)", async () => {
