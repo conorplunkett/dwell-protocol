@@ -80,7 +80,10 @@ function loadConfig(env = process.env) {
     jupiterBaseUrl: env.JUPITER_BASE_URL || "https://lite-api.jup.ag/swap/v1",
     treasuryUsdcAta: env.TREASURY_USDC_ATA || "",           // Squads treasury vault's USDC token account — the 10% leg
     treasurySolAccount: env.TREASURY_SOL_ACCOUNT || "",     // Squads treasury vault address for native-SOL fee legs; empty = SOL rail off
-    distributorDwellAta: env.DISTRIBUTOR_DWELL_ATA || "",   // rewards distributor vault's DWELL token account — the swap output
+    treasuryDwellAta: env.TREASURY_DWELL_ATA || "",         // Squads treasury vault's DWELL token account — the 10% leg on the $DWELL rail; empty = $DWELL rail off
+    distributorDwellAta: env.DISTRIBUTOR_DWELL_ATA || "",   // rewards distributor vault's DWELL token account — the swap output / $DWELL 90% leg
+    dwellDecimals: parseInt(env.DWELL_DECIMALS || "6", 10), // display only — raw DWELL units ÷ 10^decimals for the "≈ pay in $DWELL" figure
+    dwellPayBoostBps: parseInt(env.DWELL_PAY_BOOST_BPS || "1000", 10), // paying in $DWELL boosts a campaign's impressions by this (1000 = +10%)
     maxSlippageBps: parseInt(env.MAX_SLIPPAGE_BPS || "100", 10), // swap slippage bound; the verifier enforces the implied minOut
     usdcOrderTtlMinutes: parseInt(env.USDC_ORDER_TTL_MINUTES || "30", 10), // price validity window; each built tx is only ~60s (blockhash)
 

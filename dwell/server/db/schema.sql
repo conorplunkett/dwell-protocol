@@ -523,7 +523,7 @@ create table if not exists usdc_orders (
   -- native lamport transfer and the swap leg runs wSOL -> DWELL. pay_*_units
   -- are in the pay currency's base units (micro-USDC / lamports); for SOL they
   -- re-price on every transaction build, like min_dwell_out.
-  pay_currency text not null default 'usdc' check (pay_currency in ('usdc', 'sol')),
+  pay_currency text not null default 'usdc' check (pay_currency in ('usdc', 'sol', 'dwell')),
   pay_total_units bigint not null,            -- what the wallet pays in total, pay-currency base units
   pay_fee_units bigint not null,              -- the treasury leg the verifier enforces, pay-currency base units
   quote jsonb not null,                       -- Jupiter swap quote at order/build time
