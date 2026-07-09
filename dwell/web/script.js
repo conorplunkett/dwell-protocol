@@ -4,14 +4,14 @@
 // Each entry carries a little brand logo chip (initial + brand color) shown
 // before the name in the moving banner.
 const TICKER_ADS = [
-  { brand: "Ramp", logo: "R", color: "#ffd54a", ink: "#1b1e25", text: "Save time and money on every dollar you spend" },
-  { brand: "Linear", logo: "L", color: "#5b5bd6", ink: "#fff", text: "Issue tracking built for high-performance teams" },
-  { brand: "Vercel", logo: "△", color: "#000", ink: "#fff", text: "Ship your agent to production in seconds" },
-  { brand: "Neon", logo: "N", color: "#00e599", ink: "#04130a", text: "Serverless Postgres your agent can branch" },
-  { brand: "Resend", logo: "R", color: "#111", ink: "#fff", text: "The email API built for developers" },
-  { brand: "Fluidstack", logo: "F", color: "#1d6cff", ink: "#fff", text: "Building 10GW of compute. Join us." },
-  { brand: "Tuple", logo: "T", color: "#5d5fef", ink: "#fff", text: "Remote pair programming, done right" },
-  { brand: "Stripe", logo: "S", color: "#635bff", ink: "#fff", text: "Financial infrastructure for the internet" },
+  { brand: "$ANSEM", logo: "A", color: "#111", ink: "#fff", text: "the black bull" },
+  { brand: "$WIF", logo: "W", color: "#c9a06a", ink: "#1b1e25", text: "literally a dog wif a hat" },
+  { brand: "$BONK", logo: "B", color: "#ff9e2c", ink: "#1b1e25", text: "the people's dog coin of Solana" },
+  { brand: "$POPCAT", logo: "P", color: "#5b5bd6", ink: "#fff", text: "pop pop pop" },
+  { brand: "$MOODENG", logo: "M", color: "#e26aa1", ink: "#fff", text: "the bouncy baby hippo" },
+  { brand: "$PNUT", logo: "P", color: "#8a6b45", ink: "#fff", text: "justice for Peanut the squirrel" },
+  { brand: "$GIGA", logo: "G", color: "#2c2c2c", ink: "#fff", text: "gigachad energy, on-chain" },
+  { brand: "$FWOG", logo: "F", color: "#3fae5a", ink: "#fff", text: "just a lil fwog" },
 ];
 (function buildTicker() {
   const track = document.getElementById("ticker-track");
@@ -47,12 +47,12 @@ if (wordStock) {
 // Keep each line short — it must fit ONE line in the demo card at both desktop
 // and mobile widths (verified per-ad; see styles.css .brand-line).
 const ADS = [
-  { chip: "R", color: "#ffd54a", ink: "#1b1e25", text: "Ramp · Spend smarter" },
-  { chip: "L", color: "#5b5bd6", ink: "#fff", text: "Linear · Issue tracking" },
-  { chip: "△", color: "#000", ink: "#fff", text: "Vercel · Ship to prod" },
-  { chip: "N", color: "#00e599", ink: "#04130a", text: "Neon · Postgres, branched" },
-  { chip: "R", color: "#111", ink: "#fff", text: "Resend · Email for devs" },
-  { chip: "F", color: "#1d6cff", ink: "#fff", text: "Fluidstack · GPU compute" },
+  { chip: "A", color: "#111", ink: "#fff", text: "$ANSEM · the black bull" },
+  { chip: "W", color: "#c9a06a", ink: "#1b1e25", text: "$WIF · dog wif hat" },
+  { chip: "B", color: "#ff9e2c", ink: "#1b1e25", text: "$BONK · the people's dog" },
+  { chip: "P", color: "#5b5bd6", ink: "#fff", text: "$POPCAT · pop pop pop" },
+  { chip: "M", color: "#e26aa1", ink: "#fff", text: "$MOODENG · baby hippo" },
+  { chip: "F", color: "#3fae5a", ink: "#fff", text: "$FWOG · just a lil fwog" },
 ];
 let ai = 0;
 const rotator = document.getElementById("brand-line");
@@ -190,8 +190,11 @@ function updateAdPreview() {
   const accent = hex || getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ff0000";
   const chip = document.getElementById("prev-chip");
   const lineEl = document.getElementById("prev-line");
-  if (chip) chip.textContent = ((brand || line || "Your ad here").trim()[0] || "Y").toUpperCase();
-  if (lineEl) lineEl.textContent = line || "Your ad here";
+  // Chip initial skips the $ so "$ANSEM" chips as "A"; the preview line pairs
+  // ticker + slogan the same way the live overlay renders them.
+  const chipSrc = (brand || line || "Your token here").trim().replace(/^\$+/, "");
+  if (chip) chip.textContent = (chipSrc[0] || "Y").toUpperCase();
+  if (lineEl) lineEl.textContent = (brand && line) ? `${brand} · ${line}` : (line || brand || "Your token here");
   adPrevBar.style.setProperty("--prev-accent", accent);
   adPrevBar.style.setProperty("--prev-ink", readableInk(accent));
 }
@@ -471,10 +474,32 @@ loadPricing();
 // Real advertiser checkout: create a campaign + redirect to Stripe.
 const adForm = document.querySelector(".adform");
 if (adForm) {
+  // Email is optional in the form, but Stripe checkout needs it for the
+  // receipt — enforce it only on the card/submit path (native `required` would
+  // also block a future crypto path, where it stays optional).
+  const emailInput = adForm.querySelector('input[name="email"]');
+  emailInput?.addEventListener("input", () => emailInput.setCustomValidity(""));
   adForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const stripeBtn = adForm.querySelector(".stripe-btn");
     const get = (sel) => adForm.querySelector(sel)?.value?.trim() || "";
+    // Ticker icon is required — the hidden file input can't carry native
+    // `required` (not focusable), so gate here via the dropzone's filled state.
+    const iconZone = document.getElementById("icon-dropzone");
+    if (iconZone && !iconZone.classList.contains("dropzone--filled")) {
+      const msg = document.getElementById("dropzone-msg");
+      if (msg) {
+        msg.textContent = "Ticker icon is required — drop an image here or click to browse.";
+        msg.classList.add("dropzone-msg--err");
+      }
+      iconZone.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (emailInput && !emailInput.value.trim()) {
+      emailInput.setCustomValidity("Email is required for Stripe checkout — your receipt goes there.");
+      emailInput.reportValidity();
+      return;
+    }
     const payload = {
       email: get('input[name="email"]'),
       adLine: document.getElementById("adline")?.value?.trim() || "",
@@ -759,6 +784,139 @@ setInterval(() => {
   if (!reduced) requestAnimationFrame(tick);
 })();
 
+
+// --- Impressions odometer ("Get your token in front of N eyeballs") ---------
+// Mechanical-counter style: one dark cell per digit (the last cell red, like a
+// flip counter), each cell a vertical reel of 0–9 that rolls UPWARD to the new
+// digit. There's no public network-total endpoint yet, so the figure is an
+// optimistic projection: a fixed base plus steady time-based growth (so it's
+// consistent across visits and always climbing), plus a gentle live tick.
+(function impOdometer() {
+  const el = document.getElementById("imp-counter");
+  if (!el) return;
+  const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const IMP_BASE = 21_437_615;                       // network total at the epoch
+  const IMP_EPOCH = Date.parse("2026-07-01T00:00:00Z");
+  const IMP_RATE = 2.7;                              // impressions/second, network-wide
+  const projected = () => IMP_BASE + Math.floor(((Date.now() - IMP_EPOCH) / 1000) * IMP_RATE);
+
+  let value = projected();
+  let cols = [];      // [{reel, digit}] most-significant first, commas excluded
+
+  // The reel holds 0–9 twice so a 9→0 wrap can keep rolling upward (into the
+  // second copy) and snap back down transition-less once it's offscreen.
+  function build(str) {
+    el.classList.add("imp-odometer--live");
+    el.innerHTML = "";
+    cols = [];
+    for (const ch of str) {
+      if (ch === ",") {
+        const c = document.createElement("span");
+        c.className = "imp-comma";
+        c.textContent = ",";
+        el.appendChild(c);
+        continue;
+      }
+      const cell = document.createElement("span");
+      cell.className = "imp-digit";
+      const reel = document.createElement("span");
+      reel.className = "imp-reel";
+      for (let k = 0; k < 20; k++) {
+        const d = document.createElement("span");
+        d.textContent = String(k % 10);
+        reel.appendChild(d);
+      }
+      cell.appendChild(reel);
+      el.appendChild(cell);
+      const digit = Number(ch);
+      reel.style.transform = `translateY(${-digit}em)`;
+      cols.push({ reel, digit });
+    }
+    // Flip counters mark the low-order cell — tint the last digit accent red.
+    const cells = el.querySelectorAll(".imp-digit");
+    cells[cells.length - 1]?.classList.add("imp-digit--accent");
+  }
+
+  function render() {
+    const str = value.toLocaleString("en-US");
+    const digits = str.replace(/,/g, "");
+    if (digits.length !== cols.length) { build(str); return; }
+    let i = 0;
+    for (const ch of digits) {
+      const col = cols[i++];
+      const d = Number(ch);
+      if (d === col.digit) continue;
+      if (reduced) {
+        col.reel.style.transition = "none";
+        col.reel.style.transform = `translateY(${-d}em)`;
+      } else if (d < col.digit) {
+        // Wrap (e.g. 9→0): roll up into the reel's second 0–9 copy, then snap
+        // back to the equivalent low position once the transition lands.
+        const reel = col.reel;
+        reel.style.transform = `translateY(${-(d + 10)}em)`;
+        reel.addEventListener("transitionend", function snap() {
+          reel.removeEventListener("transitionend", snap);
+          reel.style.transition = "none";
+          reel.style.transform = `translateY(${-d}em)`;
+          void reel.offsetHeight; // flush so the transition re-arms cleanly
+          reel.style.transition = "";
+        });
+      } else {
+        col.reel.style.transform = `translateY(${-d}em)`;
+      }
+      col.digit = d;
+    }
+  }
+
+  build(value.toLocaleString("en-US"));
+  // Steady upward roll: re-sync to the projection (never letting the shown
+  // number go backwards) so the counter climbs a few impressions per tick.
+  setInterval(() => {
+    value = Math.max(value + 1, projected());
+    render();
+  }, 1200);
+})();
+
+// --- Boost fold: the hero "Boost your token" button folds the advertiser card
+// open right underneath it, pushing "Get it on your platform" lower. The card
+// is NOT a copy — script moves the real #advertisers section node between its
+// home slot (#advertisers-home, bottom of the page) and the fold slot under
+// the button, so it's the exact same component with all its wiring intact. ---
+(function boostFold() {
+  const btn = document.getElementById("boost-toggle");
+  const fold = document.getElementById("boost-fold");
+  const slot = document.getElementById("boost-fold-slot");
+  const home = document.getElementById("advertisers-home");
+  const card = document.getElementById("advertisers");
+  if (!btn || !fold || !slot || !home || !card) return;
+
+  let open = false;
+  btn.addEventListener("click", () => {
+    open = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    btn.classList.toggle("open", open);
+    if (open) {
+      slot.appendChild(card);            // mount under the button…
+      void fold.offsetHeight;            // …then let the 0fr→1fr fold animate
+      fold.classList.add("open");
+      // Nudge the CPM slider markers — they're width-dependent and the fold
+      // slot can be narrower than the section's home mount.
+      window.dispatchEvent(new Event("resize"));
+    } else {
+      fold.classList.remove("open");
+      // Send the card back home once the fold has collapsed shut.
+      fold.addEventListener("transitionend", function done(e) {
+        if (e.propertyName !== "grid-template-rows") return;
+        fold.removeEventListener("transitionend", done);
+        if (!fold.classList.contains("open")) {
+          home.after(card);
+          window.dispatchEvent(new Event("resize"));
+        }
+      });
+    }
+  });
+})();
 
 // --- Auto-hiding nav: hidden over the full-viewport protocol hero, slides in
 // once the user scrolls past a small threshold (and back out at the top). ---

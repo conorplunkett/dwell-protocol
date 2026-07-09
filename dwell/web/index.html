@@ -8,27 +8,27 @@
        self-contained mock-data mode (sticky; ?dev=0 to exit) — handled in
        script.js. -->
   <meta name="dwell-api" content="https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/dwell-api" />
-  <title>DWELL — Earn crypto while you use AI</title>
-  <meta name="description" content="One sponsored line shows while ChatGPT, Claude, or Gemini is thinking. Advertisers buy $DWELL on the open market for adspace; you earn $DWELL for watching ads." />
+  <title>DWELL — Get your token in front of the internet</title>
+  <meta name="description" content="One sponsored line shows while ChatGPT, Claude, or Gemini is thinking. Advertisers buy adspace with $DWELL; you earn $USDC while you use AI." />
   <link rel="canonical" href="https://dwellprotocol.com/" />
   <meta name="theme-color" content="#ff0000" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="DWELL" />
   <meta property="og:url" content="https://dwellprotocol.com/" />
   <meta property="og:locale" content="en_US" />
-  <meta property="og:title" content="DWELL — Earn crypto while you use AI" />
-  <meta property="og:description" content="Advertisers buy $DWELL on the open market for adspace. You earn $DWELL for watching ads while ChatGPT, Claude, or Gemini thinks." />
+  <meta property="og:title" content="DWELL — Get your token in front of the internet" />
+  <meta property="og:description" content="Advertisers buy adspace with $DWELL. You earn $USDC while you use AI — inside ChatGPT, Claude, and Gemini." />
   <meta property="og:image" content="https://dwellprotocol.com/og.png?v=20260707" />
   <meta property="og:image:secure_url" content="https://dwellprotocol.com/og.png?v=20260707" />
   <meta property="og:image:type" content="image/png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="DWELL — Earn crypto while you use AI." />
+  <meta property="og:image:alt" content="DWELL — Get your token in front of the internet." />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="DWELL — Earn crypto while you use AI" />
-  <meta name="twitter:description" content="Advertisers buy $DWELL on the open market for adspace. You earn $DWELL for watching ads while ChatGPT, Claude, or Gemini thinks." />
+  <meta name="twitter:title" content="DWELL — Get your token in front of the internet" />
+  <meta name="twitter:description" content="Advertisers buy adspace with $DWELL. You earn $USDC while you use AI — inside ChatGPT, Claude, and Gemini." />
   <meta name="twitter:image" content="https://dwellprotocol.com/og.png?v=20260707" />
-  <meta name="twitter:image:alt" content="DWELL — Earn crypto while you use AI." />
+  <meta name="twitter:image:alt" content="DWELL — Get your token in front of the internet." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -49,7 +49,7 @@
       <a href="/products" class="navbtn">Products</a>
       <a href="/tokenomics" class="navbtn">Tokenomics</a>
       <a href="/portal" class="navbtn"><span class="nav-txt-opt">User </span>Portal</a>
-      <a href="#advertisers" class="navbtn navbtn-cta">Advertise</a>
+      <a href="#advertisers" class="navbtn navbtn-cta">Boost Token</a>
     </nav>
   </header>
 
@@ -87,10 +87,10 @@
          demo with the mascot, then the "want to advertise?" link. No waitlist —
          both sides of the marketplace (advertisers + earners) are live. -->
     <section class="hero">
-      <h1>Earn crypto while you use AI.</h1>
+      <h1>Get your token in front of the internet.</h1>
       <p class="sub">
-        Advertisers buy <span class="dwell-token">$DWELL</span> on the open market for adspace.<br />
-        You earn <span class="dwell-token">$DWELL</span> for watching ads.
+        Advertisers buy adspace with <span class="dwell-token">$DWELL</span>.<br />
+        You earn <span class="dwell-token">$USDC</span> while you use AI.
       </p>
 
       <!-- BEFORE / AFTER DEMO -->
@@ -139,8 +139,8 @@
                NB: classed/id'd "brand-*", NOT "ad-*", so ad blockers don't hide
                our own sponsored-line demo. -->
           <div class="demo-line">
-            <span class="brandchip">R</span>
-            <span class="brand-line" id="brand-line">Ramp · Spend smarter</span>
+            <span class="brandchip">A</span>
+            <span class="brand-line" id="brand-line">$ANSEM · the black bull</span>
           </div>
         </div>
       </div>
@@ -150,9 +150,18 @@
       </p>
 
       <div class="hero-adv" id="hero-adv">
-        <a class="wl-adv" href="#advertisers">Want to be seen by AI native users?</a>
+        <button type="button" class="wl-adv" id="boost-toggle" aria-expanded="false" aria-controls="boost-fold">Boost your token</button>
       </div>
     </section>
+
+    <!-- BOOST FOLD — clicking "Boost your token" folds the advertiser card
+         (the SAME #advertisers section node, moved here by script.js) open
+         underneath the button, pushing "Get it on your platform" lower. The
+         grid-template-rows 0fr→1fr transition + inner scale gives the
+         grow-out-of-the-button animation. -->
+    <div class="boost-fold" id="boost-fold">
+      <div class="boost-fold-inner" id="boost-fold-slot"></div>
+    </div>
 
     <!-- Section label for the quick-install row -->
     <div class="tryit">Get it on your platform</div>
@@ -324,11 +333,15 @@
     </section>
 
     <!-- ADVERTISERS — the one LIVE flow on the page: creates a campaign via
-         POST /v1/checkout and redirects to Stripe. -->
+         POST /v1/checkout and redirects to Stripe. The empty marker div is the
+         section's home slot: script.js moves the section into #boost-fold-slot
+         when the hero "Boost your token" button unfolds, and back here when it
+         folds shut — one component, two mounts, no duplicate IDs. -->
+    <div id="advertisers-home"></div>
     <section id="advertisers" class="advertisers">
       <div class="adv-card">
-        <span class="eyebrow">Advertisers</span>
-        <h2>Get your product in front of users who are AI and crypto native.</h2>
+        <span class="eyebrow">Boost your Token</span>
+        <h2>Get your token in front of <span class="imp-odometer" id="imp-counter">21,000,000</span> eyeballs.</h2>
 
         <form class="adform" onsubmit="return false;">
           <!-- YOUR CAMPAIGN — leads the form. The big number is the editable
@@ -371,35 +384,12 @@
           </div>
 
           <label class="field">
-            <span class="flabel">Advertiser email <em>(required)</em></span>
-            <input type="email" name="email" autocomplete="email" placeholder="you@example.com" required />
+            <span class="flabel">$Ticker <em>(required, shown on leaderboard)</em></span>
+            <input type="text" name="organization" placeholder="$ANSEM" required />
           </label>
 
           <label class="field">
-            <span class="flabel">Ad line · 3–60 char <em class="count" id="adline-count">0 / 60</em></span>
-            <input type="text" id="adline" maxlength="60" placeholder="Try Linear — issue tracking built for speed" />
-          </label>
-
-          <label class="field">
-            <span class="flabel">Destination URL <em>(https:// optional) — the link customers go to when they click the ad</em></span>
-            <input type="url" name="url" autocomplete="url" placeholder="https://linear.app/" />
-          </label>
-
-          <label class="field">
-            <span class="flabel">Brand name <em>(optional, shown on leaderboard)</em></span>
-            <input type="text" name="organization" autocomplete="organization" placeholder="Linear" />
-          </label>
-
-          <label class="field">
-            <span class="flabel">Ad color <em>(optional, #hex — your colour in the terminal &amp; spinner)</em></span>
-            <div class="colorfield">
-              <input type="color" id="adcolor-swatch" value="#ff0000" aria-label="Pick ad color" />
-              <input type="text" id="adcolor" maxlength="7" placeholder="#ff0000" pattern="#?[0-9a-fA-F]{6}" />
-            </div>
-          </label>
-
-          <label class="field">
-            <span class="flabel">Brand icon <em>(optional, PNG/JPG/WebP ≤ 64 KB)</em></span>
+            <span class="flabel">Ticker icon <em>(required, PNG/JPG/WebP ≤ 64 KB)</em></span>
             <!-- Real click-to-browse (native label→input forwarding) + drag-and-drop,
                  wired in script.js. tabindex/keydown cover keyboard users, since the
                  file input itself is visually hidden and not tabbable. -->
@@ -414,6 +404,29 @@
             </div>
           </label>
 
+          <label class="field">
+            <span class="flabel">Ticker slogan · 3–60 char <em class="count" id="adline-count">0 / 60</em></span>
+            <input type="text" id="adline" maxlength="60" placeholder="the black bull" required />
+          </label>
+
+          <label class="field">
+            <span class="flabel">Ticker link <em>(pump.fun recommended)</em></span>
+            <input type="url" name="url" autocomplete="url" placeholder="https://pump.fun/coin/ansem" required />
+          </label>
+
+          <label class="field">
+            <span class="flabel">Ticker color <em>(optional, #hex — your colour in the terminal &amp; spinner)</em></span>
+            <div class="colorfield">
+              <input type="color" id="adcolor-swatch" value="#ff0000" aria-label="Pick ad color" />
+              <input type="text" id="adcolor" maxlength="7" placeholder="#ff0000" pattern="#?[0-9a-fA-F]{6}" />
+            </div>
+          </label>
+
+          <label class="field">
+            <span class="flabel">Email for receipt <em>(optional — required only for Stripe checkout)</em></span>
+            <input type="email" name="email" autocomplete="email" placeholder="you@example.com" />
+          </label>
+
           <label class="checkrow">
             <input type="checkbox" checked />
             <span>Show me on the public leaderboard</span>
@@ -421,10 +434,10 @@
 
           <!-- LIVE PREVIEW — mirrors the dark spinner overlay viewers see -->
           <div class="field adpreview">
-            <span class="flabel">Live preview <em>· what every viewer sees</em></span>
+            <span class="flabel">Live preview</span>
             <div class="adpreview-bar" id="adpreview-bar">
               <span class="adpreview-chip" id="prev-chip">Y</span>
-              <span class="adpreview-line" id="prev-line">Your ad here</span>
+              <span class="adpreview-line" id="prev-line">Your token here</span>
               <span class="adpreview-dots" id="prev-dots" aria-hidden="true"><i></i><i></i><i></i></span>
             </div>
           </div>
