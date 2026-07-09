@@ -378,7 +378,11 @@ function createRepo(pool) {
     },
 
     // ---------- advertiser checkout ----------
-    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, showOnLeaderboard }) {
+    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, impressionsTotal, budgetCents, showOnLeaderboard }) {
+      // impressionsTotal is the exact purchased count (floor(budget*1000/cpm)),
+      // not necessarily a multiple of 1000; budgetCents is the exact charge.
+      // Legacy price×blocks callers pass neither and keep the old behavior.
+      const impressions = Number.isFinite(impressionsTotal) ? impressionsTotal : blocks * 1000;
       return tx(async (c) => {
         // Upsert so a returning advertiser (same email) reuses their row and owns
         // many campaigns, rather than minting a disconnected advertiser per checkout.
@@ -389,11 +393,11 @@ function createRepo(pool) {
         const { rows } = await c.query(
           `insert into campaigns
              (advertiser_id, brand, ad_line, url, category, color, price_per_block_cents,
-              blocks, impressions_total, impressions_remaining, show_on_leaderboard)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10)
+              blocks, impressions_total, impressions_remaining, budget_cents, show_on_leaderboard)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11)
            returning id`,
           [adv.rows[0].id, brand || null, adLine, url, category || "other", color || null,
-           pricePerBlockCents, blocks, blocks * 1000, showOnLeaderboard !== false]
+           pricePerBlockCents, blocks, impressions, budgetCents ?? null, showOnLeaderboard !== false]
         );
         return rows[0].id;
       });
@@ -1096,26 +1100,31 @@ function createRepo(pool) {
     // Find or create a user from a Google/Apple OAuth callback, then open a
     // web session. Looks up by provider ID first, then by email. Patches any
     // missing fields on an existing account.
-    async upsertUserByOAuth({ email, googleId, appleId, referralCode, emailVerified }, sessionTtlMs) {
+    async upsertUserByOAuth({ email, googleId, appleId, twitterId, referralCode, emailVerified }, sessionTtlMs) {
       return tx(async (c) => {
         // Only a provider-verified email may match or merge into an existing
         // account — otherwise an attacker who controls an OAuth identity with an
         // unverified email claim could take over a victim's account (and its
         // balance) by email. Unverified emails are dropped; the provider id is
-        // the only trusted key.
+        // the only trusted key. X (Twitter) OAuth returns no email, so those
+        // accounts are keyed on twitter_id alone.
         const matchEmail = emailVerified ? (email || null) : null;
 
         let found = null;
         if (googleId) {
-          const r = await c.query("select id, email, google_id, apple_id from users where google_id = $1", [googleId]);
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where google_id = $1", [googleId]);
           found = r.rows[0] || null;
         }
         if (!found && appleId) {
-          const r = await c.query("select id, email, google_id, apple_id from users where apple_id = $1", [appleId]);
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where apple_id = $1", [appleId]);
+          found = r.rows[0] || null;
+        }
+        if (!found && twitterId) {
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where twitter_id = $1", [twitterId]);
           found = r.rows[0] || null;
         }
         if (!found && matchEmail) {
-          const r = await c.query("select id, email, google_id, apple_id from users where email = $1", [matchEmail]);
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where email = $1", [matchEmail]);
           found = r.rows[0] || null;
         }
 
@@ -1123,16 +1132,17 @@ function createRepo(pool) {
         if (found) {
           const sets = ["email_verified = true"];
           const vals = [found.id];
-          if (matchEmail && !found.email)   { sets.push(`email = $${vals.length + 1}`);     vals.push(matchEmail); }
-          if (googleId && !found.google_id) { sets.push(`google_id = $${vals.length + 1}`); vals.push(googleId); }
-          if (appleId && !found.apple_id)   { sets.push(`apple_id = $${vals.length + 1}`);  vals.push(appleId); }
+          if (matchEmail && !found.email)     { sets.push(`email = $${vals.length + 1}`);      vals.push(matchEmail); }
+          if (googleId && !found.google_id)   { sets.push(`google_id = $${vals.length + 1}`);  vals.push(googleId); }
+          if (appleId && !found.apple_id)     { sets.push(`apple_id = $${vals.length + 1}`);   vals.push(appleId); }
+          if (twitterId && !found.twitter_id) { sets.push(`twitter_id = $${vals.length + 1}`); vals.push(twitterId); }
           await c.query(`update users set ${sets.join(", ")} where id = $1`, vals);
           userId = found.id;
         } else {
           const r = await c.query(
-            `insert into users (email, email_verified, google_id, apple_id)
-             values ($1, true, $2, $3) returning id`,
-            [matchEmail || null, googleId || null, appleId || null]
+            `insert into users (email, email_verified, google_id, apple_id, twitter_id)
+             values ($1, true, $2, $3, $4) returning id`,
+            [matchEmail || null, googleId || null, appleId || null, twitterId || null]
           );
           userId = r.rows[0].id;
           await applyCode(c, userId, referralCode); // first sign-in only; affiliate or referral
@@ -1379,6 +1389,140 @@ function createRepo(pool) {
       }));
     },
 
+    // ---------- USDC advertiser checkout (dwell/docs/08) ----------
+    // The order row is the verification contract: the API builds a transaction
+    // matching these amounts, the advertiser's wallet signs it, and the
+    // verifier confirms the finalized transaction against this row read-only.
+
+    async createUsdcOrder({ campaignId, priceMicroUsdc, feeMicroUsdc, trancheMicroUsdc, payCurrency = "usdc", payTotalUnits, payFeeUnits, quote, minDwellOut, referencePubkey, ttlMinutes }) {
+      const { rows } = await pool.query(
+        `insert into usdc_orders
+           (campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc,
+            pay_currency, pay_total_units, pay_fee_units,
+            quote, min_dwell_out, reference_pubkey, expires_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now() + make_interval(mins => $11))
+         returning id, expires_at`,
+        [campaignId, priceMicroUsdc, feeMicroUsdc, trancheMicroUsdc,
+         payCurrency, payTotalUnits ?? priceMicroUsdc, payFeeUnits ?? feeMicroUsdc,
+         JSON.stringify(quote), minDwellOut, referencePubkey, ttlMinutes]
+      );
+      return rows[0];
+    },
+
+    // Lazy expiry rides every read: an unsigned order past its window flips to
+    // 'expired' (nothing happened on-chain, so there is nothing to clean up).
+    async getUsdcOrder(orderId) {
+      await pool.query(
+        `update usdc_orders set status = 'expired'
+          where id = $1 and status = 'awaiting_signature' and expires_at < now()`,
+        [orderId]
+      );
+      const { rows } = await pool.query(
+        `select o.*, c.status as campaign_status, c.impressions_total, c.budget_cents
+           from usdc_orders o join campaigns c on c.id = o.campaign_id
+          where o.id = $1`,
+        [orderId]
+      );
+      return rows[0] || null;
+    },
+
+    // Each build re-quotes (a built transaction is only ~60s of blockhash
+    // validity); the stored quote + slippage floor — and, on the SOL rail, the
+    // re-priced lamport amounts — track the latest build so the verifier
+    // checks what the wallet was actually shown.
+    async refreshUsdcOrderQuote(orderId, quote, minDwellOut, { payTotalUnits, payFeeUnits } = {}) {
+      await pool.query(
+        `update usdc_orders set quote = $2, min_dwell_out = $3,
+                pay_total_units = coalesce($4, pay_total_units),
+                pay_fee_units = coalesce($5, pay_fee_units)
+          where id = $1 and status = 'awaiting_signature'`,
+        [orderId, JSON.stringify(quote), minDwellOut, payTotalUnits ?? null, payFeeUnits ?? null]
+      );
+    },
+
+    async failUsdcOrder(orderId, reason, txSignature) {
+      await pool.query(
+        `update usdc_orders set status = 'failed', fail_reason = $2,
+                tx_signature = coalesce($3, tx_signature)
+          where id = $1 and status = 'awaiting_signature'`,
+        [orderId, String(reason).slice(0, 120), txSignature || null]
+      );
+    },
+
+    // The one state transition that funds a campaign from a verified on-chain
+    // payment. Mirrors markCampaignPaid's exactly-once shape (only an
+    // awaiting_signature order and a pending_payment campaign transition) and
+    // adds the token_campaign_pools row — the locked-rate source of truth:
+    //   locked rate = dwellOut × viewer share ÷ impressions bought.
+    // All bought DWELL goes to the distributor; the treasury's 30–40% leg
+    // settles via the Merkle root's treasury shortfall leaf (docs/04 §A).
+    async confirmUsdcOrder({ orderId, txSignature, dwellOut, tokenSplit, viewerShareBps }) {
+      return tx(async (c) => {
+        const ord = await c.query(
+          `update usdc_orders set status = 'confirmed', tx_signature = $2
+            where id = $1 and status = 'awaiting_signature'
+            returning campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc`,
+          [orderId, txSignature]
+        );
+        if (!ord.rows[0]) return false; // already confirmed/expired/failed — idempotent no-op
+        const o = ord.rows[0];
+
+        const { rows } = await c.query(
+          `update campaigns cmp set status = 'pending_review', paid_at = now()
+             from advertisers adv
+            where cmp.id = $1 and cmp.status = 'pending_payment'
+              and adv.id = cmp.advertiser_id
+            returning adv.email, cmp.brand, cmp.ad_line, cmp.price_per_block_cents,
+                      cmp.blocks, cmp.impressions_total, cmp.budget_cents`,
+          [o.campaign_id]
+        );
+        if (!rows[0]) {
+          // Campaign no longer fundable (cancelled, or a sibling order won the
+          // race). Throw so the whole tx — including the order flip above —
+          // rolls back; the caller marks the order failed with the signature.
+          throw Object.assign(new Error("campaign not fundable"), { code: "CAMPAIGN_NOT_FUNDABLE" });
+        }
+
+        // Fund with the EXACT charge. USDC micro units -> millicents is /10.
+        const funded = BigInt(o.price_micro_usdc) / 10n;
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+           values ('campaign_credit', $1, $2, $3)`,
+          [funded.toString(), o.campaign_id,
+           JSON.stringify({ impressions: rows[0].impressions_total, rail: "usdc", tx: txSignature })]
+        );
+        if (tokenSplit) {
+          const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+             values ('reserve_allocation', $1, $2, $3)`,
+            [tranche.toString(), o.campaign_id,
+             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: "usdc" })]
+          );
+        }
+
+        const impressions = BigInt(rows[0].impressions_total);
+        const lockedRate = (BigInt(dwellOut) * BigInt(viewerShareBps)) / 10000n / impressions;
+        await c.query(
+          `insert into token_campaign_pools
+             (campaign_id, usdc_in_micro, dwell_out_wei, to_distributor_wei,
+              to_treasury_wei, locked_rate_wei, tx_hash)
+           values ($1,$2,$3,$3,0,$4,$5)`,
+          [o.campaign_id, o.tranche_micro_usdc, String(dwellOut), lockedRate.toString(), txSignature]
+        );
+
+        return {
+          email: rows[0].email,
+          brand: rows[0].brand,
+          adLine: rows[0].ad_line,
+          pricePerBlockCents: rows[0].price_per_block_cents,
+          blocks: rows[0].blocks,
+          impressionsTotal: rows[0].impressions_total,
+          budgetCents: rows[0].budget_cents != null ? Number(rows[0].budget_cents) : null,
+        };
+      });
+    },
+
     // User-scoped gift redemption (website flow). Re-checks the user's balance
     // inside the transaction against the ledger so concurrent redeems can't spend
     // the same credits twice. Returns the redemption id, or null if short.
@@ -1510,6 +1654,23 @@ function createRepo(pool) {
            set models = excluded.models, surfaces = excluded.surfaces,
                surface_other = excluded.surface_other, updated_at = now()`,
         [userId, JSON.stringify(models), JSON.stringify(surfaces), surfaceOther]
+      );
+    },
+
+    // First-login onboarding post: true once the user has confirmed they posted
+    // the prebuilt DWELL note to their X timeline. Drives the needsPost gate on
+    // /v1/web/me — the dashboard stays locked until it's set, and accounts
+    // without it may not be paid out.
+    async hasPostedOnboarding(userId) {
+      const r = await pool.query("select onboarding_posted_at from users where id = $1", [userId]);
+      return r.rows[0]?.onboarding_posted_at != null;
+    },
+    // Self-attested — set the first time the user confirms the post. Idempotent:
+    // once stamped, the timestamp is preserved so re-confirming is a no-op.
+    async markOnboardingPosted(userId) {
+      await pool.query(
+        "update users set onboarding_posted_at = coalesce(onboarding_posted_at, now()) where id = $1",
+        [userId]
       );
     },
 

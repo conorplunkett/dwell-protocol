@@ -861,6 +861,61 @@ a { color: inherit; text-decoration: none; }
 .stripe-btn:hover { filter: brightness(1.06); }
 .stripe-btn:active { transform: translateY(1px); }
 .stripe-btn-label { line-height: 1; }
+
+/* Payment-method toggle (dwell/docs/08) — a two-segment slider. A thumb slides
+   behind the active tab; each tab reveals its .paypane. Hidden until crypto
+   checkout is enabled (script.js). Theme tokens only. */
+.paytabs {
+  position: relative; display: grid; grid-template-columns: 1fr 1fr;
+  padding: 4px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface-inset);
+}
+.paytabs-thumb {
+  position: absolute; top: 4px; left: 4px; bottom: 4px; width: calc(50% - 4px);
+  background: var(--card-dark); border: 1px solid var(--border-strong); border-radius: 9px;
+  transition: transform .2s ease; z-index: 0;
+}
+.paytabs.crypto .paytabs-thumb { transform: translateX(100%); }
+.paytab {
+  position: relative; z-index: 1; background: none; border: none; cursor: pointer;
+  padding: 10px 8px; font-family: var(--sans); font-size: var(--type-body-size);
+  font-weight: 600; color: var(--gray); transition: color .15s;
+}
+.paytab.active { color: var(--ink); }
+
+/* USDC checkout (dwell/docs/08) — hidden until $DWELL mints (script.js flag).
+   Quiet secondary treatment under the Stripe button: ink-on-white with the
+   standard 1px hairline, no third-party brand color to carry. */
+.usdc-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; width: 100%;
+  background: var(--card-dark); color: var(--ink); border: 1px solid var(--border-strong); border-radius: 12px;
+  padding: 14px 16px; font-family: var(--sans); font-size: 15px; font-weight: 500; cursor: pointer;
+  transition: border-color .15s, transform .12s;
+}
+.usdc-btn:hover { border-color: var(--gray); }
+.usdc-btn:active { transform: translateY(1px); }
+.usdc-btn strong { font-weight: 700; }
+.usdc-panel {
+  margin-top: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface-inset); display: flex; flex-direction: column; gap: 8px;
+}
+.usdc-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: var(--type-body-size); color: var(--gray);
+}
+.usdc-row strong { color: var(--ink); font-family: var(--mono); font-weight: 600; }
+.usdc-paylink {
+  display: block; text-align: center; margin-top: 4px; padding: 12px 16px; border-radius: 10px;
+  background: var(--accent); color: var(--accent-ink); font-weight: 600; text-decoration: none;
+}
+.usdc-paylink:hover { filter: brightness(1.06); }
+.usdc-copy {
+  background: none; border: none; color: var(--link); font-family: var(--sans);
+  font-size: var(--type-body-size); cursor: pointer; padding: 2px;
+}
+.usdc-status { margin: 2px 0 0; font-size: var(--type-body-size); color: var(--gray); text-align: center; }
+.usdc-status.ok { color: var(--ink); font-weight: 600; }
+.usdc-status.err { color: var(--accent-d); font-weight: 600; }
 /* Official Stripe wordmark — white on Stripe purple via currentColor. */
 .stripe-logo { height: 21px; width: auto; display: block; }
 

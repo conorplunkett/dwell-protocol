@@ -360,7 +360,36 @@ html.auth-pending #portal-loading { display: flex; }
   text-align: center;
   margin: 0;
 }
-#onboard-form { display: flex; flex-direction: column; gap: 10px; }
+#onboard-step-post,
+#onboard-step-confirm { display: flex; flex-direction: column; gap: 12px; }
+#onboard-step-post[hidden],
+#onboard-step-confirm[hidden] { display: none; }
+
+/* Prebuilt post preview — a quoted card the user is about to share. */
+.onboard-tweet-preview {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 0;
+}
+
+/* Delayed-payout warning under the post button. */
+.onboard-payout-warn {
+  font-size: 13px;
+  color: var(--err-fg);
+  background: var(--err-bg);
+  border: 1px solid var(--err-line);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  margin: 0;
+  line-height: 1.45;
+  text-align: center;
+}
 
 /* ── First-login survey (models / surfaces) ── */
 #survey-step-models,

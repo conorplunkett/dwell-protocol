@@ -4,14 +4,26 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>DWELL — Tokenomics</title>
-  <meta name="description" content="How the DWELL token economy works: advertisers pay fixed dollar CPMs, the token-side tranche (currently ~90% of each ad dollar) settles what earners are owed, and the pool splits 60/10/30 between viewer, referrer, and protocol." />
+  <meta name="description" content="How the DWELL token economy works: advertisers pay fixed dollar CPMs, 90% of every ad dollar goes to the token side, and the pool splits 60/10/30 between viewer, referrer, and protocol." />
   <link rel="canonical" href="https://dwellprotocol.com/tokenomics" />
   <meta name="theme-color" content="#ff0000" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="DWELL" />
   <meta property="og:url" content="https://dwellprotocol.com/tokenomics" />
+  <meta property="og:locale" content="en_US" />
   <meta property="og:title" content="DWELL — Tokenomics" />
-  <meta property="og:description" content="Advertisers pay fixed dollar CPMs. The token-side tranche (currently ~90%) settles what earners are owed. The pool splits 60/10/30 — viewer, referrer, protocol." />
+  <meta property="og:description" content="Advertisers pay fixed dollar CPMs. 90% of every ad dollar goes to the token side. The pool splits 60/10/30 — viewer, referrer, protocol." />
+  <meta property="og:image" content="https://dwellprotocol.com/og.png?v=20260707" />
+  <meta property="og:image:secure_url" content="https://dwellprotocol.com/og.png?v=20260707" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="DWELL — Earn crypto while you use AI." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="DWELL — Tokenomics" />
+  <meta name="twitter:description" content="Advertisers pay fixed dollar CPMs. 90% of every ad dollar goes to the token side. The pool splits 60/10/30 — viewer, referrer, protocol." />
+  <meta name="twitter:image" content="https://dwellprotocol.com/og.png?v=20260707" />
+  <meta name="twitter:image:alt" content="DWELL — Earn crypto while you use AI." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -103,6 +115,13 @@
       font-size: 13px; line-height: 1.6; color: var(--gray);
     }
 
+    .tk-not-live {
+      display: inline-block; margin-left: 10px; padding: 2px 9px;
+      font: 800 10.5px/1.6 var(--sans); letter-spacing: .03em; text-transform: uppercase;
+      color: var(--accent-d); background: rgba(var(--accent-rgb), .1);
+      border: 1px solid rgba(var(--accent-rgb), .3); border-radius: 999px; white-space: nowrap;
+    }
+
     @media (max-width: 720px) {
       .tk-flow-amt { width: 64px; font-size: 13.5px; }
       .tk-splitbar > div { font-size: 11.5px; }
@@ -114,7 +133,7 @@
   <header class="nav">
     <a class="brand" href="/">
       <span class="logo"><img src="assets/logo.svg" alt="" /></span>
-      <span class="brand-name">$DWELL</span>
+      <span class="brand-name">Dwell Protocol</span>
     </a>
     <nav class="nav-btns" aria-label="Primary">
       <a href="/products" class="navbtn">Products</a>
@@ -137,12 +156,12 @@
       <div class="tk-tablewrap">
         <table class="tk-table">
           <tbody>
-            <tr><td><strong>Name / symbol</strong></td><td class="num">DWELL</td></tr>
+            <tr><td><strong>Name / symbol</strong></td><td class="num">DWELL <span class="tk-not-live">Token not launched yet</span></td></tr>
             <tr><td><strong>Chain</strong></td><td>Solana (SPL token, minted by star.fun)</td></tr>
             <tr><td><strong>Supply</strong></td><td>1,000,000,000 — fixed. No mint authority after launch.</td></tr>
             <tr><td><strong>Launch</strong></td><td>star.fun curated raise at a <strong>$1M launch valuation</strong>. 5-day deposit window, funds held in escrow; full refund if the raise misses its target.</td></tr>
             <tr><td><strong>Equity rights</strong></td><td><strong>None.</strong> Holding DWELL confers zero equity rights in the project company. The project adopts the <strong>Bedrock framework</strong>: the independent Bedrock Foundation holds preference equity and a golden share in the company, and founders retain a minimum of 70% ordinary shares — token and equity are structurally separated.</td></tr>
-            <tr><td><strong>Bedrock buyout</strong></td><td>The only path from token to equity is Bedrock's constitutional buyout: a party demonstrating ≥30% of total token supply may trigger a mandatory buyout of the rest (7-day TWAP × 1.30), and must qualify as an accredited investor and pass KYC/AML to acquire the Foundation's equity.</td></tr>
+            <tr><td><strong>Bedrock buyout</strong></td><td>The only path from token to equity is Bedrock's constitutional buyout: a party demonstrating ≥30% of total token supply may trigger a mandatory buyout of the rest (7-day TWAP × 1.30), and must be accredited and pass KYC/AML to acquire the Foundation's equity.</td></tr>
             <tr><td><strong>Liquidity</strong></td><td>Meteora DWELL/USDC pool seeded with <strong>60% of supply</strong> plus liquidity from the raise proceeds.</td></tr>
           </tbody>
         </table>
@@ -173,10 +192,9 @@
     <section class="tk-section" id="dollar">
       <p class="tk-lead" style="margin:0 auto 28px;">
         Advertisers buy ad impressions for <strong>fixed dollar prices</strong>.<br />
-        The token-side tranche of each campaign — <strong>currently ~90%</strong> of the ad
-        dollar, a configuration the protocol can change — is converted into DWELL on the
-        open market to settle what that campaign’s viewers, referrers, and the
-        protocol are owed.
+        <strong>90%</strong> of every ad dollar is converted into DWELL on the open
+        market and split between the person who watched the ad, the person who
+        referred them, and the protocol.
       </p>
       <h2>The advertiser dollar</h2>
       <p class="tk-sub">Advertisers pay a <strong>fixed dollar CPM</strong> by card.
@@ -191,7 +209,8 @@
         card leg, pushing ~$97.50 to the token side.</p>
       <p class="tk-note">Users earn <strong>dwells</strong> as they watch — token-denominated, not a
         dollar balance. At token launch the dwell ledger is snapshotted and converts at a
-        fixed, pre-announced rate (<strong>1,000 dwells = 12,000 $DWELL</strong>) from the ad-rewards airdrop; from there their value floats with the market.</p>
+        fixed, pre-announced rate (<strong>1,000 dwells = 12,000 $DWELL</strong>, the $1M
+        valuation) from the ad-rewards airdrop; from there their value floats with the market.</p>
     </section>
 
     <!-- THE SPLIT -->
@@ -255,17 +274,6 @@
           </tbody>
         </table>
       </div>
-    </section>
-
-    <!-- TRANSPARENCY -->
-    <section class="tk-section" id="transparency">
-      <h2>Transparency</h2>
-      <p class="tk-sub">Once the token is live, this section lists <strong>completed</strong>
-        campaign conversions — date, campaign, amount converted, execution price, and the
-        locked rate — published after the fact. These reports describe settlement that has
-        already happened. They are not a commitment to any future conversion, percentage,
-        or schedule; the protocol may change or stop the mechanic at any time.</p>
-      <p class="tk-note">No entries yet — populated from the first live campaign onward.</p>
     </section>
 
     <!-- RISKS -->

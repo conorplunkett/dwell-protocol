@@ -4,6 +4,7 @@ const { createRepo } = require("./repo");
 const { createStripe } = require("./stripe");
 const { createMailer } = require("./mailer");
 const { createRateLimiter } = require("./ratelimit");
+const { createSolana } = require("./solana");
 
 function loadConfig(env = process.env) {
   const siteUrl = env.SITE_URL || "https://dwellprotocol.com";
@@ -47,6 +48,8 @@ function loadConfig(env = process.env) {
     appleTeamId: env.APPLE_TEAM_ID || "",
     appleKeyId: env.APPLE_KEY_ID || "",
     applePrivateKey: (env.APPLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    twitterClientId: env.TWITTER_CLIENT_ID || "",
+    twitterClientSecret: env.TWITTER_CLIENT_SECRET || "",
     // mail
     mailProvider: env.MAIL_PROVIDER || "console",
     resendApiKey: env.RESEND_API_KEY,
@@ -65,6 +68,21 @@ function loadConfig(env = process.env) {
     viewerShareBps: parseInt(env.VIEWER_SHARE_BPS || "6000", 10), // viewer's share of the reserve tranche
     referrerShareBps: parseInt(env.REFERRER_SHARE_BPS || "1000", 10), // referrer's share (falls to protocol when unreferred)
     reserveTrancheBps: parseInt(env.RESERVE_TRANCHE_BPS || "9000", 10), // slice of gross routed to the token side
+
+    // ---- USDC advertiser checkout (dwell/docs/08) — non-custodial pay-and-swap ----
+    // The whole surface is gated on DWELL_MINT: until the $DWELL SPL mint exists
+    // (star.fun launch), every /v1/ads/usdc route 404s and none of this is read.
+    // No signing keys here or anywhere — the backend only builds unsigned
+    // transactions and verifies finalized ones read-only.
+    dwellMint: env.DWELL_MINT || "",
+    usdcMint: env.USDC_MINT || "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // canonical USDC on Solana mainnet (6 dp)
+    solanaRpcUrl: env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
+    jupiterBaseUrl: env.JUPITER_BASE_URL || "https://lite-api.jup.ag/swap/v1",
+    treasuryUsdcAta: env.TREASURY_USDC_ATA || "",           // Squads treasury vault's USDC token account — the 10% leg
+    treasurySolAccount: env.TREASURY_SOL_ACCOUNT || "",     // Squads treasury vault address for native-SOL fee legs; empty = SOL rail off
+    distributorDwellAta: env.DISTRIBUTOR_DWELL_ATA || "",   // rewards distributor vault's DWELL token account — the swap output
+    maxSlippageBps: parseInt(env.MAX_SLIPPAGE_BPS || "100", 10), // swap slippage bound; the verifier enforces the implied minOut
+    usdcOrderTtlMinutes: parseInt(env.USDC_ORDER_TTL_MINUTES || "30", 10), // price validity window; each built tx is only ~60s (blockhash)
 
     // ---- brand — the DWELL deployment bills and writes copy under its own name ----
     brandName: env.BRAND_NAME || "DWELL",
@@ -112,16 +130,23 @@ async function boot(env = process.env) {
     }
   }
 
+  // USDC checkout (dwell/docs/08): enabling it needs the full account triple —
+  // half-configured would build transactions that can never verify.
+  if (config.dwellMint && !(config.treasuryUsdcAta && config.distributorDwellAta)) {
+    throw new Error("DWELL_MINT is set — TREASURY_USDC_ATA and DISTRIBUTOR_DWELL_ATA are required too");
+  }
+
   const { Pool } = require("pg");
   const pool = new Pool(pgPoolConfig(env));
   const repo = createRepo(pool);
   const stripe = createStripe(config.stripeSecretKey);
   const mailer = createMailer(config);
+  const solana = createSolana({ config });
   const rateLimiter = createRateLimiter({
     capacity: config.rateLimitCapacity,
     refillPerSec: config.rateLimitRefillPerSec,
   });
-  return { deps: { repo, stripe, mailer, rateLimiter, config }, pool };
+  return { deps: { repo, stripe, mailer, solana, rateLimiter, config }, pool };
 }
 
 module.exports = { boot, loadConfig, pgPoolConfig };
