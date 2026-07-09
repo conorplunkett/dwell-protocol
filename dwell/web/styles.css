@@ -888,15 +888,17 @@ a { color: inherit; text-decoration: none; }
   font-weight: 600; color: var(--gray); transition: color .15s; white-space: nowrap;
 }
 .paytab.active { color: var(--ink); }
-/* "10% boost" marker on the $DWELL tab */
+/* "+10%" boost marker on the $DWELL tab — a small green (functional-success)
+   corner chip, floated so the "Pay with $DWELL" label stays centered. */
 .paytab-badge {
-  font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .02em;
-  line-height: 1; padding: 3px 5px; border-radius: 5px;
-  color: var(--accent-ink); background: var(--accent);
+  position: absolute; top: 3px; right: 4px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .02em;
+  line-height: 1; padding: 2px 4px; border-radius: 5px;
+  color: var(--ok-fg); background: var(--ok-bg); border: 1px solid var(--ok-line);
 }
 @media (max-width: 560px) {
   .paytab { flex-direction: column; gap: 3px; font-size: 12px; padding: 8px 4px; }
-  .paytab-badge { font-size: 9px; padding: 2px 4px; }
+  .paytab-badge { position: static; font-size: 9px; padding: 2px 4px; }
 }
 
 /* USDC checkout (dwell/docs/08) — hidden until $DWELL mints (script.js flag).
@@ -911,13 +913,15 @@ a { color: inherit; text-decoration: none; }
 .usdc-btn:hover { border-color: var(--gray); }
 .usdc-btn:active { transform: translateY(1px); }
 .usdc-btn strong { font-weight: 700; }
-/* "+10% impressions" pill on the $DWELL pay button */
+/* "+10% impressions" pill on the $DWELL pay button — green (functional-success) */
 .usdc-btn-boost {
   font-family: var(--mono); font-size: 11px; font-weight: 700; line-height: 1;
-  padding: 4px 7px; border-radius: 6px; color: var(--accent-ink); background: var(--accent);
+  padding: 4px 7px; border-radius: 6px;
+  color: var(--ok-fg); background: var(--ok-bg); border: 1px solid var(--ok-line);
 }
-/* the $DWELL boost row in the panel reads in brand red */
-.usdc-row-boost strong { color: var(--accent-d); }
+/* the $DWELL boost row in the panel reads in the same green (the doubled class
+   outranks the generic `.usdc-row strong` ink color regardless of source order) */
+.usdc-row.usdc-row-boost strong { color: var(--ok-fg); }
 .usdc-panel {
   margin-top: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface-inset); display: flex; flex-direction: column; gap: 8px;
