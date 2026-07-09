@@ -1128,13 +1128,15 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const user = await repo.userForSession(sessionFrom(req, body, query));
     if (!user) return json(res, 401, { error: "not signed in" });
     const bal = await repo.balanceForUser(user.id);
-    const [hasSurvey, posted] = await Promise.all([
+    const [hasSurvey, posted, code] = await Promise.all([
       repo.hasOnboardingSurvey(user.id),
       repo.hasPostedOnboarding(user.id),
+      repo.getOrCreateReferralCode(user.id),
     ]);
     json(res, 200, {
       email: user.email, balanceUsd: bal.balanceMillicents / 100000,
       needsSurvey: !hasSurvey, needsPost: !posted,
+      referralLink: `${config.siteUrl}/portal.html?ref=${code}`,
     });
   });
 

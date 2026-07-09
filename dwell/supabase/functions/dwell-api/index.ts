@@ -4088,13 +4088,15 @@ route("GET", "/v1/web/me", async (ctx: any) => {
   const user = await repo.userForSession(sessionFrom(ctx));
   if (!user) return json(401, { error: "not signed in" });
   const bal = await repo.balanceForUser(user.id);
-  const [hasSurvey, posted] = await Promise.all([
+  const [hasSurvey, posted, code] = await Promise.all([
     repo.hasOnboardingSurvey(user.id),
     repo.hasPostedOnboarding(user.id),
+    repo.getOrCreateReferralCode(user.id),
   ]);
   return json(200, {
     email: user.email, balanceUsd: bal.balanceMillicents / 100000,
     needsSurvey: !hasSurvey, needsPost: !posted,
+    referralLink: `${config.siteUrl}/portal.html?ref=${code}`,
   });
 });
 // Sign out: revoke the session server-side so the bearer token is dead even if

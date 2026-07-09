@@ -211,6 +211,12 @@ html.auth-pending #portal-loading { display: flex; }
   color: var(--ink);
 }
 
+/* Official X brand mark — white glyph on black. Brand-mark color, treated like
+   the favicon exception in AGENTS.md (third-party logo, not a theme token). The
+   .provider-icon uses currentColor, so setting color:#fff whitens the glyph. */
+#twitter-btn { background: #000; color: #fff; border-color: #000; }
+#twitter-btn:hover { background: #000; border-color: #333; color: #fff; }
+
 /* Provider icon — monochrome mark, follows the button's text color */
 .provider-icon {
   width: 18px;
