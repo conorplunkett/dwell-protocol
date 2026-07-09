@@ -11,7 +11,7 @@
 // design-system source of truth, theme.css, so the card can never drift from
 // the palette (AGENTS.md ▸ Design system — never hardcode a color).
 //
-// Writes (overwrites):  og.png  at the repo root.
+// Writes (overwrites):  web/og.png  and  web/og-referral.png.
 // Run:  make og   (or:  node tools/gen-og.mjs)
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -63,12 +63,17 @@ const tok = (name) => {
 
 const C = {
   accentD: tok("--accent-d"),
-  gradA: tok("--accent-grad-a"),
-  gradB: tok("--accent-grad-b"),
   cream: tok("--bg-cream"),
   ink: tok("--ink"),
   ink2: tok("--ink-2"),
 };
+
+// The eight-dot brand mark, inlined as a data URI so the render is
+// deterministic and works offline (same reasoning as the fonts below). The
+// SVG is the brand asset itself — the same file the site nav links.
+const logoData = `data:image/svg+xml;base64,${readFileSync(
+  join(root, "web", "assets", "logo.svg"),
+).toString("base64")}`;
 
 const fontData = (file) =>
   `data:font/woff2;base64,${readFileSync(join(__dirname, "fonts", file)).toString("base64")}`;
@@ -87,10 +92,6 @@ const cardHtml = ({ h1, note, sub }) => `<!doctype html><html><head><meta charse
     font-family: "Inter"; font-style: normal; font-weight: 100 900;
     src: url("${fontData("Inter-latin.woff2")}") format("woff2");
   }
-  @font-face {
-    font-family: "JetBrains Mono"; font-style: normal; font-weight: 700;
-    src: url("${fontData("JetBrainsMono-700-latin.woff2")}") format("woff2");
-  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 1200px; height: 630px; }
   body {
@@ -102,12 +103,7 @@ const cardHtml = ({ h1, note, sub }) => `<!doctype html><html><head><meta charse
   .pad { padding: 76px 84px; height: 100%; display: flex; flex-direction: column; }
 
   .top { display: flex; align-items: center; gap: 16px; }
-  .logo {
-    width: 54px; height: 54px; border-radius: 14px;
-    background: linear-gradient(160deg, ${C.gradA}, ${C.gradB});
-    display: flex; align-items: center; justify-content: center;
-    font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 27px; color: #fff;
-  }
+  .logo { width: 54px; height: 54px; display: block; }
   .wordmark { font-weight: 700; font-size: 28px; letter-spacing: -0.02em; }
 
   .mid { flex: 1; display: flex; flex-direction: column; justify-content: center; }
@@ -119,7 +115,7 @@ const cardHtml = ({ h1, note, sub }) => `<!doctype html><html><head><meta charse
 <body>
   <div class="pad">
     <div class="top">
-      <div class="logo">F$</div>
+      <img class="logo" src="${logoData}" alt="" />
       <div class="wordmark">DWELL</div>
     </div>
     <div class="mid">
@@ -130,24 +126,22 @@ const cardHtml = ({ h1, note, sub }) => `<!doctype html><html><head><meta charse
   </div>
 </body></html>`;
 
-// Every link-preview image we ship. The default (og.png) is the homepage card;
-// og-referral.png is the invite card a member's referral link
-// (redeem.html?ref=…) previews as. Note the referral card says "earn" rather
-// than "get" — there's no "your first month is free" mechanic (the old $20
-// referral bonus is retired; a referrer now earns a 10% affiliate cut of what
-// their friend earns, not a gift for the friend). "Earn a free month" stays
-// true: use the AI you already use, credits accrue from ad revenue, and a
-// month of Claude Pro is a real redeemable amount (see the redeem.html plans).
+// Every link-preview image we ship. The default (og.png) is the homepage card
+// and states the offer in the homepage's own words ("Earn crypto while you use
+// AI"). og-referral.png is the invite card a member's referral link
+// (portal?ref=…) previews as — the friend earns $DWELL for watching ads, the
+// referrer a 10% share of what the friend earns, so the card promises only
+// what the invited friend actually gets.
 const CARDS = [
   {
     file: "og.png",
-    h1: `Get Claude <span class="pop">for free.</span>`,
-    sub: "Ads while your AI thinks.",
+    h1: `Earn <span class="pop">crypto</span> while you use AI.`,
+    sub: "One sponsored line while your AI thinks.",
   },
   {
     file: "og-referral.png",
     note: "A friend invited you.",
-    h1: `Earn a <span class="pop">free month</span> of Claude.`,
+    h1: `Earn <span class="pop">$DWELL</span> while you use AI.`,
   },
 ];
 
