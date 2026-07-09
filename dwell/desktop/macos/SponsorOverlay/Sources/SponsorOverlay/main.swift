@@ -157,8 +157,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func bootstrap() {
         if demoMode {
-            ads = [Ad(id: "demo-1", brand: "Linear", line: "Plan your next sprint faster",
-                      url: "https://linear.app", cat: "dev-tools")]
+            ads = [Ad(id: "demo-1", brand: "$ansem", line: "the black bull",
+                      url: "https://dwellprotocol.com/go/ansem", cat: "crypto")]
             rotateAd()
             NSLog("[dwell] DEMO MODE: overlay follows any focused window; events log locally")
             return

@@ -4,14 +4,10 @@
 // Each entry carries a little brand logo chip (initial + brand color) shown
 // before the name in the moving banner.
 const TICKER_ADS = [
-  { brand: "Ramp", logo: "R", color: "#ffd54a", ink: "#1b1e25", text: "Save time and money on every dollar you spend" },
-  { brand: "Linear", logo: "L", color: "#5b5bd6", ink: "#fff", text: "Issue tracking built for high-performance teams" },
-  { brand: "Vercel", logo: "△", color: "#000", ink: "#fff", text: "Ship your agent to production in seconds" },
-  { brand: "Neon", logo: "N", color: "#00e599", ink: "#04130a", text: "Serverless Postgres your agent can branch" },
-  { brand: "Resend", logo: "R", color: "#111", ink: "#fff", text: "The email API built for developers" },
-  { brand: "Fluidstack", logo: "F", color: "#1d6cff", ink: "#fff", text: "Building 10GW of compute. Join us." },
-  { brand: "Tuple", logo: "T", color: "#5d5fef", ink: "#fff", text: "Remote pair programming, done right" },
-  { brand: "Stripe", logo: "S", color: "#635bff", ink: "#fff", text: "Financial infrastructure for the internet" },
+  { brand: "$ansem", logo: "🐂", color: "#0a0a0a", ink: "#fff", text: "The black bull runs" },
+  { brand: "$troll", logo: "🧌", color: "#3f6212", ink: "#fff", text: "Troll szn is upon us" },
+  { brand: "$pepe", logo: "🐸", color: "#4c9a2a", ink: "#fff", text: "The most memeable memecoin on Solana" },
+  { brand: "$chillguy", logo: "😎", color: "#d2a679", ink: "#1b1e25", text: "Just a chill guy" },
 ];
 (function buildTicker() {
   const track = document.getElementById("ticker-track");
@@ -47,12 +43,10 @@ if (wordStock) {
 // Keep each line short — it must fit ONE line in the demo card at both desktop
 // and mobile widths (verified per-ad; see styles.css .brand-line).
 const ADS = [
-  { chip: "R", color: "#ffd54a", ink: "#1b1e25", text: "Ramp · Spend smarter" },
-  { chip: "L", color: "#5b5bd6", ink: "#fff", text: "Linear · Issue tracking" },
-  { chip: "△", color: "#000", ink: "#fff", text: "Vercel · Ship to prod" },
-  { chip: "N", color: "#00e599", ink: "#04130a", text: "Neon · Postgres, branched" },
-  { chip: "R", color: "#111", ink: "#fff", text: "Resend · Email for devs" },
-  { chip: "F", color: "#1d6cff", ink: "#fff", text: "Fluidstack · GPU compute" },
+  { chip: "🐂", color: "#0a0a0a", ink: "#fff", text: "$ansem · The black bull" },
+  { chip: "🧌", color: "#3f6212", ink: "#fff", text: "$troll · Troll szn" },
+  { chip: "🐸", color: "#4c9a2a", ink: "#fff", text: "$pepe · Feels good man" },
+  { chip: "😎", color: "#d2a679", ink: "#1b1e25", text: "$chillguy · Just a chill guy" },
 ];
 let ai = 0;
 const rotator = document.getElementById("brand-line");

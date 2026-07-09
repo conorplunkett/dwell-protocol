@@ -6,16 +6,10 @@
 // is empty no ad shows at all.
 (function (g) {
   g.BB_ADS = [
-    { brand: "Fluidstack", chip: "F", color: "#1d6cff", ink: "#fff", line: "building 10GW of compute — join us.", url: "https://dwellprotocol.com/go/fluidstack", cat: "infra" },
-    { brand: "Ramp", chip: "R", color: "#ffd54a", ink: "#1b1e25", line: "save time and money", url: "https://dwellprotocol.com/go/ramp", cat: "finance" },
-    { brand: "Linear", chip: "L", color: "#5b5bd6", ink: "#fff", line: "issue tracking built for speed", url: "https://dwellprotocol.com/go/linear", cat: "devtools" },
-    { brand: "Tuple", chip: "T", color: "#7c3aed", ink: "#fff", line: "the remote pairing app devs love", url: "https://dwellprotocol.com/go/tuple", cat: "devtools" },
-    { brand: "Vercel", chip: "△", color: "#000", ink: "#fff", line: "ship your agent to prod", url: "https://dwellprotocol.com/go/vercel", cat: "infra" },
-    { brand: "Neon", chip: "N", color: "#00e599", ink: "#04130a", line: "Postgres your agent can branch", url: "https://dwellprotocol.com/go/neon", cat: "infra" },
-    { brand: "Resend", chip: "R", color: "#111", ink: "#fff", line: "email for developers", url: "https://dwellprotocol.com/go/resend", cat: "devtools" },
-    { brand: "querybear", chip: "Q", color: "#f59e0b", ink: "#1b1e25", line: "talk to your database with MCP", url: "https://dwellprotocol.com/go/querybear", cat: "devtools" },
-    { brand: "Solo", chip: "S", color: "#0ea5e9", ink: "#fff", line: "a better place to run your agents", url: "https://dwellprotocol.com/go/solo", cat: "infra" },
-    { brand: "Liner", chip: "L", color: "#10b981", ink: "#fff", line: "the most performant & affordable search", url: "https://dwellprotocol.com/go/liner", cat: "ai" }
+    { brand: "$ansem", chip: "🐂", color: "#0a0a0a", ink: "#fff", line: "the black bull", url: "https://dwellprotocol.com/go/ansem", cat: "crypto" },
+    { brand: "$troll", chip: "🧌", color: "#3f6212", ink: "#fff", line: "troll szn is upon us", url: "https://dwellprotocol.com/go/troll", cat: "crypto" },
+    { brand: "$pepe", chip: "🐸", color: "#4c9a2a", ink: "#fff", line: "the most memeable memecoin", url: "https://dwellprotocol.com/go/pepe", cat: "crypto" },
+    { brand: "$chillguy", chip: "😎", color: "#d2a679", ink: "#1b1e25", line: "just a chill guy", url: "https://dwellprotocol.com/go/chillguy", cat: "crypto" }
   ];
 
   // The mock ad shown in Test Mode. Deliberately obvious so it can never be

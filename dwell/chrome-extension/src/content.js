@@ -109,9 +109,9 @@
   bar.className = "bb-bar";
   bar.setAttribute("role", "complementary");
   bar.innerHTML =
-    '<span class="bb-chip">R</span>' +
-    '<span class="bb-name">Ramp</span>' +
-    '<span class="bb-line">save time and money</span>';
+    '<span class="bb-chip">🐂</span>' +
+    '<span class="bb-name">$ansem</span>' +
+    '<span class="bb-line">the black bull</span>';
   const elChip = bar.querySelector(".bb-chip");
   const elName = bar.querySelector(".bb-name");
   const elLine = bar.querySelector(".bb-line");

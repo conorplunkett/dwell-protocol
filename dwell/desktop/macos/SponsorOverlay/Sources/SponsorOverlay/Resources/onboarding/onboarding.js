@@ -30,9 +30,9 @@
 
   // Rotating sponsor lines for the live demo pill.
   var ADS = [
-    { chip: "L", color: "#5b5bd6", ink: "#fff",     brand: "Linear", line: "issue tracking built for speed" },
-    { chip: "R", color: "#ffd54a", ink: "#1b1e25",  brand: "Ramp",   line: "save time and money" },
-    { chip: "△", color: "#000", ink: "#fff",   brand: "Vercel", line: "ship your agent to prod" },
+    { chip: "🐂", color: "#0a0a0a", ink: "#fff",    brand: "$ansem",    line: "the black bull" },
+    { chip: "🧌", color: "#3f6212", ink: "#fff",    brand: "$troll",    line: "troll szn" },
+    { chip: "🐸", color: "#4c9a2a", ink: "#fff",    brand: "$pepe",     line: "feels good man" },
   ];
 
   var NEXT_LABEL = ["Get started", "Continue", "Continue", "Continue", "Open Dwell"];
