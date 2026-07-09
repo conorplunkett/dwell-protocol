@@ -1,26 +1,24 @@
-// --- 3D float layer: cursor tilt + rainbow bloom + specular sheen -----------
-// A verbatim port of the "floating card" interaction from the Roster
-// Candidate/Company card design handoff (prototype ids 3a/3b): cards tilt
-// toward the cursor with a critically-damped spring, pop on hover, bloom a
-// rainbow halo from underneath, and catch a moving specular glare. Only the
-// physics + sheen layer of that handoff is implemented here — nothing else.
+// --- 3D float layer: cursor tilt + grey shadow + soft gloss -----------------
+// Adapted from the "floating card" interaction in the Roster Candidate/Company
+// card design handoff (prototype ids 3a/3b), reduced to a plain 3D block: each
+// target leans toward the cursor with a critically-damped spring, pops on
+// hover, and casts a grey drop shadow that deepens and shifts as it lifts — so
+// it reads as a solid block rising off the page. A soft white gloss tracks the
+// pointer. No rainbow.
 //
 // Each target is wrapped at runtime in a .r3d perspective container, becomes
-// the tilting .r3d-card, and gets a .r3d-glow (behind) and .r3d-sheen (on top)
-// injected. One requestAnimationFrame loop lerps every channel toward its
-// target. Honors prefers-reduced-motion: the halo just fades, no tilt/sheen.
+// the tilting .r3d-card, and gets a .r3d-sheen (gloss) injected. One
+// requestAnimationFrame loop lerps every channel toward its target. Honors
+// prefers-reduced-motion: the CSS falls back to a simple hover lift, no tilt.
 (function float3d() {
   // Which lander surfaces float. `display` sets the generated wrapper's box so
-  // the host layout (nav flex row, download grid, form column) is preserved.
-  //  · spinning logo      → the eight-dot brand mark in the nav
-  //  · ad logo            → the sponsor brand chips (demo + live preview)
-  //  · screenshots        → the framed product windows in the surfaces showcase
-  //  · install buttons    → the Chrome / Mac quick-install buttons
-  //  · ad purchase modal  → the advertiser checkout card
+  // the host layout (hero demo grid, download grid, form column) is preserved.
+  //  · stock spinner block + with-dwell block → the two before/after demo cards
+  //  · screenshots      → the framed product windows in the surfaces showcase
+  //  · install buttons  → the Chrome / Mac quick-install buttons
+  //  · ad purchase card → the advertiser checkout card
   var TARGETS = [
-    { sel: ".nav .logo", display: "inline-block" },
-    { sel: ".brandchip", display: "inline-block" },
-    { sel: ".adpreview-chip", display: "inline-block" },
+    { sel: ".demo .demo-card", display: "block" },
     { sel: ".surfaces .win", display: "block" },
     { sel: ".downloads .dl-btn", display: "block" },
     { sel: ".advertisers .adv-card", display: "block" },
@@ -34,20 +32,16 @@
     var w = document.createElement("span");
     w.className = "r3d";
     w.style.display = display;
-    // Keep block wrappers from collapsing the target's own width/centering.
-    if (display === "block") w.style.width = "100%";
+    if (display === "block") w.style.width = "100%"; // fill the host cell like the target did
     el.parentNode.insertBefore(w, el);
 
-    var glow = document.createElement("span");
-    glow.className = "r3d-glow";
     var sheen = document.createElement("span");
     sheen.className = "r3d-sheen";
 
-    w.appendChild(glow);      // behind the card
     w.appendChild(el);        // the card itself
     el.classList.add("r3d-card");
-    el.appendChild(sheen);    // clipped to the card's rounded rect
-    return { wrap: w, card: el, glow: glow, sheen: sheen };
+    el.appendChild(sheen);    // gloss, clipped to the card's rounded rect
+    return { wrap: w, card: el, sheen: sheen };
   }
 
   function boot() {
@@ -62,19 +56,12 @@
 
     var reduce = window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    if (reduce) {
-      // Reduced motion: no tilt/sheen, just fade the rainbow halo on hover.
-      wraps.forEach(function (st) {
-        st.wrap.addEventListener("pointerenter", function () { st.glow.style.opacity = "0.85"; });
-        st.wrap.addEventListener("pointerleave", function () { st.glow.style.opacity = "0"; });
-      });
-      return;
-    }
+    // Reduced motion: the CSS hover fallback handles it — no tilt loop.
+    if (reduce) return;
 
     var states = wraps.map(function (m) {
       return {
-        wrap: m.wrap, card: m.card, glow: m.glow, sheen: m.sheen,
+        wrap: m.wrap, card: m.card, sheen: m.sheen,
         rx: 0, ry: 0, s: 1, g: 0, lift: 0,
         trx: 0, try_: 0, ts: 1, tg: 0, tlift: 0,
         mx: 50, my: 50, tmx: 50, tmy: 50,
@@ -111,9 +98,14 @@
           "translateY(" + (-6 * st.lift).toFixed(2) + "px) rotateX(" +
           st.rx.toFixed(2) + "deg) rotateY(" + st.ry.toFixed(2) + "deg) scale(" +
           st.s.toFixed(3) + ")";
-        st.glow.style.opacity = st.g.toFixed(3);
-        st.glow.style.backgroundPosition = st.mx.toFixed(1) + "% " + st.my.toFixed(1) + "%";
-        st.sheen.style.opacity = (st.g * 0.9).toFixed(3);
+        // Grey shadow: offset opposite the horizontal tilt, deeper as it lifts.
+        var ox = (-st.ry * 0.9).toFixed(1);
+        var oy = (12 + st.lift * 10).toFixed(1);
+        var blur = (34 + st.g * 22).toFixed(0);
+        var alpha = (0.26 + st.g * 0.16).toFixed(3);
+        st.card.style.boxShadow =
+          ox + "px " + oy + "px " + blur + "px -20px rgba(17,19,25," + alpha + ")";
+        st.sheen.style.opacity = (st.g * 0.7).toFixed(3);
         st.sheen.style.setProperty("--mx", st.mx.toFixed(1) + "%");
         st.sheen.style.setProperty("--my", st.my.toFixed(1) + "%");
       });

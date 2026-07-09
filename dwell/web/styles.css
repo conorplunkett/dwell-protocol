@@ -1515,51 +1515,41 @@ a { color: inherit; text-decoration: none; }
 .wl-adv-row .wl-adv { width: 100%; }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   3D FLOAT LAYER — the "floating card" physics + sheen from the Roster
-   Candidate/Company card handoff (prototype ids 3a/3b), lifted verbatim as a
-   reusable interaction. A wrapper (.r3d, generated in float3d.js) gives each
-   target perspective; the target itself becomes the tilting .r3d-card; a
-   rainbow bloom (.r3d-glow) sits behind it and a specular glare (.r3d-sheen)
-   rides on top. All motion is driven by one rAF spring loop in float3d.js —
-   these rules only stage the layers. Honors prefers-reduced-motion (the loop
-   skips tilt/sheen and just fades the halo).
-
-   The design system's single "colour" is a cosmic-rainbow texture, only ever
-   revealed via this bloom. We vendor it as a self-contained conic gradient so
-   no image asset is needed. */
-:root {
-  --cp-rainbow: conic-gradient(from 0deg at 50% 50%,
-    #ff0040, #ff8a00, #ffe600, #37ff6b, #00e0ff, #4d5bff, #b026ff, #ff2fb0, #ff0040);
-}
-
+   3D FLOAT LAYER — the "floating block" physics from the Roster card handoff,
+   reduced to a plain 3D tilt with a grey drop shadow (no rainbow). A wrapper
+   (.r3d, generated in float3d.js) gives each target perspective; the target
+   becomes the tilting .r3d-card, which leans toward the cursor on a
+   critically-damped spring, pops on hover, and casts a grey shadow that
+   deepens and shifts as it lifts — so it reads as a solid block rising off the
+   page. A soft white gloss (.r3d-sheen) tracks the pointer across it. Driven
+   by one rAF loop in float3d.js. Honors prefers-reduced-motion (falls back to
+   a simple CSS hover lift, no tilt/gloss). */
 .r3d { position: relative; perspective: 1000px; }
 .r3d-card {
   position: relative; z-index: 1;
-  transform-style: preserve-3d; will-change: transform;
-  /* The rAF loop writes transform every frame — a CSS transition here would
-     fight it and lag. */
+  transform-style: preserve-3d; will-change: transform, box-shadow;
+  /* The rAF loop writes transform + box-shadow every frame — a CSS transition
+     here would fight it and lag. */
   transition: none;
-}
-.r3d-glow {
-  position: absolute; inset: -18px; z-index: 0; border-radius: 30px;
-  background-image: var(--cp-rainbow);
-  background-size: 150% 150%; background-position: center;
-  filter: blur(30px) saturate(1.4);
-  opacity: 0; pointer-events: none;
 }
 .r3d-sheen {
   position: absolute; inset: 0; z-index: 5; border-radius: inherit;
   pointer-events: none; opacity: 0; mix-blend-mode: screen;
   background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%),
-    rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 60%);
+    rgba(255, 255, 255, .4), rgba(255, 255, 255, 0) 60%);
 }
 @media (prefers-reduced-motion: reduce) {
-  .r3d-glow { transition: opacity .3s ease; }
+  .r3d-card { transition: transform .25s ease, box-shadow .25s ease; }
+  .r3d:hover .r3d-card {
+    transform: translateY(-4px);
+    box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .38);
+  }
+  .r3d-sheen { display: none; }
 }
 
-/* Safety net: a floating card's hover tilt/scale (and its halo) must never
-   extend the document width. overflow-x:clip keeps vertical overflow visible
-   so the bloom still spills above/below — same trick as .demo above. */
+/* Safety net: a floating block's hover tilt/scale must never extend the
+   document width. overflow-x:clip keeps vertical overflow visible — same trick
+   as .demo above. */
 .downloads, .advertisers { overflow-x: clip; }
 
 /* deploy-trigger: 2026-07-07 rebrand cutover — safe to remove */
