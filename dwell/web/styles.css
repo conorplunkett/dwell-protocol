@@ -1514,4 +1514,42 @@ a { color: inherit; text-decoration: none; }
 /* "Want to advertise?" spans the full waitlist row (input + button width). */
 .wl-adv-row .wl-adv { width: 100%; }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   3D FLOAT LAYER — the "floating block" physics from the Roster card handoff,
+   reduced to a plain 3D tilt with a grey drop shadow (no rainbow). A wrapper
+   (.r3d, generated in float3d.js) gives each target perspective; the target
+   becomes the tilting .r3d-card, which leans toward the cursor on a
+   critically-damped spring, pops on hover, and casts a grey shadow that
+   deepens and shifts as it lifts — so it reads as a solid block rising off the
+   page. A soft white gloss (.r3d-sheen) tracks the pointer across it. Driven
+   by one rAF loop in float3d.js. Honors prefers-reduced-motion (falls back to
+   a simple CSS hover lift, no tilt/gloss). */
+.r3d { position: relative; perspective: 1000px; }
+.r3d-card {
+  position: relative; z-index: 1;
+  transform-style: preserve-3d; will-change: transform, box-shadow;
+  /* The rAF loop writes transform + box-shadow every frame — a CSS transition
+     here would fight it and lag. */
+  transition: none;
+}
+.r3d-sheen {
+  position: absolute; inset: 0; z-index: 5; border-radius: inherit;
+  pointer-events: none; opacity: 0; mix-blend-mode: screen;
+  background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, .4), rgba(255, 255, 255, 0) 60%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .r3d-card { transition: transform .25s ease, box-shadow .25s ease; }
+  .r3d:hover .r3d-card {
+    transform: translateY(-4px);
+    box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .38);
+  }
+  .r3d-sheen { display: none; }
+}
+
+/* Safety net: a floating block's hover tilt/scale must never extend the
+   document width. overflow-x:clip keeps vertical overflow visible — same trick
+   as .demo above. */
+.downloads, .advertisers { overflow-x: clip; }
+
 /* deploy-trigger: 2026-07-07 rebrand cutover — safe to remove */
