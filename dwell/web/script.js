@@ -517,78 +517,43 @@ if (adForm) {
   });
 }
 
-// --- Crypto checkout: USDC or SOL (dwell/docs/08) --------------------------
+// --- Crypto checkout: USDC/SOL or $DWELL (dwell/docs/08) --------------------
 // Non-custodial pay-and-swap: the backend builds ONE atomic Solana transaction
-// (10% protocol fee to the treasury — a USDC transfer or native SOL — plus 90%
-// market-bought into $DWELL for the rewards pool) and the advertiser signs it
-// from their own wallet via a Solana Pay link. Fully wired, but HIDDEN: the
-// backend 404s the whole surface until the $DWELL mint exists (DWELL_MINT
-// env), so this flag stays false until launch — flip it to reveal the button.
+// the advertiser signs from their own wallet via a Solana Pay link. Two crypto
+// rails: USDC/SOL (10% fee to treasury, 90% market-bought into $DWELL for the
+// rewards pool) and $DWELL direct (no swap — 10% fee + 90% to the pool, and the
+// campaign gets +10% impressions). Fully wired but HIDDEN: the backend 404s the
+// whole surface until the $DWELL mint exists (DWELL_MINT env), so this flag
+// stays false until launch — flip it to reveal the slider.
 const USDC_CHECKOUT = false;
 (() => {
-  const btn = document.getElementById("usdc-btn");
-  const panel = document.getElementById("usdc-panel");
-  if (!btn || !panel || !adForm) return;
+  const tabs = document.getElementById("paytabs");
+  if (!tabs || !adForm) return;
   if (!USDC_CHECKOUT || !API_BASE) return; // stays hidden pre-launch (and in dev mode)
 
-  // Reveal the payment-method slider and wire the two tabs. Card is the default
-  // (its pane holds the Stripe button); Crypto reveals the USDC/SOL pane. While
-  // the toggle is hidden the card pane shows alone, identical to production.
-  const tabs = document.getElementById("paytabs");
-  const cardPane = document.getElementById("pay-card");
-  const cryptoPane = document.getElementById("pay-crypto");
-  if (tabs && cardPane && cryptoPane) {
-    tabs.hidden = false;
-    const tabCard = document.getElementById("paytab-card");
-    const tabCrypto = document.getElementById("paytab-crypto");
-    const select = (which) => {
-      const crypto = which === "crypto";
-      tabs.classList.toggle("crypto", crypto);
-      tabCard.classList.toggle("active", !crypto);
-      tabCrypto.classList.toggle("active", crypto);
-      tabCard.setAttribute("aria-selected", String(!crypto));
-      tabCrypto.setAttribute("aria-selected", String(crypto));
-      cardPane.hidden = crypto;
-      cryptoPane.hidden = !crypto;
-    };
-    tabCard.addEventListener("click", () => select("card"));
-    tabCrypto.addEventListener("click", () => select("crypto"));
-  }
-
-  const statusEl = document.getElementById("usdc-status");
-  const payLink = document.getElementById("usdc-paylink");
-  const switchBtn = document.getElementById("usdc-switch");
-  const setStatus = (text, cls) => { statusEl.textContent = text; statusEl.className = "usdc-status" + (cls ? " " + cls : ""); };
-  const usd = (n) => "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  let pollTimer = null;
-  let payCurrency = "usdc"; // toggled by the "Pay with SOL/USDC instead" link
-
-  const poll = (orderId) => {
-    clearInterval(pollTimer);
-    pollTimer = setInterval(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/v1/ads/usdc/orders/${orderId}`);
-        if (!res.ok) return;
-        const o = await res.json();
-        if (o.status === "confirmed") {
-          clearInterval(pollTimer);
-          setStatus("Payment confirmed — your ad is in review and goes live once approved.", "ok");
-          payLink.hidden = true;
-          switchBtn.hidden = true;
-        } else if (o.status === "expired") {
-          clearInterval(pollTimer);
-          setStatus("This order expired. Reopen crypto checkout to price a fresh one.", "err");
-        } else if (o.status === "failed") {
-          clearInterval(pollTimer);
-          setStatus("That payment didn't verify (" + (o.failReason || "unknown") + "). Reopen crypto checkout to retry.", "err");
-        }
-      } catch (_) { /* offline — keep polling */ }
-    }, 3500);
+  // Reveal the payment-method slider and wire the tabs. Order: USDC/SOL
+  // (default), $DWELL, Credit card. The thumb width comes from the segment
+  // count (CSS), so selecting tab i is just translateX(i * 100%).
+  tabs.hidden = false;
+  const thumb = document.getElementById("paytabs-thumb");
+  const tabEls = [...tabs.querySelectorAll(".paytab")];
+  const selectTab = (idx) => {
+    if (thumb) thumb.style.transform = `translateX(${idx * 100}%)`;
+    tabEls.forEach((t, i) => {
+      const on = i === idx;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", String(on));
+      const pane = document.getElementById(t.dataset.pane);
+      if (pane) pane.hidden = !on;
+    });
   };
+  tabEls.forEach((t, i) => t.addEventListener("click", () => selectTab(i)));
+  selectTab(0);
 
-  const createOrder = async () => {
+  const usd = (n) => "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const readForm = () => {
     const get = (sel) => adForm.querySelector(sel)?.value?.trim() || "";
-    const payload = {
+    return {
       email: get('input[name="email"]'),
       adLine: document.getElementById("adline")?.value?.trim() || "",
       url: normalizeUrl(get('input[name="url"]')),
@@ -597,61 +562,122 @@ const USDC_CHECKOUT = false;
       budget: parseFloat(document.getElementById("budget")?.value || "0") || SUGGESTED_BUDGET,
       cpm: parseInt(document.getElementById("cpm")?.value || "0", 10),
       showOnLeaderboard: adForm.querySelector('input[type="checkbox"]')?.checked !== false,
-      currency: payCurrency,
     };
-    btn.disabled = true;
-    const old = btn.innerHTML;
-    btn.textContent = "Pricing your campaign…";
-    try {
-      const res = await fetch(`${API_BASE}/v1/ads/usdc/orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        btn.textContent = data.error || "Something went wrong";
+  };
+
+  // Wire one crypto pane. `ids` names its elements; `currency` is the initial
+  // rail; `fill(data)` populates the pane-specific rows and returns a status
+  // string; `altBtn` (optional) is the USDC↔SOL switch, which re-orders on the
+  // toggled currency.
+  const wirePane = ({ ids, currency, fill, altCurrency }) => {
+    const btn = document.getElementById(ids.btn);
+    const panel = document.getElementById(ids.panel);
+    const statusEl = document.getElementById(ids.status);
+    const payLink = document.getElementById(ids.paylink);
+    const copyBtn = document.getElementById(ids.copy);
+    const altBtn = ids.alt ? document.getElementById(ids.alt) : null;
+    if (!btn || !panel) return;
+    let cur = currency;
+    let pollTimer = null;
+    const setStatus = (t, cls) => { statusEl.textContent = t; statusEl.className = "usdc-status" + (cls ? " " + cls : ""); };
+    const poll = (orderId) => {
+      clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        try {
+          const res = await fetch(`${API_BASE}/v1/ads/usdc/orders/${orderId}`);
+          if (!res.ok) return;
+          const o = await res.json();
+          if (o.status === "confirmed") {
+            clearInterval(pollTimer);
+            setStatus("Payment confirmed — your ad is in review and goes live once approved.", "ok");
+            payLink.hidden = true;
+            if (altBtn) altBtn.hidden = true;
+          } else if (o.status === "expired") {
+            clearInterval(pollTimer);
+            setStatus("This order expired. Reopen crypto checkout to price a fresh one.", "err");
+          } else if (o.status === "failed") {
+            clearInterval(pollTimer);
+            setStatus("That payment didn't verify (" + (o.failReason || "unknown") + "). Reopen crypto checkout to retry.", "err");
+          }
+        } catch (_) { /* offline — keep polling */ }
+      }, 3500);
+    };
+    const create = async () => {
+      btn.disabled = true;
+      const old = btn.innerHTML;
+      btn.textContent = "Pricing your campaign…";
+      try {
+        const res = await fetch(`${API_BASE}/v1/ads/usdc/orders`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...readForm(), currency: cur }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          btn.textContent = data.error || "Something went wrong";
+          setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2600);
+          return;
+        }
+        btn.innerHTML = old;
+        btn.disabled = false;
+        const statusText = fill(data, cur);
+        payLink.hidden = false;
+        payLink.href = data.solanaPayUrl;
+        copyBtn.onclick = () => {
+          navigator.clipboard?.writeText(data.solanaPayUrl).then(
+            () => { copyBtn.textContent = "Copied"; setTimeout(() => (copyBtn.textContent = "Copy payment link"), 1600); },
+            () => {}
+          );
+        };
+        if (altBtn) { altBtn.hidden = false; altBtn.textContent = cur === "sol" ? "Pay with USDC instead" : "Pay with SOL instead"; }
+        setStatus(statusText);
+        panel.hidden = false;
+        poll(data.orderId);
+      } catch (_) {
+        btn.textContent = "Network error — try again";
         setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2600);
-        return;
       }
-      btn.innerHTML = old;
-      btn.disabled = false;
+    };
+    btn.addEventListener("click", create);
+    if (altBtn && altCurrency) altBtn.addEventListener("click", () => { cur = cur === currency ? altCurrency : currency; create(); });
+  };
+
+  // USDC/SOL pane (default rail usdc; the switch flips to sol).
+  wirePane({
+    currency: "usdc",
+    altCurrency: "sol",
+    ids: { btn: "usdc-btn", panel: "usdc-panel", status: "usdc-status", paylink: "usdc-paylink", copy: "usdc-copy", alt: "usdc-switch" },
+    fill: (data, cur) => {
       document.getElementById("usdc-price").textContent = usd(data.priceUsdc);
       document.getElementById("usdc-fee").textContent = usd(data.feeUsdc);
       document.getElementById("usdc-tranche").textContent = usd(data.trancheUsdc);
       const solRow = document.getElementById("usdc-sol-row");
-      solRow.hidden = payCurrency !== "sol";
-      if (payCurrency === "sol" && Number.isFinite(data.estPayTotalSol)) {
+      solRow.hidden = cur !== "sol";
+      if (cur === "sol" && Number.isFinite(data.estPayTotalSol)) {
         document.getElementById("usdc-sol-total").textContent = data.estPayTotalSol.toFixed(4) + " SOL";
       }
-      payLink.hidden = false;
-      payLink.href = data.solanaPayUrl;
-      const copyBtn = document.getElementById("usdc-copy");
-      copyBtn.onclick = () => {
-        navigator.clipboard?.writeText(data.solanaPayUrl).then(
-          () => { copyBtn.textContent = "Copied"; setTimeout(() => (copyBtn.textContent = "Copy payment link"), 1600); },
-          () => {}
-        );
-      };
-      switchBtn.hidden = false;
-      switchBtn.textContent = payCurrency === "sol" ? "Pay with USDC instead" : "Pay with SOL instead";
-      setStatus(
-        payCurrency === "sol"
-          ? "Open the link in your Solana wallet and approve — one signature pays the fee in SOL and funds the rewards pool. The SOL amount re-prices when the wallet fetches the transaction."
-          : "Open the link in your Solana wallet and approve the transaction — one signature pays the fee and funds the rewards pool."
-      );
-      panel.hidden = false;
-      poll(data.orderId);
-    } catch (_) {
-      btn.textContent = "Network error — try again";
-      setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2600);
-    }
-  };
+      return cur === "sol"
+        ? "Open the link in your Solana wallet and approve — one signature pays the fee in SOL and funds the rewards pool. The SOL amount re-prices when the wallet fetches the transaction."
+        : "Open the link in your Solana wallet and approve the transaction — one signature pays the fee and funds the rewards pool.";
+    },
+  });
 
-  btn.addEventListener("click", createOrder);
-  switchBtn.addEventListener("click", () => {
-    payCurrency = payCurrency === "sol" ? "usdc" : "sol";
-    createOrder(); // fresh order + campaign on the other rail; the old one just expires
+  // $DWELL pane — pay the budget directly in $DWELL (no swap), +10% impressions.
+  wirePane({
+    currency: "dwell",
+    ids: { btn: "dwell-btn", panel: "dwell-panel", status: "dwell-status", paylink: "dwell-paylink", copy: "dwell-copy" },
+    fill: (data) => {
+      document.getElementById("dwell-price").textContent = usd(data.priceUsdc);
+      document.getElementById("dwell-fee").textContent = usd(data.feeUsdc);
+      document.getElementById("dwell-tranche").textContent = usd(data.trancheUsdc);
+      const boostPct = Number.isFinite(data.boostBps) ? (data.boostBps / 100) : 10;
+      document.getElementById("dwell-boost").textContent = "+" + boostPct + "% impressions";
+      if (Number.isFinite(data.estPayTotalDwell)) {
+        document.getElementById("dwell-amount").textContent =
+          Number(data.estPayTotalDwell).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " $DWELL";
+      }
+      return "Open the link in your Solana wallet and approve — one signature pays 10% to the treasury and 90% to the rewards pool. Your campaign runs with +" + boostPct + "% impressions.";
+    },
   });
 })();
 

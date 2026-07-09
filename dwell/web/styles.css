@@ -862,26 +862,45 @@ a { color: inherit; text-decoration: none; }
 .stripe-btn:active { transform: translateY(1px); }
 .stripe-btn-label { line-height: 1; }
 
-/* Payment-method toggle (dwell/docs/08) — a two-segment slider. A thumb slides
+/* Payment-method toggle (dwell/docs/08) — a segmented slider. A thumb slides
    behind the active tab; each tab reveals its .paypane. Hidden until crypto
-   checkout is enabled (script.js). Theme tokens only. */
+   checkout is enabled (script.js). Theme tokens only. Two or three segments —
+   the thumb width and translate step both derive from the segment count, so
+   script.js just sets transform: translateX(index * 100%). */
 .paytabs {
   position: relative; display: grid; grid-template-columns: 1fr 1fr;
   padding: 4px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface-inset);
 }
+.paytabs.paytabs-3 { grid-template-columns: 1fr 1fr 1fr; }
 .paytabs-thumb {
   position: absolute; top: 4px; left: 4px; bottom: 4px; width: calc(50% - 4px);
   background: var(--card-dark); border: 1px solid var(--border-strong); border-radius: 9px;
   transition: transform .2s ease; z-index: 0;
 }
-.paytabs.crypto .paytabs-thumb { transform: translateX(100%); }
+.paytabs-3 .paytabs-thumb { width: calc(33.333% - 2.67px); }
+/* legacy two-segment fallback: the .crypto class slides the thumb right */
+.paytabs:not(.paytabs-3).crypto .paytabs-thumb { transform: translateX(100%); }
 .paytab {
-  position: relative; z-index: 1; background: none; border: none; cursor: pointer;
-  padding: 10px 8px; font-family: var(--sans); font-size: var(--type-body-size);
-  font-weight: 600; color: var(--gray); transition: color .15s;
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px; background: none; border: none; cursor: pointer;
+  padding: 10px 6px; font-family: var(--sans); font-size: var(--type-body-size);
+  font-weight: 600; color: var(--gray); transition: color .15s; white-space: nowrap;
 }
 .paytab.active { color: var(--ink); }
+/* "+10%" boost marker on the $DWELL tab — a small green (functional-success)
+   chip inline right after the label. The tab's own flex centering (gap +
+   justify-content: center) keeps the label+badge group centered as a unit. */
+.paytab-badge {
+  margin-left: 4px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .02em;
+  line-height: 1; padding: 2px 4px; border-radius: 5px;
+  color: var(--ok-fg); background: var(--ok-bg); border: 1px solid var(--ok-line);
+}
+@media (max-width: 560px) {
+  .paytab { flex-direction: column; gap: 3px; font-size: 12px; padding: 8px 4px; }
+  .paytab-badge { margin-left: 0; font-size: 9px; padding: 2px 4px; }
+}
 
 /* USDC checkout (dwell/docs/08) — hidden until $DWELL mints (script.js flag).
    Quiet secondary treatment under the Stripe button: ink-on-white with the
@@ -895,6 +914,15 @@ a { color: inherit; text-decoration: none; }
 .usdc-btn:hover { border-color: var(--gray); }
 .usdc-btn:active { transform: translateY(1px); }
 .usdc-btn strong { font-weight: 700; }
+/* "+10% impressions" pill on the $DWELL pay button — green (functional-success) */
+.usdc-btn-boost {
+  font-family: var(--mono); font-size: 11px; font-weight: 700; line-height: 1;
+  padding: 4px 7px; border-radius: 6px;
+  color: var(--ok-fg); background: var(--ok-bg); border: 1px solid var(--ok-line);
+}
+/* the $DWELL boost row in the panel reads in the same green (the doubled class
+   outranks the generic `.usdc-row strong` ink color regardless of source order) */
+.usdc-row.usdc-row-boost strong { color: var(--ok-fg); }
 .usdc-panel {
   margin-top: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface-inset); display: flex; flex-direction: column; gap: 8px;
