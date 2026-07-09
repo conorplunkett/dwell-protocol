@@ -119,7 +119,7 @@ function decorateAd(a) {
   let h = 0;
   for (let i = 0; i < brand.length; i++) h = (h * 31 + brand.charCodeAt(i)) >>> 0;
   const pal = AD_PALETTE[h % AD_PALETTE.length];
-  return { id: a.id, brand, chip, color: pal.color, ink: pal.ink, line: a.line, url: a.url, cat: a.cat || "other" };
+  return { id: a.id, brand, chip, color: pal.color, ink: pal.ink, line: a.line, url: a.url, cat: a.cat || "other", change: typeof a.change === "number" ? a.change : undefined };
 }
 
 async function getDevice() {

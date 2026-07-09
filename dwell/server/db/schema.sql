@@ -58,6 +58,14 @@ create table if not exists campaigns (
   impressions_remaining integer not null,
   budget_cents integer,                    -- exact amount charged (the advertiser's budget); null on pre-budget campaigns
   show_on_leaderboard boolean not null default true,
+  -- Recent-change % badge (the crypto-ticker figure next to the ad). timescale is
+  -- the advertiser-chosen performance window; 'auto' (the default, hidden from the
+  -- public form) renders whichever window shows the biggest number. `changes` is a
+  -- per-timescale map, e.g. {"5m":4.2,"1h":38,"1d":235}; null until live market data
+  -- is wired (see dwell/ROADMAP.md) — real campaigns render no badge meanwhile.
+  change_timescale text not null default 'auto'
+    check (change_timescale in ('5m', '15m', '1h', '4h', '1d', 'auto')),
+  changes jsonb,
   -- lifecycle: pending_payment -> (paid) pending_review -> (approved) active
   --            -> exhausted; or rejected/cancelled.
   status text not null default 'pending_payment'
@@ -78,6 +86,12 @@ alter table campaigns add column if not exists budget_cents integer;
 -- Set when the one-time "campaign finished" advertiser receipt has been emailed;
 -- the send is guarded on this being null so a receipt goes out at most once.
 alter table campaigns add column if not exists completion_email_sent_at timestamptz;
+-- Recent-change % badge fields on databases created before they existed.
+alter table campaigns add column if not exists change_timescale text not null default 'auto';
+alter table campaigns drop constraint if exists campaigns_change_timescale_check;
+alter table campaigns add constraint campaigns_change_timescale_check
+  check (change_timescale in ('5m', '15m', '1h', '4h', '1d', 'auto'));
+alter table campaigns add column if not exists changes jsonb;
 
 create index if not exists campaigns_auction_idx
   on campaigns (status, price_per_block_cents desc)

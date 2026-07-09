@@ -355,7 +355,8 @@ function createRepo(pool) {
       // through payment (e.g. a row seeded straight to 'active') must never
       // show or mint credits — user credits have to be backed by real budget.
       const { rows } = await pool.query(
-        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard
+        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard,
+                change_timescale, changes
            from campaigns
           where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc
@@ -367,7 +368,7 @@ function createRepo(pool) {
 
     async leaderboard(limit = 15) {
       const { rows } = await pool.query(
-        `select brand, ad_line, price_per_block_cents
+        `select brand, ad_line, price_per_block_cents, change_timescale, changes
            from campaigns
           where status in ('active', 'exhausted') and show_on_leaderboard
           order by price_per_block_cents desc, activated_at asc
@@ -378,7 +379,7 @@ function createRepo(pool) {
     },
 
     // ---------- advertiser checkout ----------
-    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, impressionsTotal, budgetCents, showOnLeaderboard }) {
+    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, impressionsTotal, budgetCents, showOnLeaderboard, changeTimescale }) {
       // impressionsTotal is the exact purchased count (floor(budget*1000/cpm)),
       // not necessarily a multiple of 1000; budgetCents is the exact charge.
       // Legacy price×blocks callers pass neither and keep the old behavior.
@@ -393,11 +394,13 @@ function createRepo(pool) {
         const { rows } = await c.query(
           `insert into campaigns
              (advertiser_id, brand, ad_line, url, category, color, price_per_block_cents,
-              blocks, impressions_total, impressions_remaining, budget_cents, show_on_leaderboard)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11)
+              blocks, impressions_total, impressions_remaining, budget_cents, show_on_leaderboard,
+              change_timescale)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12)
            returning id`,
           [adv.rows[0].id, brand || null, adLine, url, category || "other", color || null,
-           pricePerBlockCents, blocks, impressions, budgetCents ?? null, showOnLeaderboard !== false]
+           pricePerBlockCents, blocks, impressions, budgetCents ?? null, showOnLeaderboard !== false,
+           changeTimescale || "auto"]
         );
         return rows[0].id;
       });
@@ -970,7 +973,8 @@ function createRepo(pool) {
       }
       // Auction winner: highest bid, oldest activated (same order as activeAds).
       const pick = await pool.query(
-        `select id, brand, ad_line, url, category, color, price_per_block_cents
+        `select id, brand, ad_line, url, category, color, price_per_block_cents,
+                change_timescale, changes
            from campaigns
           where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc

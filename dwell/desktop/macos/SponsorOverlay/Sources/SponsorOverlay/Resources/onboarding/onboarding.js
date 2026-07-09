@@ -28,12 +28,24 @@
     { t: "All set" },
   ];
 
-  // Rotating sponsor lines for the live demo pill.
+  // Rotating sponsor lines for the live demo pill. `change` is the recent-change
+  // % badge shown after the brand — green up / red down.
   var ADS = [
-    { chip: "L", color: "#5b5bd6", ink: "#fff",     brand: "Linear", line: "issue tracking built for speed" },
-    { chip: "R", color: "#ffd54a", ink: "#1b1e25",  brand: "Ramp",   line: "save time and money" },
-    { chip: "△", color: "#000", ink: "#fff",   brand: "Vercel", line: "ship your agent to prod" },
+    { chip: "🐂", color: "#0a0a0a", ink: "#fff",    brand: "$ansem",    line: "the black bull",  change: 235 },
+    { chip: "🧌", color: "#3f6212", ink: "#fff",    brand: "$troll",    line: "troll szn",       change: 64 },
+    { chip: "🐸", color: "#4c9a2a", ink: "#fff",    brand: "$pepe",     line: "feels good man",  change: 1.3 },
   ];
+  // Format a change % to the badge string (mirrors formatChangePct elsewhere).
+  function fmtChange(v) {
+    if (typeof v !== "number" || !isFinite(v)) return "";
+    var a = Math.abs(v), body;
+    if (a >= 100) body = String(Math.min(999, Math.round(a)));
+    else if (a >= 10) body = String(Math.round(a));
+    else if (a >= 1) body = a.toFixed(1).replace(/\.0$/, "");
+    else if (a > 0) { body = a.toFixed(1).replace(/^0/, ""); if (body === ".0") body = "0"; }
+    else body = "0";
+    return "(" + (v < 0 ? "-" : "+") + body + "%)";
+  }
 
   var NEXT_LABEL = ["Get started", "Continue", "Continue", "Continue", "Open Dwell"];
   var LAST = STEPS.length - 1;
@@ -443,10 +455,14 @@
       return el('<div class="pill swap"><span class="spin">✳</span><span class="ptxt">Discombobulating…</span></div>');
     }
     function adPill(ad) {
+      var badge = fmtChange(ad.change);
+      var chg = badge
+        ? ' <span class="pchg ' + (ad.change < 0 ? "down" : "up") + '">' + esc(badge) + '</span>'
+        : "";
       return el(
         '<div class="pill ad swap">' +
           '<span class="pchip" style="background:' + ad.color + ';color:' + ad.ink + '">' + esc(ad.chip) + '</span>' +
-          '<span class="ptxt"><b style="color:#fff">' + esc(ad.brand) + '</b> — ' + esc(ad.line) + '</span>' +
+          '<span class="ptxt"><b style="color:#fff">' + esc(ad.brand) + '</b>' + chg + ' — ' + esc(ad.line) + '</span>' +
         '</div>');
     }
     function swap(node) {

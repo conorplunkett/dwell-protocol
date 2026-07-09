@@ -139,8 +139,9 @@
                NB: classed/id'd "brand-*", NOT "ad-*", so ad blockers don't hide
                our own sponsored-line demo. -->
           <div class="demo-line">
-            <span class="brandchip">R</span>
-            <span class="brand-line" id="brand-line">Ramp · Spend smarter</span>
+            <span class="brandchip">🐂</span>
+            <span class="brand-line" id="brand-line">$ansem · The black bull</span>
+            <span class="change-badge up" id="brand-change">(+235%)</span>
           </div>
         </div>
       </div>
@@ -258,10 +259,10 @@
                   <span class="label">claude code — ~/dwell</span>
                 </div>
                 <div class="termpad">
-                  <div class="status">· Linear — Plan your next sprint faster… <span class="muted">(2s · thinking)</span></div>
+                  <div class="status">· $ansem — the black bull runs… <span class="muted">(2s · thinking)</span></div>
                   <hr class="divider" />
                   <div class="prompt"><span class="chev">›</span> <span class="cursor"></span></div>
-                  <div class="adline"><span class="ad">ad·</span> <a href="#">Linear — Plan your next sprint faster</a></div>
+                  <div class="adline"><span class="ad">ad·</span> <a href="#">$ansem — the black bull</a> <span class="change-badge up">(+235%)</span></div>
                 </div>
               </div>
             </div>
@@ -377,17 +378,28 @@
 
           <label class="field">
             <span class="flabel">Ad line · 3–60 char <em class="count" id="adline-count">0 / 60</em></span>
-            <input type="text" id="adline" maxlength="60" placeholder="Try Linear — issue tracking built for speed" />
+            <input type="text" id="adline" maxlength="60" placeholder="Try $ansem — the black bull" />
           </label>
 
           <label class="field">
             <span class="flabel">Destination URL <em>(https:// optional) — the link customers go to when they click the ad</em></span>
-            <input type="url" name="url" autocomplete="url" placeholder="https://linear.app/" />
+            <input type="url" name="url" autocomplete="url" placeholder="https://pump.fun/" />
           </label>
 
           <label class="field">
             <span class="flabel">Brand name <em>(optional, shown on leaderboard)</em></span>
-            <input type="text" name="organization" autocomplete="organization" placeholder="Linear" />
+            <input type="text" name="organization" autocomplete="organization" placeholder="$ansem" />
+          </label>
+
+          <label class="field">
+            <span class="flabel">Performance window <em>(optional — the timeframe your change % is measured over)</em></span>
+            <select id="adtimescale" name="timescale" class="adselect">
+              <option value="5m">5 minutes</option>
+              <option value="15m">15 minutes</option>
+              <option value="1h">1 hour</option>
+              <option value="4h">4 hours</option>
+              <option value="1d" selected>1 day</option>
+            </select>
           </label>
 
           <label class="field">
@@ -425,6 +437,7 @@
             <div class="adpreview-bar" id="adpreview-bar">
               <span class="adpreview-chip" id="prev-chip">Y</span>
               <span class="adpreview-line" id="prev-line">Your ad here</span>
+              <span class="change-badge up" id="prev-change">(+128%)</span>
               <span class="adpreview-dots" id="prev-dots" aria-hidden="true"><i></i><i></i><i></i></span>
             </div>
           </div>

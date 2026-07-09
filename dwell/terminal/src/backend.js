@@ -31,6 +31,7 @@ export class DwellBackend {
       brand: typeof ad.brand === "string" ? ad.brand : undefined,
       category: typeof ad.cat === "string" ? ad.cat : undefined,
       color: typeof ad.color === "string" ? ad.color : undefined,
+      change: typeof ad.change === "number" ? ad.change : undefined,
     })).filter((ad) => ad.id && ad.line);
   }
 

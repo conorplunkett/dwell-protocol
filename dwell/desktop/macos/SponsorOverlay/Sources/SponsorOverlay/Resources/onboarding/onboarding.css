@@ -216,6 +216,10 @@
 .pill.ad .ptxt { color: var(--ov-text); }
 .pill .ptag { font-family: var(--mono); font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ov-tag-text); background: var(--ov-tag-bg); padding: 2px 5px; border-radius: 4px; flex: none; }
 .pill .pchip { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; font-size: 9px; font-weight: 800; flex: none; }
+/* Recent-change % badge — bright green up / red down on the dark overlay pill. */
+.pill .pchg { font-weight: 800; font-variant-numeric: tabular-nums; }
+.pill .pchg.up { color: #35d07f; }
+.pill .pchg.down { color: #ff5c5c; }
 .swap { animation: swapfade .5s var(--ease-out); }
 @keyframes swapfade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 

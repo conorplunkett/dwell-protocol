@@ -23,7 +23,17 @@ const check = (name, fn) => Promise.resolve(fn()).then(() => { pass++; console.l
 // registered via page.add(); the injected bar resolves its own child spans from
 // the class names in the innerHTML string it's given.
 function makeChild() {
-  return { textContent: "", style: {} };
+  const set = new Set();
+  return {
+    textContent: "",
+    style: {},
+    classList: {
+      add: (c) => set.add(c),
+      remove: (c) => set.delete(c),
+      contains: (c) => set.has(c),
+      toggle: (c, on) => (on === undefined ? (set.has(c) ? set.delete(c) : set.add(c)) : on ? set.add(c) : set.delete(c)),
+    },
+  };
 }
 function parseChildren(html) {
   const map = {};

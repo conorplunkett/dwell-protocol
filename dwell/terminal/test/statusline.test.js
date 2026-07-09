@@ -102,6 +102,24 @@ test("buildAdLine renders brand, advertiser color and a clickable link", () => {
   assert.match(out, /\u001b]8;;https:\/\/api\.example\/v1\/go\/tok/); // clickable
 });
 
+test("buildAdLine appends a green change badge for a positive change", () => {
+  const out = buildAdLine({
+    ad: { brand: "$ansem", line: "the black bull", change: 235 },
+    trackingUrl: "",
+  }, { now: 0 });
+  assert.equal(stripAnsi(out), "ad· $ansem — the black bull (+235%)");
+  assert.match(out, /\[38;2;53;208;127m/); // up = #35d07f green
+});
+
+test("buildAdLine renders a red badge for a negative change and none when absent", () => {
+  const down = buildAdLine({ ad: { brand: "$chillguy", line: "just a chill guy", change: -1 }, trackingUrl: "" }, { now: 0 });
+  assert.equal(stripAnsi(down), "ad· $chillguy — just a chill guy (-1%)");
+  assert.match(down, /\[38;2;255;92;92m/); // down = #ff5c5c red
+
+  const none = buildAdLine({ ad: { brand: "$pepe", line: "feels good man" }, trackingUrl: "" }, { now: 0 });
+  assert.equal(stripAnsi(none), "ad· $pepe — feels good man"); // no change → no badge
+});
+
 test("buildAdLine falls back to the DWELL accent orange when the ad has no color", () => {
   const out = buildAdLine({
     ad: { brand: "DWELL", line: "get Claude for free with ads.", color: "" },

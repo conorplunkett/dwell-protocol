@@ -1,17 +1,50 @@
+// --- Recent-change % badge (the crypto-ticker figure next to each token) ---
+// Shared by the ticker, the "With DWELL" rotator, and the advertiser preview.
+// `timescale: "auto"` renders whichever window is biggest; a concrete key
+// ("5m"/"15m"/"1h"/"4h"/"1d") renders that window. Format: signed, at most 3
+// significant digit-chars, leading zero dropped, magnitude clamped to 999.
+// Green when up, red when down. Mirrors resolveChangePct in server/src/util.js.
+const CHANGE_TIMESCALES = ["5m", "15m", "1h", "4h", "1d"];
+function resolveChangePct(changes, timescale) {
+  if (!changes) return null;
+  const vals = CHANGE_TIMESCALES.map((k) => changes[k]).filter((v) => typeof v === "number" && isFinite(v));
+  if (!vals.length) return null;
+  if (timescale && timescale !== "auto") {
+    const v = changes[timescale];
+    return typeof v === "number" && isFinite(v) ? v : null;
+  }
+  return Math.max(...vals);
+}
+function formatChangePct(v) {
+  if (typeof v !== "number" || !isFinite(v)) return null;
+  const a = Math.abs(v);
+  let body;
+  if (a >= 100) body = String(Math.min(999, Math.round(a)));   // 235, 9364→999
+  else if (a >= 10) body = String(Math.round(a));               // 35
+  else if (a >= 1) body = a.toFixed(1).replace(/\.0$/, "");     // 9.3, but 9.0→9
+  else if (a > 0) { body = a.toFixed(1).replace(/^0/, ""); if (body === ".0") body = "0"; } // .5 (leading 0 dropped)
+  else body = "0";
+  return `(${v < 0 ? "-" : "+"}${body}%)`;
+}
+// Inline badge markup for a token/ad carrying `changes`+`timescale` (or a raw
+// numeric `change` straight off the API). Returns "" when there's no data.
+function changeBadgeHtml(src) {
+  const v = src && typeof src.change === "number" ? src.change : resolveChangePct(src && src.changes, src && src.timescale);
+  const s = formatChangePct(v);
+  if (s == null) return "";
+  return `<span class="change-badge ${v < 0 ? "down" : "up"}">${s}</span>`;
+}
+
 // --- Live ticker (top banner) ---
 // Seeded with mock winning bids. When the API is wired, the leaderboard feed
 // can populate this the same way loadLeaderboard() fills the board below.
 // Each entry carries a little brand logo chip (initial + brand color) shown
-// before the name in the moving banner.
+// before the name in the moving banner, plus a recent-change % badge.
 const TICKER_ADS = [
-  { brand: "Ramp", logo: "R", color: "#ffd54a", ink: "#1b1e25", text: "Save time and money on every dollar you spend" },
-  { brand: "Linear", logo: "L", color: "#5b5bd6", ink: "#fff", text: "Issue tracking built for high-performance teams" },
-  { brand: "Vercel", logo: "△", color: "#000", ink: "#fff", text: "Ship your agent to production in seconds" },
-  { brand: "Neon", logo: "N", color: "#00e599", ink: "#04130a", text: "Serverless Postgres your agent can branch" },
-  { brand: "Resend", logo: "R", color: "#111", ink: "#fff", text: "The email API built for developers" },
-  { brand: "Fluidstack", logo: "F", color: "#1d6cff", ink: "#fff", text: "Building 10GW of compute. Join us." },
-  { brand: "Tuple", logo: "T", color: "#5d5fef", ink: "#fff", text: "Remote pair programming, done right" },
-  { brand: "Stripe", logo: "S", color: "#635bff", ink: "#fff", text: "Financial infrastructure for the internet" },
+  { brand: "$ansem", logo: "🐂", color: "#0a0a0a", ink: "#fff", text: "The black bull runs", timescale: "auto", changes: { "5m": 4.2, "15m": 12, "1h": 38, "4h": 96, "1d": 235 } },
+  { brand: "$troll", logo: "🧌", color: "#3f6212", ink: "#fff", text: "Troll szn is upon us", timescale: "auto", changes: { "5m": 2.1, "15m": 9, "1h": 21, "4h": -7, "1d": 64 } },
+  { brand: "$pepe", logo: "🐸", color: "#4c9a2a", ink: "#fff", text: "The most memeable memecoin on Solana", timescale: "5m", changes: { "5m": 1.3, "15m": 3, "1h": 8, "4h": 19, "1d": 47 } },
+  { brand: "$chillguy", logo: "😎", color: "#d2a679", ink: "#1b1e25", text: "Just a chill guy", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } },
 ];
 (function buildTicker() {
   const track = document.getElementById("ticker-track");
@@ -20,6 +53,7 @@ const TICKER_ADS = [
     `<span class="tick">` +
     `<span class="tick-logo" style="background:${ad.color};color:${ad.ink}">${ad.logo}</span>` +
     `<span class="tick-brand">${ad.brand}</span>` +
+    changeBadgeHtml(ad) +
     `<span class="tick-text">${ad.text}</span></span>`;
   // Duplicate the run so the -50% scroll loops seamlessly.
   const run = TICKER_ADS.map(cell).join("");
@@ -47,16 +81,24 @@ if (wordStock) {
 // Keep each line short — it must fit ONE line in the demo card at both desktop
 // and mobile widths (verified per-ad; see styles.css .brand-line).
 const ADS = [
-  { chip: "R", color: "#ffd54a", ink: "#1b1e25", text: "Ramp · Spend smarter" },
-  { chip: "L", color: "#5b5bd6", ink: "#fff", text: "Linear · Issue tracking" },
-  { chip: "△", color: "#000", ink: "#fff", text: "Vercel · Ship to prod" },
-  { chip: "N", color: "#00e599", ink: "#04130a", text: "Neon · Postgres, branched" },
-  { chip: "R", color: "#111", ink: "#fff", text: "Resend · Email for devs" },
-  { chip: "F", color: "#1d6cff", ink: "#fff", text: "Fluidstack · GPU compute" },
+  { chip: "🐂", color: "#0a0a0a", ink: "#fff", text: "$ansem · The black bull", timescale: "auto", changes: { "5m": 4.2, "15m": 12, "1h": 38, "4h": 96, "1d": 235 } },
+  { chip: "🧌", color: "#3f6212", ink: "#fff", text: "$troll · Troll szn", timescale: "auto", changes: { "5m": 2.1, "15m": 9, "1h": 21, "4h": -7, "1d": 64 } },
+  { chip: "🐸", color: "#4c9a2a", ink: "#fff", text: "$pepe · Feels good man", timescale: "5m", changes: { "5m": 1.3, "15m": 3, "1h": 8, "4h": 19, "1d": 47 } },
+  { chip: "😎", color: "#d2a679", ink: "#1b1e25", text: "$chillguy · Just a chill guy", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } },
 ];
 let ai = 0;
 const rotator = document.getElementById("brand-line");
 const chip = document.querySelector(".brandchip");
+const brandChange = document.getElementById("brand-change");
+// Paint the badge (text + up/down color) for the ad at ADS[i].
+function paintBrandChange(ad) {
+  if (!brandChange) return;
+  const v = resolveChangePct(ad.changes, ad.timescale);
+  const s = formatChangePct(v);
+  brandChange.textContent = s || "";
+  brandChange.classList.toggle("up", s != null && v >= 0);
+  brandChange.classList.toggle("down", s != null && v < 0);
+}
 // Paint the first ad immediately so the "With DWELL" line is never empty,
 // even before the first rotation tick.
 if (rotator && chip) {
@@ -67,6 +109,7 @@ if (rotator && chip) {
   chip.style.color = first.ink;
   rotator.style.opacity = "1";
   chip.style.opacity = "1";
+  paintBrandChange(first);
 }
 setInterval(() => {
   ai = (ai + 1) % ADS.length;
@@ -74,6 +117,7 @@ setInterval(() => {
   if (!rotator || !chip) return;
   rotator.style.opacity = "0";
   chip.style.opacity = "0";
+  if (brandChange) brandChange.style.opacity = "0";
   setTimeout(() => {
     rotator.textContent = ad.text;
     chip.textContent = ad.chip;
@@ -81,8 +125,11 @@ setInterval(() => {
     chip.style.color = ad.ink;
     rotator.style.opacity = "1";
     chip.style.opacity = "1";
+    paintBrandChange(ad);
+    if (brandChange) brandChange.style.opacity = "1";
   }, 260);
 }, 2600);
+if (brandChange) { brandChange.style.transition = "opacity .26s"; }
 if (rotator) { rotator.style.transition = "opacity .26s"; }
 if (chip) { chip.style.transition = "opacity .26s, background .26s"; }
 
@@ -194,7 +241,21 @@ function updateAdPreview() {
   if (lineEl) lineEl.textContent = line || "Your ad here";
   adPrevBar.style.setProperty("--prev-accent", accent);
   adPrevBar.style.setProperty("--prev-ink", readableInk(accent));
+  // Sample performance badge — illustrative (live market data lands later; see
+  // dwell/ROADMAP.md) so the advertiser sees where their number renders and how
+  // the timescale choice changes it.
+  const prevChange = document.getElementById("prev-change");
+  if (prevChange) {
+    const ts = document.getElementById("adtimescale")?.value || "auto";
+    const v = resolveChangePct(PREVIEW_CHANGES, ts);
+    const s = formatChangePct(v);
+    prevChange.textContent = s || "";
+    prevChange.classList.toggle("up", s != null && v >= 0);
+    prevChange.classList.toggle("down", s != null && v < 0);
+  }
 }
+// Illustrative per-timescale sample for the advertiser preview only.
+const PREVIEW_CHANGES = { "5m": 6, "15m": 14, "1h": 33, "4h": 72, "1d": 128 };
 {
   const form = document.querySelector(".adform");
   if (form && adPrevBar) { form.addEventListener("input", updateAdPreview); updateAdPreview(); }
@@ -484,6 +545,7 @@ if (adForm) {
       budget: parseFloat(document.getElementById("budget")?.value || "0"),
       cpm: parseInt(document.getElementById("cpm")?.value || "0", 10),
       showOnLeaderboard: adForm.querySelector('input[type="checkbox"]')?.checked !== false,
+      timescale: document.getElementById("adtimescale")?.value || "auto",
     };
 
     if (!API_BASE) {
@@ -562,6 +624,7 @@ const USDC_CHECKOUT = false;
       budget: parseFloat(document.getElementById("budget")?.value || "0") || SUGGESTED_BUDGET,
       cpm: parseInt(document.getElementById("cpm")?.value || "0", 10),
       showOnLeaderboard: adForm.querySelector('input[type="checkbox"]')?.checked !== false,
+      timescale: document.getElementById("adtimescale")?.value || "auto",
     };
   };
 
