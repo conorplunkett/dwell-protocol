@@ -109,7 +109,10 @@ function loadConfig() {
     jupiterBaseUrl: env("JUPITER_BASE_URL", "https://lite-api.jup.ag/swap/v1"),
     treasuryUsdcAta: env("TREASURY_USDC_ATA"),           // Squads treasury vault's USDC token account — the 10% leg
     treasurySolAccount: env("TREASURY_SOL_ACCOUNT"),     // Squads treasury vault address for native-SOL fee legs; empty = SOL rail off
-    distributorDwellAta: env("DISTRIBUTOR_DWELL_ATA"),   // rewards distributor vault's DWELL token account — the swap output
+    treasuryDwellAta: env("TREASURY_DWELL_ATA"),         // Squads treasury vault's DWELL token account — the 10% leg on the $DWELL rail; empty = $DWELL rail off
+    distributorDwellAta: env("DISTRIBUTOR_DWELL_ATA"),   // rewards distributor vault's DWELL token account — the swap output / $DWELL 90% leg
+    dwellDecimals: parseInt(env("DWELL_DECIMALS", "6"), 10), // display only — raw DWELL units ÷ 10^decimals for the "≈ pay in $DWELL" figure
+    dwellPayBoostBps: parseInt(env("DWELL_PAY_BOOST_BPS", "1000"), 10), // paying in $DWELL boosts a campaign's impressions by this (1000 = +10%)
     maxSlippageBps: parseInt(env("MAX_SLIPPAGE_BPS", "100"), 10), // swap slippage bound; the verifier enforces the implied minOut
     usdcOrderTtlMinutes: parseInt(env("USDC_ORDER_TTL_MINUTES", "30"), 10), // price validity window; each built tx is only ~60s (blockhash)
 
@@ -210,6 +213,25 @@ function normalizeHexColor(value: any) {
   if (value == null || value === "") return null;
   const match = /^#?([0-9a-f]{6})$/i.exec(String(value).trim());
   return match ? `#${match[1].toLowerCase()}` : null;
+}
+
+// Recent-change % badge helpers (mirror of server/src/util.js). 'auto' is the
+// default and is NOT offered on the public ad form.
+const TIMESCALES = ["5m", "15m", "1h", "4h", "1d"];
+function normalizeTimescale(value: any) {
+  return TIMESCALES.includes(value) ? value : "auto";
+}
+function resolveChangePct(changes: any, timescale: any) {
+  if (!changes || typeof changes !== "object") return null;
+  const vals = TIMESCALES
+    .map((k) => changes[k])
+    .filter((v) => typeof v === "number" && Number.isFinite(v));
+  if (!vals.length) return null;
+  if (timescale && timescale !== "auto") {
+    const v = changes[timescale];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  }
+  return Math.max(...vals);
 }
 
 // ─────────────────────────── giftcards.js ──────────────────────────────────
@@ -867,7 +889,8 @@ function createRepo(pool: any) {
       // through payment (e.g. a row seeded straight to 'active') must never
       // show or mint credits — user credits have to be backed by real budget.
       const { rows } = await pool.query(
-        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard
+        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard,
+                change_timescale, changes
            from campaigns where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc limit $1`,
         [limit]
@@ -876,14 +899,14 @@ function createRepo(pool: any) {
     },
     async leaderboard(limit = 15) {
       const { rows } = await pool.query(
-        `select brand, ad_line, price_per_block_cents from campaigns
+        `select brand, ad_line, price_per_block_cents, change_timescale, changes from campaigns
           where status in ('active', 'exhausted') and show_on_leaderboard
           order by price_per_block_cents desc, activated_at asc limit $1`,
         [limit]
       );
       return rows;
     },
-    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, impressionsTotal, budgetCents, showOnLeaderboard }: any) {
+    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, impressionsTotal, budgetCents, showOnLeaderboard, changeTimescale }: any) {
       // impressionsTotal is the exact purchased count (floor(budget*1000/cpm)),
       // not necessarily a multiple of 1000. budgetCents is the exact charge.
       const impressions = Number.isFinite(impressionsTotal) ? impressionsTotal : blocks * 1000;
@@ -894,10 +917,12 @@ function createRepo(pool: any) {
         const { rows } = await c.query(
           `insert into campaigns
              (advertiser_id, brand, ad_line, url, category, color, price_per_block_cents,
-              blocks, impressions_total, impressions_remaining, budget_cents, show_on_leaderboard)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11) returning id`,
+              blocks, impressions_total, impressions_remaining, budget_cents, show_on_leaderboard,
+              change_timescale)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12) returning id`,
           [adv.rows[0].id, brand || null, adLine, url, category || "other", color || null,
-           pricePerBlockCents, blocks, impressions, budgetCents ?? null, showOnLeaderboard !== false]
+           pricePerBlockCents, blocks, impressions, budgetCents ?? null, showOnLeaderboard !== false,
+           changeTimescale || "auto"]
         );
         return rows[0].id;
       });
@@ -1279,7 +1304,8 @@ function createRepo(pool: any) {
       }
       // Auction winner: highest bid, oldest activated (same order as activeAds).
       const pick = await pool.query(
-        `select id, brand, ad_line, url, category, color, price_per_block_cents
+        `select id, brand, ad_line, url, category, color, price_per_block_cents,
+                change_timescale, changes
            from campaigns
           where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc
@@ -3083,11 +3109,11 @@ route("GET", "/v1/pricing", async () => {
 route("GET", "/v1/ads", async () => {
   await syncServing();
   const ads = (serving && earningsEnabled) ? await repo.activeAds() : [];
-  return json(200, { revenueShare: displayRevenueShare, ads: ads.map((a: any) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined })) });
+  return json(200, { revenueShare: displayRevenueShare, ads: ads.map((a: any) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined, change: resolveChangePct(a.changes, a.change_timescale) ?? undefined })) });
 });
 route("GET", "/v1/leaderboard", async () => {
   const rows = await repo.leaderboard();
-  return json(200, { leaderboard: rows.map((r: any, i: number) => ({ rank: i + 1, brand: r.brand, line: r.ad_line })) });
+  return json(200, { leaderboard: rows.map((r: any, i: number) => ({ rank: i + 1, brand: r.brand, line: r.ad_line, change: resolveChangePct(r.changes, r.change_timescale) ?? undefined })) });
 });
 
 // ── devices & events ──
@@ -3168,7 +3194,7 @@ route("POST", "/v1/impressions/serve", async (ctx: any) => {
   const a = result.ad;
   return json(200, {
     token: result.token,
-    ad: { id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined },
+    ad: { id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined, change: resolveChangePct(a.changes, a.change_timescale) ?? undefined },
     revenueShare: displayRevenueShare,
   });
 });
@@ -3407,6 +3433,21 @@ function systemTransferInstruction({ from, to, lamports, reference }: any) {
     data: data.toString("base64"),
   };
 }
+// SPL Token Transfer (ix 3): the fee/tranche legs on the $DWELL rail. Unlike
+// TransferChecked it carries no mint/decimals, so it works for the DWELL mint
+// without knowing its decimals. Accounts: source, destination, owner, [ref].
+function tokenTransferInstruction({ source, destination, owner, amount, reference }: any) {
+  return {
+    programId: SOL_TOKEN_PROGRAM,
+    accounts: [
+      { pubkey: source, isSigner: false, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: true, isWritable: false },
+      ...(reference ? [{ pubkey: reference, isSigner: false, isWritable: false }] : []),
+    ],
+    data: Buffer.concat([Buffer.from([3]), u64le(amount)]).toString("base64"),
+  };
+}
 function memoInstruction(text: string) {
   return { programId: SOL_MEMO_PROGRAM, accounts: [], data: Buffer.from(text, "utf8").toString("base64") };
 }
@@ -3421,17 +3462,18 @@ async function solanaRpc(method: string, params: any[]) {
   if (body.error) throw new Error(`solana rpc ${method}: ${body.error.message}`);
   return body.result;
 }
-// The payer's USDC token account with the largest balance — RPC lookup instead
-// of ATA derivation keeps this free of PDA/curve math.
-async function findUsdcAccount(owner: string) {
+// The payer's token account (for `mint`) with the largest balance — RPC lookup
+// instead of ATA derivation keeps this free of PDA/curve math.
+async function findTokenAccount(owner: string, mint: string) {
   const result = await solanaRpc("getTokenAccountsByOwner", [
-    owner, { mint: config.usdcMint }, { encoding: "jsonParsed" },
+    owner, { mint }, { encoding: "jsonParsed" },
   ]);
   const accounts = (result?.value || [])
     .map((a: any) => ({ pubkey: a.pubkey, amount: BigInt(a.account?.data?.parsed?.info?.tokenAmount?.amount || "0") }))
     .sort((a: any, b: any) => (a.amount > b.amount ? -1 : 1));
   return accounts[0] || null;
 }
+const findUsdcAccount = (owner: string) => findTokenAccount(owner, config.usdcMint);
 async function jupiterQuote({ inputMint, outputMint, amount }: any) {
   const q = new URLSearchParams({
     inputMint,
@@ -3449,7 +3491,8 @@ async function jupiterQuote({ inputMint, outputMint, amount }: any) {
   return quote;
 }
 // The swap leg's quote for an order: USDC pays the tranche in micro-USDC;
-// SOL pays it in lamports (priced first via priceOrderInSol).
+// SOL pays it in lamports (priced first via priceOrderInSol). The $DWELL rail
+// has no swap leg, so it never calls this.
 function tranchQuoteParams(order: any) {
   return order.pay_currency === "sol"
     ? { inputMint: WSOL_MINT, outputMint: config.dwellMint, amount: BigInt(order.pay_total_units) - BigInt(order.pay_fee_units) }
@@ -3463,6 +3506,15 @@ async function priceOrderInSol(priceMicroUsdc: string, feeBps: number) {
   const total = BigInt(pricing.outAmount);
   const fee = (total * BigInt(feeBps)) / 10000n;
   return { totalLamports: total, feeLamports: fee, trancheLamports: total - fee };
+}
+// How many raw $DWELL units the order's USD price is worth right now, via a
+// USDC -> DWELL quote. The $DWELL rail sends this directly (no swap): 10% to
+// the treasury, 90% to the distributor. Re-priced on every build like SOL.
+async function priceOrderInDwell(priceMicroUsdc: string, feeBps: number) {
+  const pricing = await jupiterQuote({ inputMint: config.usdcMint, outputMint: config.dwellMint, amount: priceMicroUsdc });
+  const total = BigInt(pricing.outAmount);
+  const fee = (total * BigInt(feeBps)) / 10000n;
+  return { totalDwell: total, feeDwell: fee, trancheDwell: total - fee, quote: pricing };
 }
 async function jupiterSwapInstructions({ quoteResponse, userPublicKey, wrapSol = false }: any) {
   const res = await fetch(`${config.jupiterBaseUrl}/swap-instructions`, {
@@ -3492,6 +3544,27 @@ async function jupiterSwapInstructions({ quoteResponse, userPublicKey, wrapSol =
 // USDC pays the fee as an SPL transfer; SOL as a native lamport transfer.
 async function buildOrderTransaction({ order, payer, quoteResponse }: any) {
   if (!isPubkey(payer)) throw Object.assign(new Error("payer must be a Solana pubkey"), { code: "BAD_ACCOUNT" });
+
+  // $DWELL rail: no swap. Two plain SPL transfers of the payer's own $DWELL —
+  // 10% to the treasury, 90% to the distributor — + memo.
+  if (order.pay_currency === "dwell") {
+    const dwellAccount = await findTokenAccount(payer, config.dwellMint);
+    if (!dwellAccount) throw Object.assign(new Error("no $DWELL account for this wallet"), { code: "NO_FUNDS" });
+    const need = BigInt(order.pay_total_units);
+    if (dwellAccount.amount < need) {
+      throw Object.assign(new Error(`insufficient $DWELL: need ${need}, have ${dwellAccount.amount}`), { code: "NO_FUNDS" });
+    }
+    const bh0 = await solanaRpc("getLatestBlockhash", [{ commitment: "finalized" }]);
+    const value0 = bh0.value || bh0;
+    const tranche = need - BigInt(order.pay_fee_units);
+    const instructions0 = [
+      tokenTransferInstruction({ source: dwellAccount.pubkey, destination: config.treasuryDwellAta, owner: payer, amount: order.pay_fee_units, reference: order.reference_pubkey }),
+      tokenTransferInstruction({ source: dwellAccount.pubkey, destination: config.distributorDwellAta, owner: payer, amount: tranche.toString() }),
+      memoInstruction(`dwell-usdc-order:${order.id}`),
+    ];
+    return serializeUnsignedTransaction({ feePayer: payer, recentBlockhash: value0.blockhash, instructions: instructions0 });
+  }
+
   const isSol = order.pay_currency === "sol";
   let feeInstruction: any;
   if (isSol) {
@@ -3569,6 +3642,10 @@ async function verifyOrderTransaction({ signature, order }: any) {
     if (idx < 0) return { ok: false, reason: "fee_short" };
     feePaid = BigInt(txr.meta?.postBalances?.[idx] ?? 0) - BigInt(txr.meta?.preBalances?.[idx] ?? 0);
     if (feePaid < BigInt(order.pay_fee_units)) return { ok: false, reason: "fee_short" };
+  } else if (order.pay_currency === "dwell") {
+    // $DWELL rail: the fee leg is $DWELL to the treasury's DWELL account.
+    feePaid = delta(config.treasuryDwellAta, config.dwellMint);
+    if (feePaid === null || feePaid < BigInt(order.pay_fee_units)) return { ok: false, reason: "fee_short" };
   } else {
     feePaid = delta(config.treasuryUsdcAta, config.usdcMint);
     if (feePaid === null || feePaid < BigInt(order.fee_micro_usdc)) return { ok: false, reason: "fee_short" };
@@ -3591,10 +3668,12 @@ const shapeUsdcOrder = (o: any) => ({
   feeUsdc: microUsd(o.fee_micro_usdc),
   trancheUsdc: microUsd(o.tranche_micro_usdc),
   payCurrency: o.pay_currency,
-  // Pay-currency base units (micro-USDC / lamports); SOL re-prices per build.
+  // Pay-currency base units (micro-USDC / lamports / raw DWELL); SOL and DWELL
+  // re-price per build.
   payTotalUnits: String(o.pay_total_units),
   payFeeUnits: String(o.pay_fee_units),
   ...(o.pay_currency === "sol" ? { estPayTotalSol: Number(o.pay_total_units) / 1e9 } : {}),
+  ...(o.pay_currency === "dwell" ? { estPayTotalDwell: Number(o.pay_total_units) / 10 ** config.dwellDecimals, boostBps: config.dwellPayBoostBps } : {}),
   minDwellOut: String(o.min_dwell_out),
   reference: o.reference_pubkey,
   txSignature: o.tx_signature || null,
@@ -3608,10 +3687,13 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
   // differs. currency picks what the wallet pays with: 'usdc' (default) or
   // 'sol' (native transfer fee leg + wSOL->DWELL swap; needs the treasury's
   // SOL account configured).
-  const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency } = ctx.body || {};
-  const payCurrency = currency === "sol" ? "sol" : "usdc";
+  const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency, timescale } = ctx.body || {};
+  const payCurrency = ["sol", "dwell"].includes(currency) ? currency : "usdc";
   if (payCurrency === "sol" && !config.treasurySolAccount) {
     return json(400, { error: "SOL payments aren't enabled — pay with USDC" });
+  }
+  if (payCurrency === "dwell" && !config.treasuryDwellAta) {
+    return json(400, { error: "$DWELL payments aren't enabled — pay with USDC" });
   }
   const budgetCents = Math.round(Number(budget) * 100);
   const cpmCents = Math.round(Number(cpm) * 100);
@@ -3625,27 +3707,43 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
   if (!(budgetCents >= P.minBudgetCents && budgetCents <= P.maxBudgetCents)) {
     return json(400, { error: `budget must be $${(P.minBudgetCents / 100).toFixed(0)}–$${(P.maxBudgetCents / 100).toLocaleString("en-US")}` });
   }
-  const impressions = Math.floor((budgetCents * 1000) / cpmCents);
-  if (!(impressions >= 1)) return json(400, { error: "budget too small for this CPM" });
+  // Paying in $DWELL boosts the campaign's impressions (docs/08) — same spend,
+  // +DWELL_PAY_BOOST_BPS more reach. Applied to impressions only; the 90%
+  // rewards pool stays sized to the actual $DWELL paid, so it's pure extra
+  // reach, not a subsidy of the viewer pool.
+  const boostBps = payCurrency === "dwell" ? config.dwellPayBoostBps : 0;
+  const baseImpressions = Math.floor((budgetCents * 1000) / cpmCents);
+  const impressions = Math.floor(baseImpressions * (10000 + boostBps) / 10000);
+  if (!(baseImpressions >= 1)) return json(400, { error: "budget too small for this CPM" });
 
   // 90/10 in micro-USDC, exact: the fee is the 10000-RESERVE_TRANCHE_BPS
   // remainder, the tranche keeps every leftover micro unit. The USD split is
-  // the pricing truth on every rail; SOL amounts derive from it per quote.
+  // the pricing truth on every rail; SOL/DWELL amounts derive from it per quote.
   const priceMicro = BigInt(budgetCents) * 10000n;
   const feeMicro = (priceMicro * BigInt(10000 - config.reserveTrancheBps)) / 10000n;
   const trancheMicro = priceMicro - feeMicro;
 
-  let quote: any, payTotalUnits: string, payFeeUnits: string;
+  let quote: any, payTotalUnits: string, payFeeUnits: string, minDwellOut: string;
   try {
     if (payCurrency === "sol") {
       const sol = await priceOrderInSol(priceMicro.toString(), 10000 - config.reserveTrancheBps);
       payTotalUnits = sol.totalLamports.toString();
       payFeeUnits = sol.feeLamports.toString();
       quote = await jupiterQuote({ inputMint: WSOL_MINT, outputMint: config.dwellMint, amount: sol.trancheLamports.toString() });
+      minDwellOut = String(quote.otherAmountThreshold || quote.outAmount);
+    } else if (payCurrency === "dwell") {
+      // No swap: the advertiser sends $DWELL directly. Price the budget into
+      // $DWELL; 90% to the distributor is the min_dwell_out (exact transfer).
+      const d = await priceOrderInDwell(priceMicro.toString(), 10000 - config.reserveTrancheBps);
+      payTotalUnits = d.totalDwell.toString();
+      payFeeUnits = d.feeDwell.toString();
+      quote = d.quote;
+      minDwellOut = d.trancheDwell.toString();
     } else {
       payTotalUnits = priceMicro.toString();
       payFeeUnits = feeMicro.toString();
       quote = await jupiterQuote({ inputMint: config.usdcMint, outputMint: config.dwellMint, amount: trancheMicro.toString() });
+      minDwellOut = String(quote.otherAmountThreshold || quote.outAmount);
     }
   } catch (err: any) {
     console.error("[dwell] usdc order quote failed:", err?.message);
@@ -3656,6 +3754,7 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
   const campaignId = await repo.createPendingCampaign({
     email, brand, adLine, url, category, color: normalizeHexColor(color),
     pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard,
+    changeTimescale: normalizeTimescale(timescale),
   });
   const order = await repo.createUsdcOrder({
     campaignId,
@@ -3666,7 +3765,7 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
     payTotalUnits,
     payFeeUnits,
     quote,
-    minDwellOut: String(quote.otherAmountThreshold || quote.outAmount),
+    minDwellOut,
     referencePubkey: newReferencePubkey(),
     ttlMinutes: config.usdcOrderTtlMinutes,
   });
@@ -3678,8 +3777,13 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
     trancheUsdc: microUsd(trancheMicro),
     payCurrency,
     ...(payCurrency === "sol" ? { estPayTotalSol: Number(payTotalUnits) / 1e9 } : {}),
+    ...(payCurrency === "dwell" ? {
+      estPayTotalDwell: Number(payTotalUnits) / 10 ** config.dwellDecimals,
+      boostBps: config.dwellPayBoostBps,
+      boostImpressions: impressions - baseImpressions,
+    } : {}),
     estDwellOut: String(quote.outAmount),
-    minDwellOut: String(quote.otherAmountThreshold || quote.outAmount),
+    minDwellOut,
     expiresAt: order.expires_at,
     // Solana Pay transaction request: wallets GET label/icon then POST
     // {account} to this link and receive the unsigned transaction.
@@ -3775,27 +3879,39 @@ route("POST", "/v1/ads/usdc/orders/:id/transaction", async (ctx: any) => {
   const payer = String(ctx.body?.account || "");
   if (!isPubkey(payer)) return json(400, { error: "account must be a Solana pubkey" });
   try {
-    // SOL rail: re-price the lamport legs first (the USD split is fixed;
-    // what that costs in SOL floats), then quote the swap of the tranche.
     const built: any = { ...order };
-    if (order.pay_currency === "sol") {
-      const sol = await priceOrderInSol(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
-      built.pay_total_units = sol.totalLamports.toString();
-      built.pay_fee_units = sol.feeLamports.toString();
+    let transaction: string, tail = "";
+
+    if (order.pay_currency === "dwell") {
+      // $DWELL rail: no swap. Re-price the $DWELL legs (its price floats), pin
+      // them + the 90% floor to the order, then build the two-transfer tx.
+      const d = await priceOrderInDwell(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
+      built.pay_total_units = d.totalDwell.toString();
+      built.pay_fee_units = d.feeDwell.toString();
+      const minOut = d.trancheDwell.toString();
+      await repo.refreshUsdcOrderQuote(order.id, d.quote, minOut, { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units });
+      transaction = await buildOrderTransaction({ order: { ...built, min_dwell_out: minOut }, payer });
+      tail = ` (≈ ${(Number(built.pay_total_units) / 10 ** config.dwellDecimals).toLocaleString("en-US", { maximumFractionDigits: 2 })} $DWELL, +${config.dwellPayBoostBps / 100}% impressions)`;
+    } else {
+      // SOL rail: re-price the lamport legs first (the USD split is fixed;
+      // what that costs in SOL floats), then quote the swap of the tranche.
+      if (order.pay_currency === "sol") {
+        const sol = await priceOrderInSol(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
+        built.pay_total_units = sol.totalLamports.toString();
+        built.pay_fee_units = sol.feeLamports.toString();
+      }
+      const quote = await jupiterQuote(tranchQuoteParams(built));
+      const minOut = String(quote.otherAmountThreshold || quote.outAmount);
+      await repo.refreshUsdcOrderQuote(order.id, quote, minOut, order.pay_currency === "sol"
+        ? { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units }
+        : {});
+      transaction = await buildOrderTransaction({ order: { ...built, min_dwell_out: minOut }, payer, quoteResponse: quote });
+      if (order.pay_currency === "sol") tail = ` (≈ ${(Number(built.pay_total_units) / 1e9).toFixed(4)} SOL)`;
     }
-    const quote = await jupiterQuote(tranchQuoteParams(built));
-    const minOut = String(quote.otherAmountThreshold || quote.outAmount);
-    await repo.refreshUsdcOrderQuote(order.id, quote, minOut, order.pay_currency === "sol"
-      ? { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units }
-      : {});
-    const transaction = await buildOrderTransaction({
-      order: { ...built, min_dwell_out: minOut },
-      payer,
-      quoteResponse: quote,
-    });
+
     return json(200, {
       transaction,
-      message: `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} DWELL buy to the rewards pool${order.pay_currency === "sol" ? ` (≈ ${(Number(built.pay_total_units) / 1e9).toFixed(4)} SOL)` : ""}`,
+      message: `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} ${order.pay_currency === "dwell" ? "to the rewards pool" : "DWELL buy to the rewards pool"}${tail}`,
     });
   } catch (err: any) {
     if (err.code === "NO_FUNDS" || err.code === "BAD_ACCOUNT") return json(400, { error: err.message });
@@ -3808,7 +3924,7 @@ route("POST", "/v1/ads/usdc/orders/:id/transaction", async (ctx: any) => {
 route("POST", "/v1/checkout", async (ctx: any) => {
   // Budget + CPM model: advertiser pays the full budget; impressions = floor(
   // budget*1000/cpm). CPM == price_per_block_cents (block = 1,000 impressions).
-  const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard } = ctx.body || {};
+  const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, timescale } = ctx.body || {};
   const budgetCents = Math.round(Number(budget) * 100);
   const cpmCents = Math.round(Number(cpm) * 100);
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(400, { error: "valid email required" });
@@ -3820,7 +3936,7 @@ route("POST", "/v1/checkout", async (ctx: any) => {
   const impressions = Math.floor((budgetCents * 1000) / cpmCents);
   if (!(impressions >= 1)) return json(400, { error: "budget too small for this CPM" });
   const blocks = Math.max(1, Math.round(impressions / 1000)); // legacy display column; impressions_total is authoritative
-  const campaignId = await repo.createPendingCampaign({ email, brand, adLine, url, category, color: normalizeHexColor(color), pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard });
+  const campaignId = await repo.createPendingCampaign({ email, brand, adLine, url, category, color: normalizeHexColor(color), pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard, changeTimescale: normalizeTimescale(timescale) });
   const session = await stripe.createCheckoutSession({
     mode: "payment", customer_email: email,
     // receipt_email isn't a Checkout Session param; it lives on the PaymentIntent.
@@ -4233,13 +4349,15 @@ route("GET", "/v1/web/me", async (ctx: any) => {
   const user = await repo.userForSession(sessionFrom(ctx));
   if (!user) return json(401, { error: "not signed in" });
   const bal = await repo.balanceForUser(user.id);
-  const [hasSurvey, posted] = await Promise.all([
+  const [hasSurvey, posted, code] = await Promise.all([
     repo.hasOnboardingSurvey(user.id),
     repo.hasPostedOnboarding(user.id),
+    repo.getOrCreateReferralCode(user.id),
   ]);
   return json(200, {
     email: user.email, balanceUsd: bal.balanceMillicents / 100000,
     needsSurvey: !hasSurvey, needsPost: !posted,
+    referralLink: `${config.siteUrl}/portal.html?ref=${code}`,
   });
 });
 // Sign out: revoke the session server-side so the bearer token is dead even if

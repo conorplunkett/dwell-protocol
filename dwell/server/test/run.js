@@ -1811,19 +1811,25 @@ globalThis.fetch = async (url, opts) => {
   // A third app with the launch gate open (DWELL_MINT set) over the same
   // database, with Solana RPC + Jupiter faked at the fetch layer. The chain
   // object is the test's "blockchain": checks mutate it, then poll.
-  const { createSolana, base58Encode, WSOL_MINT, SYSTEM_PROGRAM } = require("../src/solana");
+  const { createSolana, base58Encode, WSOL_MINT, SYSTEM_PROGRAM, TOKEN_PROGRAM } = require("../src/solana");
   const pk = () => base58Encode(crypto.randomBytes(32));
-  const DWELL_MINT = pk(), USDC_MINT = pk(), TREASURY_ATA = pk(), TREASURY_SOL = pk(), DIST_ATA = pk(), PAYER = pk(), PAYER_USDC = pk();
+  const DWELL_MINT = pk(), USDC_MINT = pk(), TREASURY_ATA = pk(), TREASURY_SOL = pk(), TREASURY_DWELL = pk(), DIST_ATA = pk(), PAYER = pk(), PAYER_USDC = pk(), PAYER_DWELL = pk();
   const BLOCKHASH = base58Encode(crypto.randomBytes(32));
 
   const chain = {
     payerUsdc: "100000000000",     // $100k — plenty
     payerSol: "2000000000",        // 2 SOL — plenty
+    payerDwell: "999999999999999", // plenty of $DWELL
     signatures: [],                // what getSignaturesForAddress returns
     tx: null,                      // what getTransaction returns
     quoteOut: "45000000000",       // Jupiter outAmount for the $90 tranche
     quoteMin: "44550000000",       // otherAmountThreshold (slippage floor)
     solPriceLamports: "500000000", // USDC->wSOL pricing: $100 ≈ 0.5 SOL ($200/SOL)
+    // USDC->DWELL rate: 500 raw DWELL per micro-USDC. Keeps the USDC-rail tranche
+    // (90,000,000 micro -> 45,000,000,000) consistent with the assertions above,
+    // and makes the $DWELL-rail full-price quote ($100 -> 50,000,000,000) derive
+    // cleanly (fee 5e9 / tranche 45e9).
+    dwellPerMicroUsdc: 500n,
   };
   const paidTx = ({ reference, fee, dwellOut }) => ({
     slot: 1234, blockTime: 1700000000,
@@ -1848,16 +1854,19 @@ globalThis.fetch = async (url, opts) => {
     const reply = (body) => ({ ok: true, status: 200, json: async () => body });
     if (u.startsWith("http://jup.test/quote")) {
       const q = new URL(u).searchParams;
-      // USDC -> wSOL is the SOL rail's pricing quote; everything else is the
-      // tranche swap into DWELL.
-      const pricingSol = q.get("outputMint") === WSOL_MINT;
-      return reply({
-        inputMint: q.get("inputMint"), outputMint: q.get("outputMint"),
-        inAmount: q.get("amount"),
-        outAmount: pricingSol ? chain.solPriceLamports : chain.quoteOut,
-        otherAmountThreshold: pricingSol ? chain.solPriceLamports : chain.quoteMin,
-        swapMode: "ExactIn",
-      });
+      const inMint = q.get("inputMint"), outMint = q.get("outputMint"), amt = BigInt(q.get("amount"));
+      let outAmount, threshold;
+      if (outMint === WSOL_MINT) {
+        outAmount = chain.solPriceLamports; threshold = chain.solPriceLamports; // USDC->wSOL pricing (SOL rail)
+      } else if (inMint === WSOL_MINT) {
+        outAmount = chain.quoteOut; threshold = chain.quoteMin;                  // wSOL->DWELL tranche swap (SOL rail)
+      } else {
+        // USDC->DWELL: the USDC-rail tranche swap AND the $DWELL-rail full-price
+        // pricing, both proportional at the fixed rate.
+        outAmount = (amt * chain.dwellPerMicroUsdc).toString();
+        threshold = (amt * (chain.dwellPerMicroUsdc - 5n)).toString();          // ~1% below
+      }
+      return reply({ inputMint: inMint, outputMint: outMint, inAmount: q.get("amount"), outAmount, otherAmountThreshold: threshold, swapMode: "ExactIn" });
     }
     if (u.startsWith("http://jup.test/swap-instructions")) {
       const req = JSON.parse(opts.body);
@@ -1881,7 +1890,11 @@ globalThis.fetch = async (url, opts) => {
     const { method, params } = JSON.parse(opts.body);
     const rpcReply = (result) => reply({ jsonrpc: "2.0", id: 1, result });
     if (method === "getTokenAccountsByOwner") {
-      return rpcReply({ value: [{ pubkey: PAYER_USDC, account: { data: { parsed: { info: { tokenAmount: { amount: chain.payerUsdc } } } } } }] });
+      const mint = params[1]?.mint;
+      const acct = mint === DWELL_MINT
+        ? { pubkey: PAYER_DWELL, amount: chain.payerDwell }
+        : { pubkey: PAYER_USDC, amount: chain.payerUsdc };
+      return rpcReply({ value: [{ pubkey: acct.pubkey, account: { data: { parsed: { info: { tokenAmount: { amount: acct.amount } } } } } }] });
     }
     if (method === "getLatestBlockhash") return rpcReply({ value: { blockhash: BLOCKHASH, lastValidBlockHeight: 1 } });
     if (method === "getBalance") return rpcReply({ value: Number(chain.payerSol) });
@@ -1893,7 +1906,8 @@ globalThis.fetch = async (url, opts) => {
   const cfgUsdc = {
     ...cfgToken, tokenMode: "live",
     dwellMint: DWELL_MINT, usdcMint: USDC_MINT,
-    treasuryUsdcAta: TREASURY_ATA, treasurySolAccount: TREASURY_SOL, distributorDwellAta: DIST_ATA,
+    treasuryUsdcAta: TREASURY_ATA, treasurySolAccount: TREASURY_SOL, treasuryDwellAta: TREASURY_DWELL, distributorDwellAta: DIST_ATA,
+    dwellDecimals: 6, dwellPayBoostBps: 1000,
     solanaRpcUrl: "http://solana.test", jupiterBaseUrl: "http://jup.test",
     maxSlippageBps: 100, usdcOrderTtlMinutes: 30, brandName: "DWELL",
   };
@@ -2105,6 +2119,87 @@ globalThis.fetch = async (url, opts) => {
     assert.strictEqual(after.body.status, "failed");
     assert.strictEqual(after.body.failReason, "fee_short");
     assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit, undefined, "no funding on a short fee");
+    chain.signatures = []; chain.tx = null;
+  });
+
+  // A landed $DWELL payment: two $DWELL token deltas — treasury (fee) + distributor
+  // (tranche), no swap.
+  const paidDwellTx = ({ reference, feeDwell, trancheDwell }) => ({
+    slot: 1236, blockTime: 1700000200,
+    transaction: { message: { accountKeys: [
+      { pubkey: PAYER }, { pubkey: TREASURY_DWELL }, { pubkey: DIST_ATA }, { pubkey: reference },
+    ] } },
+    meta: {
+      err: null,
+      preTokenBalances: [
+        { accountIndex: 1, mint: DWELL_MINT, uiTokenAmount: { amount: "0" } },
+        { accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: "0" } },
+      ],
+      postTokenBalances: [
+        { accountIndex: 1, mint: DWELL_MINT, uiTokenAmount: { amount: feeDwell } },
+        { accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: trancheDwell } },
+      ],
+    },
+  });
+
+  await check("$dwell rail: pay directly in $DWELL (no swap), +10% impressions, two token transfers", async () => {
+    // Gate: without a treasury $DWELL account, $DWELL orders are refused.
+    cfgUsdc.treasuryDwellAta = "";
+    assert.strictEqual((await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" })).status, 400);
+    cfgUsdc.treasuryDwellAta = TREASURY_DWELL;
+
+    chain.signatures = []; chain.tx = null;
+    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.payCurrency, "dwell");
+    assert.strictEqual(r.body.priceUsdc, 100, "pricing stays USD");
+    assert.strictEqual(r.body.feeUsdc, 10);
+    assert.strictEqual(r.body.boostBps, 1000, "+10% boost surfaced");
+    // $100 @ $15 CPM = 6,666 base impressions → +10% = 7,332.
+    assert.strictEqual(r.body.boostImpressions, 7332 - 6666, "boost impressions = 10% of base");
+    assert.strictEqual(r.body.estPayTotalDwell, 50000, "50,000,000,000 raw ÷ 10^6 decimals");
+
+    const built = await apiU("POST", `/v1/ads/usdc/orders/${r.body.orderId}/transaction`, { account: PAYER });
+    assert.strictEqual(built.status, 200);
+    assert.ok(/\$DWELL/.test(built.body.message) && /\+10% impressions/.test(built.body.message), "wallet message names $DWELL + boost");
+    const tx = Buffer.from(built.body.transaction, "base64");
+    assert.strictEqual(tx[0], 1, "one signer — the advertiser");
+    const msg = tx.subarray(65);
+    const has = (b58) => msg.includes(require("../src/solana").base58Decode(b58));
+    assert.ok(has(TREASURY_DWELL), "fee leg targets the treasury's $DWELL account");
+    assert.ok(has(DIST_ATA), "90% leg targets the distributor");
+    assert.ok(!has(WSOL_MINT), "no wSOL — there is no swap on this rail");
+
+    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(ord.payFeeUnits, "5000000000", "10% of 50,000,000,000 DWELL");
+    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
+    chain.signatures = [sig];
+    chain.tx = paidDwellTx({ reference: ord.reference, feeDwell: "5000000000", trancheDwell: "45000000000" });
+    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(after.body.status, "confirmed");
+    assert.strictEqual(after.body.campaignStatus, "pending_review");
+
+    const led = await campLedger(r.body.campaignId);
+    assert.strictEqual(led.campaign_credit.sum, 10_000_000, "$100 in millicents (boost is reach, not pool)");
+    assert.strictEqual(led.reserve_allocation.sum, 9_000_000, "90% earmark on the actual spend");
+    const pools = await apiU("GET", "/v1/token/pools");
+    const pool_ = pools.body.pools.find((p) => p.campaignId === r.body.campaignId);
+    assert.strictEqual(pool_.dwellOutWei, "45000000000", "the 90% $DWELL sent to the distributor");
+    // locked rate = dwellOut × viewerShare ÷ boosted impressions (7,332)
+    assert.strictEqual(pool_.lockedRateWei, String((45000000000n * 6000n) / 10000n / 7332n));
+    chain.signatures = []; chain.tx = null;
+  });
+
+  await check("$dwell rail: a landed transaction that shorts the $DWELL fee fails the order", async () => {
+    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
+    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
+    chain.signatures = [sig];
+    chain.tx = paidDwellTx({ reference: ord.reference, feeDwell: "4000000000", trancheDwell: "45000000000" }); // 4e9 < 5e9
+    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(after.body.status, "failed");
+    assert.strictEqual(after.body.failReason, "fee_short");
+    assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit, undefined, "no funding on a short $DWELL fee");
     chain.signatures = []; chain.tx = null;
   });
 

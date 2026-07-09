@@ -108,3 +108,14 @@ export function hyperlink(url, text) {
 export function dimLabel(text) {
   return `${ESC}[2m${text}${RESET}`;
 }
+
+// Recent-change % badge colors — bright green up / red red, tuned to read on a
+// dark terminal (matches the web ticker's #35d07f / #ff5c5c).
+export const UP_RGB = { r: 53, g: 208, b: 127 };
+export const DOWN_RGB = { r: 255, g: 92, b: 92 };
+
+// Bold, colored change badge like "(+235%)" — green when up, red when down.
+export function changeBadge(text, up) {
+  if (!text) return "";
+  return `${ESC}[1m${ansiFg(up ? UP_RGB : DOWN_RGB)}${text}${RESET}`;
+}

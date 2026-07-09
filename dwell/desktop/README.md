@@ -148,7 +148,7 @@ cd desktop/macos/SponsorOverlay
 DWELL_DEMO=1 swift run SponsorOverlay
 ```
 Demo mode treats whatever window is frontmost as "Claude generating", shows a
-seeded Linear card bottom-center, and logs qualified impressions/clicks to
+seeded $ansem card bottom-center, and logs qualified impressions/clicks to
 the console after the 5-second timer. Watch with
 `log stream --predicate 'eventMessage CONTAINS "dwell"'` or just the
 terminal output.

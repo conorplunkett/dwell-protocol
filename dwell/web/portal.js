@@ -142,7 +142,7 @@ function portalLink(code) {
 function mockGet(path) {
   const p = path.split("?")[0];
   if (p === "/v1/web/me") {
-    return { email: MOCK.email, points: MOCK.points, needsSurvey: false, needsPost: false };
+    return { email: MOCK.email, points: MOCK.points, needsSurvey: false, needsPost: false, referralLink: "https://dwellprotocol.com/portal.html?ref=DEVCODE" };
   }
   if (p === "/v1/web/earnings") {
     const win = /window=(\w+)/.exec(path)?.[1] || "7d";
@@ -371,6 +371,8 @@ function showOnboarding(email) {
   hideAllPages();
   $("onboarding-page").hidden = false;
   accountEmail = email;
+  // Paint the prebuilt post with the user's own referral link (from /v1/web/me).
+  paintOnboardTweet(onboardRefLink);
   // Always start on the compose step with the continue button hidden — you
   // can't reach the dashboard without opening the composer first.
   onboardStep("post");
@@ -742,11 +744,16 @@ $("survey-surfaces-next").addEventListener("click", async () => {
 
 // ---- first-login onboarding: post the prebuilt note to X to unlock the dashboard ----
 // The prebuilt post. Kept price-talk-free (see AGENTS.md / docs/05-legal-structure.md)
-// — it states what DWELL does as fact and links the site.
-const ONBOARD_TWEET =
-  "I'm earning with @dwellprotocol — it shows one sponsored line while my AI " +
-  "assistant is thinking and pays me for the attention I'm already giving. " +
-  "Get paid for yours: https://dwellprotocol.com";
+// — it states what DWELL does as fact and appends the user's own referral link
+// (from /v1/web/me) so friends who join earn them a 10% referral share.
+const ONBOARD_TWEET_PREFIX =
+  "I'm earning USDC while I use AI.\n" +
+  "Use my link here on @DwellProtocolSo to get a 10% earnings boost: ";
+
+// Build the full post: fixed pitch + the signed-in user's referral link.
+function onboardTweetText(link) {
+  return ONBOARD_TWEET_PREFIX + (link || "https://dwellprotocol.com/portal.html");
+}
 
 function setOnboardError(msg) {
   const el = $("onboard-error");
@@ -761,15 +768,21 @@ function onboardStep(name) {
   setOnboardError("");
 }
 
-// Paint the preview and wire the X intent link. The "continue" button only
-// appears once the user has actually opened the composer — you can't skip
-// straight past the post.
-(function initOnboardPost() {
+// Paint the preview and wire the X intent link using the user's referral link.
+// Called from showOnboarding once /v1/web/me has provided the link.
+function paintOnboardTweet(link) {
+  const text = onboardTweetText(link);
   const preview = $("onboard-tweet-preview");
-  if (preview) preview.textContent = ONBOARD_TWEET;
+  if (preview) preview.textContent = text;
+  const postBtn = $("onboard-post-btn");
+  if (postBtn) postBtn.href = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(text);
+}
+
+// Wire the onboarding buttons once. The "continue" button only appears after the
+// user has actually opened the composer — you can't skip straight past the post.
+(function initOnboardPost() {
   const postBtn = $("onboard-post-btn");
   if (postBtn) {
-    postBtn.href = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(ONBOARD_TWEET);
     postBtn.addEventListener("click", () => {
       // Opening the composer is what unlocks the continue button.
       $("onboard-next-btn").hidden = false;
@@ -805,6 +818,8 @@ let accountEmail = "";
 // Captured from /v1/web/me so the survey step knows whether the post-to-X
 // gate still stands once the survey is submitted.
 let onboardNeedsPost = false;
+// The user's own referral link (from /v1/web/me), appended to the prebuilt post.
+let onboardRefLink = "";
 
 // Paint the dwells balance everywhere it appears: the Earnings header block
 // and the Redeem tab's header. One number, one conversion rule. The gift grid
@@ -1370,6 +1385,7 @@ async function boot() {
   await maybeLinkDevice(); // link a desktop device if one is pending
   setBalance(toPoints(me.body, "points", "balanceUsd"));
   onboardNeedsPost = !!me.body.needsPost;
+  onboardRefLink = me.body.referralLink || "";
   // First-login onboarding runs in order: survey questions, then post the
   // prebuilt note to X, then the dashboard. Each gate is skipped once cleared.
   if (me.body.needsSurvey) { showSurvey(me.body.email); return; }

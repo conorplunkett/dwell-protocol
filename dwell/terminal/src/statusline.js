@@ -2,8 +2,8 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { readTranscriptActivity } from "./transcript.js";
 import { readState, updateState } from "./state.js";
-import { composeAdText, safeHttpUrl } from "./util.js";
-import { dimLabel, hyperlink, resolveAdColor, shimmer } from "./color.js";
+import { composeAdText, formatChangePct, safeHttpUrl } from "./util.js";
+import { changeBadge, dimLabel, hyperlink, resolveAdColor, shimmer } from "./color.js";
 
 const ACTIVE_STALE_MS = 4000;
 const PREV_TIMEOUT_MS = 1500;
@@ -64,7 +64,12 @@ export function buildAdLine(state, { now = Date.now() } = {}) {
   const rgb = resolveAdColor({ color: ad.color });
   // Bold + colored + underlined, with a shimmer band sweeping across — reads
   // as a live, clickable link like the Chrome extension's ad bar.
-  const styled = `${dimLabel("ad\u00b7")} ${shimmer(text, rgb, { now })}`;
+  let styled = `${dimLabel("ad\u00b7")} ${shimmer(text, rgb, { now })}`;
+
+  // Recent-change % badge after the line \u2014 green up / red down. Only when the
+  // ad carries a numeric change (real campaigns render none until live data).
+  const badge = formatChangePct(ad.change);
+  if (badge) styled += ` ${changeBadge(badge, ad.change >= 0)}`;
 
   const url = safeHttpUrl(state?.trackingUrl || "");
   if (!url) return styled;

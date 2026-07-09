@@ -58,6 +58,14 @@ create table if not exists campaigns (
   impressions_remaining integer not null,
   budget_cents integer,                    -- exact amount charged (the advertiser's budget); null on pre-budget campaigns
   show_on_leaderboard boolean not null default true,
+  -- Recent-change % badge (the crypto-ticker figure next to the ad). timescale is
+  -- the advertiser-chosen performance window; 'auto' (the default, hidden from the
+  -- public form) renders whichever window shows the biggest number. `changes` is a
+  -- per-timescale map, e.g. {"5m":4.2,"1h":38,"1d":235}; null until live market data
+  -- is wired (see dwell/ROADMAP.md) — real campaigns render no badge meanwhile.
+  change_timescale text not null default 'auto'
+    check (change_timescale in ('5m', '15m', '1h', '4h', '1d', 'auto')),
+  changes jsonb,
   -- lifecycle: pending_payment -> (paid) pending_review -> (approved) active
   --            -> exhausted; or rejected/cancelled.
   status text not null default 'pending_payment'
@@ -78,6 +86,12 @@ alter table campaigns add column if not exists budget_cents integer;
 -- Set when the one-time "campaign finished" advertiser receipt has been emailed;
 -- the send is guarded on this being null so a receipt goes out at most once.
 alter table campaigns add column if not exists completion_email_sent_at timestamptz;
+-- Recent-change % badge fields on databases created before they existed.
+alter table campaigns add column if not exists change_timescale text not null default 'auto';
+alter table campaigns drop constraint if exists campaigns_change_timescale_check;
+alter table campaigns add constraint campaigns_change_timescale_check
+  check (change_timescale in ('5m', '15m', '1h', '4h', '1d', 'auto'));
+alter table campaigns add column if not exists changes jsonb;
 
 create index if not exists campaigns_auction_idx
   on campaigns (status, price_per_block_cents desc)
@@ -532,7 +546,7 @@ create table if not exists usdc_orders (
   -- native lamport transfer and the swap leg runs wSOL -> DWELL. pay_*_units
   -- are in the pay currency's base units (micro-USDC / lamports); for SOL they
   -- re-price on every transaction build, like min_dwell_out.
-  pay_currency text not null default 'usdc' check (pay_currency in ('usdc', 'sol')),
+  pay_currency text not null default 'usdc' check (pay_currency in ('usdc', 'sol', 'dwell')),
   pay_total_units bigint not null,            -- what the wallet pays in total, pay-currency base units
   pay_fee_units bigint not null,              -- the treasury leg the verifier enforces, pay-currency base units
   quote jsonb not null,                       -- Jupiter swap quote at order/build time
