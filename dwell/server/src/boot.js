@@ -50,6 +50,10 @@ function loadConfig(env = process.env) {
     applePrivateKey: (env.APPLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
     twitterClientId: env.TWITTER_CLIENT_ID || "",
     twitterClientSecret: env.TWITTER_CLIENT_SECRET || "",
+    // App-only bearer token used to verify a user's onboarding post is live on
+    // their X timeline (admin payout review only). Absent → verification is a
+    // no-op that reports "unconfigured".
+    twitterBearerToken: env.TWITTER_BEARER_TOKEN || "",
     // mail
     mailProvider: env.MAIL_PROVIDER || "console",
     resendApiKey: env.RESEND_API_KEY,

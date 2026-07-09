@@ -179,6 +179,13 @@ alter table users add column if not exists twitter_id text unique;
 -- timeline (replacing the old refer-a-friend email gate). Self-attested — set
 -- when the user confirms they posted. Accounts without it may not be paid out.
 alter table users add column if not exists onboarding_posted_at timestamptz;
+-- Server-side X (Twitter) verification of that onboarding post, used only by the
+-- admin payout review (never surfaced in the earner UI). verified_at + url are
+-- set when a matching public post is found on the user's timeline; checked_at
+-- records the last verification attempt regardless of outcome.
+alter table users add column if not exists onboarding_post_verified_at timestamptz;
+alter table users add column if not exists onboarding_post_url text;
+alter table users add column if not exists onboarding_post_checked_at timestamptz;
 
 create table if not exists web_sessions (
   token text primary key,
@@ -315,12 +322,14 @@ alter table ledger add constraint ledger_entry_type_check check (entry_type in (
   'token_claim_debit'        -- live mode: entitlement moved into an onchain Merkle root (- user)
 ));
 
--- On-demand web payouts are debit-first: the balance is charged and a payouts
--- row created as 'pending' before the Stripe transfer fires, then flipped to
--- 'paid' or 'failed' (with a ledger reversal). Widen the original two-state
--- check so existing databases accept the intermediate state.
+-- Web payouts are debit-first: the balance is charged and a payouts row created
+-- before any Stripe transfer fires. On-demand user cash-outs now queue as
+-- 'requested' (funds held, awaiting manual admin approval); approval flips to
+-- 'pending' while the transfer is in flight, then 'paid' or 'failed' (with a
+-- ledger reversal), and admin decline flips to 'rejected' (also reversed).
+-- Widen the original check so existing databases accept every state.
 alter table payouts drop constraint if exists payouts_status_check;
-alter table payouts add constraint payouts_status_check check (status in ('pending', 'paid', 'failed'));
+alter table payouts add constraint payouts_status_check check (status in ('requested', 'pending', 'paid', 'failed', 'rejected'));
 
 -- ── Affiliates ───────────────────────────────────────────────────────────────
 -- A separate, application-gated program (distinct from referrals). A user

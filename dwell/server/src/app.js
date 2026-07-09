@@ -1537,24 +1537,16 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const netCents = grossCents - feeCents;
     if (netCents <= 0) return json(res, 403, { error: "balance too small to pay out" });
 
+    // Manual model: queue the request (funds held via the debit) and stop. No
+    // money moves until an admin approves it — so nothing here transfers, and
+    // the response says nothing about how the request is reviewed.
     const requested = await repo.recordPayoutRequest({ userId: user.id, grossCents, feeCents });
     if (!requested) return json(res, 409, { error: "insufficient credits" });
-
-    try {
-      const transfer = await stripe.createTransfer({
-        amount: netCents, currency: "usd", destination: user.stripe_account_id,
-        transfer_group: `payout_${user.id}_${requested.id}`,
-      });
-      await repo.finalizePayout(requested.id, { transferId: transfer.id });
-    } catch (err) {
-      console.error("[dwell] payout transfer failed:", err.message);
-      await repo.finalizePayout(requested.id, { failed: true, userId: user.id, grossCents, feeCents });
-      return json(res, 502, { error: "transfer failed — your balance was not charged" });
-    }
 
     const after = await repo.balanceForUser(user.id);
     json(res, 200, {
       ok: true,
+      requested: true,
       grossUsd: grossCents / 100,
       feeUsd: feeCents / 100,
       netUsd: netCents / 100,
@@ -1825,6 +1817,107 @@ async function act(kind,id){
   route("POST", "/v1/admin/payouts", async (req, res, body) => {
     if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
     json(res, 200, await runPayouts({ repo, stripe, config }));
+  });
+
+  // ---------- manual payout approval (admin) ----------
+  // Server-side X (Twitter) check that a user's onboarding post is live on their
+  // timeline. Admin payout review ONLY — never called from an earner path and
+  // never surfaced in the portal. Persists the result and returns a status the
+  // admin UI renders as a badge.
+  function onboardingPostMatches(t) {
+    const text = String(t?.text || "");
+    if (/dwellprotocol\.com/i.test(text) || /@dwellprotocol/i.test(text)) return true;
+    const urls = (t && t.entities && t.entities.urls) || [];
+    return urls.some((u) => /dwellprotocol\.com/i.test((u && (u.expanded_url || u.url)) || ""));
+  }
+  async function verifyOnboardingPost(u) {
+    if (!u.twitter_id) return { status: "no_x_account" };
+    if (!config.twitterBearerToken) return { status: "unconfigured" };
+    try {
+      const url = `https://api.twitter.com/2/users/${encodeURIComponent(u.twitter_id)}/tweets` +
+        `?max_results=100&exclude=retweets,replies&tweet.fields=entities`;
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${config.twitterBearerToken}` } });
+      const data = await r.json();
+      const tweets = Array.isArray(data && data.data) ? data.data : [];
+      const hit = tweets.find((t) => onboardingPostMatches(t));
+      if (hit) {
+        const postUrl = `https://x.com/i/status/${hit.id}`;
+        await repo.saveOnboardingPostVerification(u.id, { url: postUrl });
+        return { status: "verified", url: postUrl };
+      }
+      await repo.saveOnboardingPostVerification(u.id, { url: null });
+      return { status: "not_found" };
+    } catch (err) {
+      console.error("[dwell] onboarding post verify:", err.message);
+      return { status: "error", error: err.message };
+    }
+  }
+  // Derive the admin-facing verification status from stored fields (no network).
+  function onboardingPostStatus(u) {
+    if (u.onboarding_post_verified_at) return "verified";
+    if (!u.twitter_id) return "no_x_account";
+    if (u.onboarding_post_checked_at) return "not_found";
+    return "unchecked";
+  }
+  function payoutRequestView(r) {
+    return {
+      payoutId: r.id, userId: r.user_id, email: r.email,
+      twitterId: r.twitter_id || null,
+      grossUsd: (r.gross_cents || 0) / 100,
+      feeUsd: (r.fee_cents || 0) / 100,
+      netUsd: (r.net_cents || 0) / 100,
+      requestedAt: r.created_at,
+      stripeReady: !!(r.stripe_account_id && r.payouts_enabled),
+      postedAt: r.onboarding_posted_at,
+      postStatus: onboardingPostStatus(r),
+      postUrl: r.onboarding_post_url || null,
+      postCheckedAt: r.onboarding_post_checked_at,
+    };
+  }
+
+  route("GET", "/v1/admin/payouts/requests", async (req, res, body, rawBody, query) => {
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    const rows = await repo.listPayoutRequests();
+    json(res, 200, { requests: rows.map(payoutRequestView) });
+  });
+
+  // Re-run the X verification for one user and return the fresh status. Admin
+  // clicks this from the payout review before approving.
+  route("POST", "/v1/admin/payouts/verify-post", async (req, res, body) => {
+    if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
+    const u = await repo.userForAdmin(body?.userId);
+    if (!u) return json(res, 404, { error: "user not found" });
+    const result = await verifyOnboardingPost(u);
+    json(res, 200, result);
+  });
+
+  route("POST", "/v1/admin/payouts/requests/approve", async (req, res, body) => {
+    if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
+    const claimed = await repo.claimPayoutRequest(body?.payoutId);
+    if (!claimed) return json(res, 409, { error: "request not found or already handled" });
+    if (!claimed.stripeAccountId || !claimed.payoutsEnabled) {
+      await repo.releasePayoutClaim(claimed.id); // leave it queued, funds still held
+      return json(res, 409, { error: "user has no active Stripe payouts account" });
+    }
+    try {
+      const transfer = await stripe.createTransfer({
+        amount: claimed.netCents, currency: "usd", destination: claimed.stripeAccountId,
+        transfer_group: `payout_${claimed.userId}_${claimed.id}`,
+      });
+      await repo.finalizePayout(claimed.id, { transferId: transfer.id });
+    } catch (err) {
+      console.error("[dwell] payout approve transfer failed:", err.message);
+      await repo.finalizePayout(claimed.id, { failed: true, userId: claimed.userId, grossCents: claimed.grossCents, feeCents: claimed.feeCents });
+      return json(res, 502, { error: "transfer failed — the request was reversed and the balance restored" });
+    }
+    json(res, 200, { ok: true, netUsd: claimed.netCents / 100 });
+  });
+
+  route("POST", "/v1/admin/payouts/requests/reject", async (req, res, body) => {
+    if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
+    const rejected = await repo.rejectPayoutRequest(body?.payoutId);
+    if (!rejected) return json(res, 409, { error: "request not found or already handled" });
+    json(res, 200, { ok: true, restoredUsd: rejected.grossCents / 100 });
   });
 
   // ---------- server plumbing ----------
