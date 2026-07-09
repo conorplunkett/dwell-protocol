@@ -10,18 +10,21 @@
 // the tilting .r3d-card, and gets a .r3d-sheen (gloss) injected. One
 // requestAnimationFrame loop lerps every channel toward its target. Honors
 // prefers-reduced-motion: the CSS falls back to a simple hover lift, no tilt.
+//
+// The Claude mascot is a special case — it isn't a block, so it gets no
+// wrapper/shadow/gloss; it just tilts and drifts with the cursor over the hero
+// demo, so it moves along with the blocks it perches on.
 (function float3d() {
   // Which lander surfaces float. `display` sets the generated wrapper's box so
-  // the host layout (hero demo grid, download grid, form column) is preserved.
-  //  · stock spinner block + with-dwell block → the two before/after demo cards
-  //  · screenshots      → the framed product windows in the surfaces showcase
-  //  · install buttons  → the Chrome / Mac quick-install buttons
-  //  · ad purchase card → the advertiser checkout card
+  // the host layout is preserved; `tilt` scales the lean (the big advertiser
+  // card swings at half strength so it doesn't feel like it's flipping).
   var TARGETS = [
-    { sel: ".demo .demo-card", display: "block" },
-    { sel: ".surfaces .win", display: "block" },
-    { sel: ".downloads .dl-btn", display: "block" },
-    { sel: ".advertisers .adv-card", display: "block" },
+    { sel: ".nav .logo", display: "inline-block", tilt: 1 },     // Dwell mark, top-left
+    { sel: ".nav .navbtn-cta", display: "inline-block", tilt: 1 }, // Advertise button
+    { sel: ".demo .demo-card", display: "block", tilt: 1 },      // stock spinner + with-dwell blocks
+    { sel: ".surfaces .win", display: "block", tilt: 1 },        // screenshots
+    { sel: ".downloads .dl-btn", display: "block", tilt: 1 },    // install buttons
+    { sel: ".advertisers .adv-card", display: "block", tilt: 0.5 }, // ad purchase card — half tilt
   ];
 
   var MAX = 11; // max tilt in degrees
@@ -49,19 +52,26 @@
     TARGETS.forEach(function (t) {
       Array.prototype.forEach.call(document.querySelectorAll(t.sel), function (el) {
         var made = wrap(el, t.display);
-        if (made) wraps.push(made);
+        if (made) { made.tilt = t.tilt; wraps.push(made); }
       });
     });
-    if (!wraps.length) return;
+
+    // Mascot: tilts/drifts with the cursor over the hero demo, no wrapper.
+    var mascot = document.getElementById("claude-guy");
+    var demo = document.querySelector(".demo");
+    var hasMascot = mascot && demo;
+
+    if (!wraps.length && !hasMascot) return;
 
     var reduce = window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // Reduced motion: the CSS hover fallback handles it — no tilt loop.
+    // Reduced motion: the CSS hover fallback handles the blocks; skip everything
+    // motion-driven (mascot included).
     if (reduce) return;
 
     var states = wraps.map(function (m) {
       return {
-        wrap: m.wrap, card: m.card, sheen: m.sheen,
+        wrap: m.wrap, card: m.card, sheen: m.sheen, tilt: m.tilt,
         rx: 0, ry: 0, s: 1, g: 0, lift: 0,
         trx: 0, try_: 0, ts: 1, tg: 0, tlift: 0,
         mx: 50, my: 50, tmx: 50, tmy: 50,
@@ -74,8 +84,8 @@
         if (!r.width || !r.height) return;
         var px = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1);
         var py = Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1);
-        st.try_ = (px - 0.5) * 2 * MAX;   // rotateY follows horizontal
-        st.trx = -(py - 0.5) * 2 * MAX;   // rotateX follows vertical
+        st.try_ = (px - 0.5) * 2 * MAX * st.tilt;   // rotateY follows horizontal
+        st.trx = -(py - 0.5) * 2 * MAX * st.tilt;   // rotateX follows vertical
         st.tmx = px * 100;
         st.tmy = py * 100;
       });
@@ -84,6 +94,25 @@
         st.tg = 0; st.ts = 1; st.tlift = 0; st.trx = 0; st.try_ = 0; st.tmx = 50; st.tmy = 50;
       });
     });
+
+    // Mascot state, driven off the whole demo region so he leans toward the
+    // cursor as it moves across the two blocks.
+    var mst = null;
+    if (hasMascot) {
+      mst = { rx: 0, ry: 0, dx: 0, lift: 0, trx: 0, try_: 0, tdx: 0, tlift: 0 };
+      demo.addEventListener("pointermove", function (e) {
+        var r = demo.getBoundingClientRect();
+        var px = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1);
+        var py = Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1);
+        mst.try_ = (px - 0.5) * 2 * 13;   // rotateY
+        mst.trx = -(py - 0.5) * 2 * 13;   // rotateX
+        mst.tdx = (px - 0.5) * 14;        // drift toward the cursor
+        mst.tlift = 1;
+      });
+      demo.addEventListener("pointerleave", function () {
+        mst.trx = 0; mst.try_ = 0; mst.tdx = 0; mst.tlift = 0;
+      });
+    }
 
     function tick() {
       states.forEach(function (st) {
@@ -109,6 +138,18 @@
         st.sheen.style.setProperty("--mx", st.mx.toFixed(1) + "%");
         st.sheen.style.setProperty("--my", st.my.toFixed(1) + "%");
       });
+
+      if (mst) {
+        mst.rx += (mst.trx - mst.rx) * kRot;
+        mst.ry += (mst.try_ - mst.ry) * kRot;
+        mst.dx += (mst.tdx - mst.dx) * kPt;
+        mst.lift += (mst.tlift - mst.lift) * kScale;
+        mascot.style.transform =
+          "perspective(500px) translateX(" + mst.dx.toFixed(2) + "px) translateY(" +
+          (-5 * mst.lift).toFixed(2) + "px) rotateX(" + mst.rx.toFixed(2) +
+          "deg) rotateY(" + mst.ry.toFixed(2) + "deg)";
+      }
+
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
