@@ -142,7 +142,7 @@ function portalLink(code) {
 function mockGet(path) {
   const p = path.split("?")[0];
   if (p === "/v1/web/me") {
-    return { email: MOCK.email, points: MOCK.points, needsSurvey: false, needsReferral: false };
+    return { email: MOCK.email, points: MOCK.points, needsSurvey: false, needsPost: false };
   }
   if (p === "/v1/web/earnings") {
     const win = /window=(\w+)/.exec(path)?.[1] || "7d";
@@ -263,6 +263,7 @@ function mockPost(path, payload) {
     error:     "Something went wrong with sign-in. Try again or use email.",
     "no-google": "Google sign-in is not configured. Use email instead.",
     "no-apple":  "Apple sign-in is not configured. Use email instead.",
+    "no-twitter": "X sign-in is not configured. Use email instead.",
     expired:     "That sign-in link expired. Request a new one.",
   };
   showError(msgs[login] || "Sign-in failed. Try again.");
@@ -370,6 +371,11 @@ function showOnboarding(email) {
   hideAllPages();
   $("onboarding-page").hidden = false;
   accountEmail = email;
+  // Always start on the compose step with the continue button hidden — you
+  // can't reach the dashboard without opening the composer first.
+  onboardStep("post");
+  const nextBtn = $("onboard-next-btn");
+  if (nextBtn) nextBtn.hidden = true;
 }
 function showPortalPage(email) {
   clearAuthGate();
@@ -601,6 +607,11 @@ $("google-btn").addEventListener("click", (e) => {
   if (!API_BASE) return showError("Sign-in is unavailable right now.");
   window.location.href = oauthUrl("google");
 });
+$("twitter-btn").addEventListener("click", (e) => {
+  e.preventDefault();
+  if (!API_BASE) return showError("Sign-in is unavailable right now.");
+  window.location.href = oauthUrl("twitter");
+});
 
 // ── Send magic link ──
 let lastEmail = "";
@@ -720,7 +731,7 @@ $("survey-surfaces-next").addEventListener("click", async () => {
   const { status, body } = await apiPost("/v1/web/onboarding/survey", payload);
   if (status === 401) return sessionExpired();
   if (status === 200) {
-    if (onboardNeedsReferral) showOnboarding(accountEmail);
+    if (onboardNeedsPost) showOnboarding(accountEmail);
     else enterDashboard(accountEmail);
     return;
   }
@@ -729,49 +740,71 @@ $("survey-surfaces-next").addEventListener("click", async () => {
   setSurveyError("survey-surfaces-error", (body && body.error) || "Couldn't save that. Try again.");
 });
 
-// ---- first-login onboarding: invite two friends to unlock the dashboard ----
+// ---- first-login onboarding: post the prebuilt note to X to unlock the dashboard ----
+// The prebuilt post. Kept price-talk-free (see AGENTS.md / docs/05-legal-structure.md)
+// — it states what DWELL does as fact and links the site.
+const ONBOARD_TWEET =
+  "I'm earning with @dwellprotocol — it shows one sponsored line while my AI " +
+  "assistant is thinking and pays me for the attention I'm already giving. " +
+  "Get paid for yours: https://dwellprotocol.com";
+
 function setOnboardError(msg) {
   const el = $("onboard-error");
   el.textContent = msg || "";
   el.hidden = !msg;
 }
 
-$("onboard-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const email1 = ($("onboard-email").value || "").trim();
-  const email2 = ($("onboard-email-2").value || "").trim();
-  if (!email1 || !email2) return;
-  // Two distinct friends — the same address twice is one invite, not two.
-  if (email1.toLowerCase() === email2.toLowerCase()) {
-    setOnboardError("Please enter two different friends' emails.");
-    return;
+// Switch between the two onboarding sub-steps: compose/post → confirm.
+function onboardStep(name) {
+  $("onboard-step-post").hidden = name !== "post";
+  $("onboard-step-confirm").hidden = name !== "confirm";
+  setOnboardError("");
+}
+
+// Paint the preview and wire the X intent link. The "continue" button only
+// appears once the user has actually opened the composer — you can't skip
+// straight past the post.
+(function initOnboardPost() {
+  const preview = $("onboard-tweet-preview");
+  if (preview) preview.textContent = ONBOARD_TWEET;
+  const postBtn = $("onboard-post-btn");
+  if (postBtn) {
+    postBtn.href = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(ONBOARD_TWEET);
+    postBtn.addEventListener("click", () => {
+      // Opening the composer is what unlocks the continue button.
+      $("onboard-next-btn").hidden = false;
+    });
   }
-  const btn = $("onboard-btn");
+  const nextBtn = $("onboard-next-btn");
+  if (nextBtn) nextBtn.addEventListener("click", () => onboardStep("confirm"));
+  const no = $("onboard-confirm-no");
+  if (no) no.addEventListener("click", () => onboardStep("post"));
+  const yes = $("onboard-confirm-yes");
+  if (yes) yes.addEventListener("click", onboardConfirmPosted);
+})();
+
+async function onboardConfirmPosted() {
+  const btn = $("onboard-confirm-yes");
   setOnboardError("");
   btn.disabled = true;
-  btn.textContent = "Sending…";
-  // Valid emails are all that's required — the friends never have to sign up
-  // for the user to progress past onboarding. The server validates each
-  // address and rejects the user's own email.
-  for (const email of [email1, email2]) {
-    const { status, body } = await apiPost("/v1/web/affiliate/invite", { email });
-    if (status === 401) return sessionExpired();
-    if (status !== 200) {
-      btn.disabled = false;
-      btn.textContent = "Send invites & continue";
-      setOnboardError((body && body.error) || `Couldn't send the invite to ${email}. Check the email and try again.`);
-      return;
-    }
+  btn.textContent = "Opening dashboard…";
+  const { status, body } = await apiPost("/v1/web/onboarding/post", {});
+  if (status === 401) return sessionExpired();
+  if (status === 200) {
+    enterDashboard(accountEmail);
+    return;
   }
-  enterDashboard(accountEmail);
-});
+  btn.disabled = false;
+  btn.textContent = "Yes, it's on my timeline";
+  setOnboardError((body && body.error) || "Couldn't save that. Try again.");
+}
 
 // ---- state ----
 let balancePoints = 0;
 let accountEmail = "";
-// Captured from /v1/web/me so the survey step knows whether the refer-a-friend
+// Captured from /v1/web/me so the survey step knows whether the post-to-X
 // gate still stands once the survey is submitted.
-let onboardNeedsReferral = false;
+let onboardNeedsPost = false;
 
 // Paint the dwells balance everywhere it appears: the Earnings header block
 // and the Redeem tab's header. One number, one conversion rule. The gift grid
@@ -1335,11 +1368,11 @@ async function boot() {
   if (me.status !== 200) return showLoginPage();
   await maybeLinkDevice(); // link a desktop device if one is pending
   setBalance(toPoints(me.body, "points", "balanceUsd"));
-  onboardNeedsReferral = !!me.body.needsReferral;
-  // First-login onboarding runs in order: survey questions, then refer a
-  // friend, then the dashboard. Each gate is skipped once cleared.
+  onboardNeedsPost = !!me.body.needsPost;
+  // First-login onboarding runs in order: survey questions, then post the
+  // prebuilt note to X, then the dashboard. Each gate is skipped once cleared.
   if (me.body.needsSurvey) { showSurvey(me.body.email); return; }
-  if (me.body.needsReferral) { showOnboarding(me.body.email); return; }
+  if (me.body.needsPost) { showOnboarding(me.body.email); return; }
   enterDashboard(me.body.email);
 }
 

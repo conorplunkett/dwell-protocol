@@ -881,7 +881,18 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const parts = payload.split(".");
     const ts = parseInt(parts[0], 10);
     if (!Number.isFinite(ts) || Date.now() - ts >= 10 * 60 * 1000) return null;
-    return { ref: parts[2] || "" };
+    return { ref: parts[2] || "", nonce: parts[1] || "" };
+  }
+  // X (Twitter) OAuth 2.0 mandates PKCE even for confidential clients. We stay
+  // stateless like the rest of the OAuth flow by deriving the verifier from the
+  // signed state's nonce with a server secret — it never leaves the server (only
+  // its S256 hash, the challenge, travels through the browser), and the callback
+  // recomputes it from the returned state.
+  function pkceVerifier(nonce) {
+    return crypto.createHmac("sha256", config.adminKey || "fallback").update(`pkce:${nonce}`).digest("hex");
+  }
+  function pkceChallenge(verifier) {
+    return crypto.createHash("sha256").update(verifier).digest("base64url");
   }
   // Convert DER-encoded ECDSA signature to IEEE P1363 (JWT ES256 format).
   function derEcdsaToP1363(der) {
@@ -1022,6 +1033,68 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     }
   });
 
+  // ---------- X (Twitter) OAuth 2.0 (PKCE) ----------
+  // X returns no email, so these accounts are keyed on the numeric X user id
+  // alone. The confidential client authenticates the token exchange with HTTP
+  // Basic (client_id:client_secret).
+  route("GET", "/v1/auth/twitter", async (req, res, body, rawBody, query) => {
+    if (!config.twitterClientId) return redirect(res, `${config.siteUrl}/portal.html?login=no-twitter`);
+    const state = makeOAuthState(query.get("ref"));
+    const st = verifyOAuthState(state);
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: config.twitterClientId,
+      redirect_uri: `${config.apiBaseUrl}/v1/auth/twitter/callback`,
+      scope: "tweet.read users.read offline.access",
+      state,
+      code_challenge: pkceChallenge(pkceVerifier(st.nonce)),
+      code_challenge_method: "S256",
+    });
+    redirect(res, `https://twitter.com/i/oauth2/authorize?${params}`);
+  });
+
+  route("GET", "/v1/auth/twitter/callback", async (req, res, body, rawBody, query) => {
+    if (query.get("error") || !query.get("code")) {
+      return redirect(res, `${config.siteUrl}/portal.html?login=cancelled`);
+    }
+    const oauthState = verifyOAuthState(query.get("state"));
+    if (!oauthState) {
+      return redirect(res, `${config.siteUrl}/portal.html?login=error`);
+    }
+    try {
+      const basic = Buffer.from(`${config.twitterClientId}:${config.twitterClientSecret}`).toString("base64");
+      const tokRes = await fetch("https://api.twitter.com/2/oauth2/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${basic}`,
+        },
+        body: new URLSearchParams({
+          code: query.get("code"),
+          grant_type: "authorization_code",
+          client_id: config.twitterClientId,
+          redirect_uri: `${config.apiBaseUrl}/v1/auth/twitter/callback`,
+          code_verifier: pkceVerifier(oauthState.nonce),
+        }).toString(),
+      });
+      const tokens = await tokRes.json();
+      if (!tokens.access_token) throw new Error("no access_token from X");
+      const uiRes = await fetch("https://api.twitter.com/2/users/me", {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      const tu = await uiRes.json();
+      if (!tu?.data?.id) throw new Error("no user id from X");
+      const { sessionToken } = await repo.upsertUserByOAuth(
+        { twitterId: String(tu.data.id), referralCode: oauthState.ref, emailVerified: false },
+        config.webSessionTtlMs
+      );
+      redirect(res, `${config.siteUrl}/portal.html#session=${sessionToken}`);
+    } catch (err) {
+      console.error("[dwell] twitter oauth:", err.message);
+      redirect(res, `${config.siteUrl}/portal.html?login=error`);
+    }
+  });
+
   // ---------- website login + redemption (the only place users redeem) ----------
   // Email magic link → web session → read balance → redeem for a Claude gift card.
   function sessionFrom(req, body, query) {
@@ -1055,13 +1128,13 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const user = await repo.userForSession(sessionFrom(req, body, query));
     if (!user) return json(res, 401, { error: "not signed in" });
     const bal = await repo.balanceForUser(user.id);
-    const [hasSurvey, referred] = await Promise.all([
+    const [hasSurvey, posted] = await Promise.all([
       repo.hasOnboardingSurvey(user.id),
-      repo.hasReferredAnyone(user.id),
+      repo.hasPostedOnboarding(user.id),
     ]);
     json(res, 200, {
       email: user.email, balanceUsd: bal.balanceMillicents / 100000,
-      needsSurvey: !hasSurvey, needsReferral: !referred,
+      needsSurvey: !hasSurvey, needsPost: !posted,
     });
   });
 
@@ -1318,6 +1391,17 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       ? (String(body?.surfaceOther || "").trim().slice(0, 200) || null)
       : null;
     await repo.saveOnboardingSurvey(user.id, { models, surfaces, surfaceOther });
+    json(res, 200, { ok: true });
+  });
+
+  // First-login onboarding post: the user confirms they posted the prebuilt
+  // DWELL note to their X timeline. Self-attested — clears the needsPost gate so
+  // the dashboard unlocks. Idempotent. Accounts that never post may have their
+  // payouts delayed or withheld (see terms.html).
+  route("POST", "/v1/web/onboarding/post", async (req, res, body) => {
+    const user = await repo.userForSession(sessionFrom(req, body));
+    if (!user) return json(res, 401, { error: "not signed in" });
+    await repo.markOnboardingPosted(user.id);
     json(res, 200, { ok: true });
   });
 

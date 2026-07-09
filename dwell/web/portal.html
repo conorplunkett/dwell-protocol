@@ -85,6 +85,13 @@
             Continue with Google
           </a>
 
+          <a class="auth-btn-provider" id="twitter-btn" href="#">
+            <svg class="provider-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+            Continue with X
+          </a>
+
           <div class="auth-divider"><span>Sign in with email</span></div>
           <input
             class="auth-input"
@@ -208,9 +215,11 @@
 
 
   <!-- ══════════════════════════════════════════════════
-       ONBOARDING PAGE (first login — refer a friend before
-       reaching the dashboard). The friend doesn't have to
-       sign up; a valid email is all it takes to continue.
+       ONBOARDING PAGE (first login — post the prebuilt DWELL
+       note to your X timeline before reaching the dashboard).
+       The "continue" button stays hidden until the user has
+       opened the X composer; continuing asks for an explicit
+       confirmation that the post is live.
   ══════════════════════════════════════════════════ -->
   <div class="portal-onboard" id="onboarding-page" hidden>
 
@@ -231,40 +240,51 @@
     <!-- LEFT — hero / brand -->
     <div class="portal-left">
       <div class="portal-hero">
-        <h1 class="portal-h1">Invite friends to start earning.</h1>
+        <h1 class="portal-h1">Post to start earning.</h1>
       </div>
     </div>
 
-    <!-- RIGHT — invite card -->
+    <!-- RIGHT — post-to-X card -->
     <div class="portal-right">
       <div class="auth-card">
-        <div class="auth-sent-icon">🤝</div>
-        <h2 class="onboard-title">Invite two friends</h2>
-        <p class="auth-sent-msg">Send two invites to open your earnings dashboard — you earn 10% of their earnings, carved from each campaign's pool.</p>
 
-        <form id="onboard-form">
-          <input
-            class="auth-input"
-            type="email"
-            id="onboard-email"
-            placeholder="friend@example.com"
-            autocomplete="off"
-            required
-            aria-label="First friend's email"
-          />
-          <input
-            class="auth-input"
-            type="email"
-            id="onboard-email-2"
-            placeholder="another@example.com"
-            autocomplete="off"
-            required
-            aria-label="Second friend's email"
-          />
-          <button class="auth-btn-primary" id="onboard-btn" type="submit">
-            Send invites &amp; continue
+        <!-- Step 1: compose + post -->
+        <div id="onboard-step-post">
+          <div class="auth-sent-icon">𝕏</div>
+          <h2 class="onboard-title">Share one post to open your dashboard</h2>
+          <p class="auth-sent-msg">We've written a post for you. Add it to your X timeline to unlock earning — it takes a few seconds.</p>
+
+          <blockquote class="onboard-tweet-preview" id="onboard-tweet-preview"></blockquote>
+
+          <a class="auth-btn-primary" id="onboard-post-btn" href="#" target="_blank" rel="noopener noreferrer">
+            Post to X
+          </a>
+
+          <p class="onboard-payout-warn" id="onboard-payout-warn">
+            ⚠ Payouts may be delayed if you don't post to your timeline.
+          </p>
+
+          <!-- Hidden until the composer has been opened -->
+          <button class="auth-btn-secondary" id="onboard-next-btn" type="button" hidden>
+            I've posted — continue
           </button>
-        </form>
+        </div>
+
+        <!-- Step 2: confirm the post is live -->
+        <div id="onboard-step-confirm" hidden>
+          <div class="auth-sent-icon">✅</div>
+          <h2 class="onboard-title">Is your post live?</h2>
+          <p class="auth-sent-msg">
+            Confirm the post is on your X timeline. Accounts without an onboarding
+            post in their timeline may have their payouts delayed or withheld.
+          </p>
+          <button class="auth-btn-primary" id="onboard-confirm-yes" type="button">
+            Yes, it's on my timeline
+          </button>
+          <button class="auth-link-btn" id="onboard-confirm-no" type="button">
+            ← Not yet — let me post first
+          </button>
+        </div>
 
         <p class="auth-error" id="onboard-error" hidden></p>
       </div>
