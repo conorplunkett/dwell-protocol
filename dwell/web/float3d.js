@@ -22,6 +22,7 @@
     { sel: ".nav .logo", display: "inline-block", tilt: 1 },     // Dwell mark, top-left
     { sel: ".nav .navbtn-cta", display: "inline-block", tilt: 1 }, // Advertise button
     { sel: ".demo .demo-card", display: "block", tilt: 1 },      // stock spinner + with-dwell blocks
+    { sel: ".hero-adv .wl-adv", display: "inline-block", tilt: 1 }, // "Want to be seen by AI native users?"
     { sel: ".surfaces .win", display: "block", tilt: 1 },        // screenshots
     { sel: ".downloads .dl-btn", display: "block", tilt: 1 },    // install buttons
     { sel: ".advertisers .adv-card", display: "block", tilt: 0.5 }, // ad purchase card — half tilt
