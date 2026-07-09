@@ -889,16 +889,17 @@ a { color: inherit; text-decoration: none; }
 }
 .paytab.active { color: var(--ink); }
 /* "+10%" boost marker on the $DWELL tab — a small green (functional-success)
-   corner chip, floated so the "Pay with $DWELL" label stays centered. */
+   chip inline right after the label. The tab's own flex centering (gap +
+   justify-content: center) keeps the label+badge group centered as a unit. */
 .paytab-badge {
-  position: absolute; top: 3px; right: 4px;
+  margin-left: 4px;
   font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .02em;
   line-height: 1; padding: 2px 4px; border-radius: 5px;
   color: var(--ok-fg); background: var(--ok-bg); border: 1px solid var(--ok-line);
 }
 @media (max-width: 560px) {
   .paytab { flex-direction: column; gap: 3px; font-size: 12px; padding: 8px 4px; }
-  .paytab-badge { position: static; font-size: 9px; padding: 2px 4px; }
+  .paytab-badge { margin-left: 0; font-size: 9px; padding: 2px 4px; }
 }
 
 /* USDC checkout (dwell/docs/08) — hidden until $DWELL mints (script.js flag).
