@@ -34,7 +34,7 @@ impression tokens, and the dual Node-reference / Supabase-edge backend (see
      points_credit            (viewer, 60% of the tranche's dollar value)
      referral_points_credit   (referrer, 10% — skipped if unreferred)
      protocol_points_credit   (protocol, 30% — 40% when unreferred)
- balances = SUM(ledger)  ·  1,000 points → 12,000 DWELL at launch  ·  non-transferable pre-launch
+ balances = SUM(ledger)  ·  1,000 dwells = $1.00, settle in USDC / Claude credits  ·  never convert to $DWELL
 ```
 
 ## Live mode (Phase 2, post-TGE)

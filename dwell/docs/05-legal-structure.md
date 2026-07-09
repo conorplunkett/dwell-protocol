@@ -11,11 +11,10 @@
 Phase 1 (now)                    Phase 2 (TGE)
 ─────────────                    ─────────────
 Florida LLC (opco)               Florida LLC or DE C-corp (opco)
- · runs the ad marketplace        · unchanged
- · earmarks the 90% tranche      US issuer subsidiary
- · points on the ledger           · deploys + owns DWELL contracts
-                                  · holds token allocations (treasury, team vesting)
-                                  · operates CampaignFunder buys
+ · runs the ad marketplace        · unchanged; keeps ALL rewards operations
+ · dollar-denominated dwells      Bedrock BVI entity (token side only)
+   on the ledger, paid out in     · the star.fun raise + token allocations
+   USDC / Claude credits          · never touches the dwells ledger
 ```
 
 - **Florida LLC is viable** for the opco: post-HB 273 (eff. 2023), Florida's
@@ -61,17 +60,19 @@ Florida LLC (opco)               Florida LLC or DE C-corp (opco)
 
 ## Securities analysis (US, mid-2026)
 
-- **The favorable ground**: SEC Release 33-11412 (Mar 17, 2026) — Howey
-  applies to the *transaction and promises*, not the token; utility/reward
-  tokens are a recognized non-security category ("digital tools"); and
-  **distributions to people who didn't pay** (earned rewards, airdrops) lack
-  an "investment of money" and sit outside the securities laws. DWELL users
-  never buy the token from us — they earn it. This is the load-bearing wall.
-- **The risk is the marketing, not the mechanics.** Publicly promising that
-  revenue buys will make the price rise is precisely the "explicit and
-  unambiguous" value-accrual representation that forms an investment contract
-  around an otherwise non-security token. Hence the copy rules below and the
-  protocol-automated (contract-driven, non-discretionary) buy design.
+- **The favorable ground got simpler under tokenomics v2**: earners never
+  receive a token at all — dwells are dollar-denominated reward credits
+  settled in USDC or Claude credits. There is no distribution to analyze
+  under SEC Release 33-11412; the rewards side is a cash-back program
+  (Swagbucks/kickbacks shape), not a crypto distribution. The remaining
+  securities question lives entirely with the $DWELL raise
+  ([09-securities-framework.md](09-securities-framework.md)).
+- **The risk is the marketing, not the mechanics.** Any statement linking ad
+  revenue, buybacks, or company success to the token's price is the
+  "explicit and unambiguous" value-accrual representation that forms an
+  investment contract around an otherwise non-security token. Under v2 there
+  are no revenue→token flows to mis-describe — keep it that way: no leg of
+  any payment buys $DWELL, and the copy rules below enforce the silence.
 - **SEC v. LBRY is still good law** and is the on-point cautionary case:
   reward distributions were swept into an unregistered offering because of
   promotional value statements plus a large retained founder allocation. Its
@@ -90,46 +91,44 @@ Florida LLC (opco)               Florida LLC or DE C-corp (opco)
   LBRY; Reddit MOON (killed by its own regulatory overhead — a live tradeable
   token cannot be gracefully un-shipped, which is half the argument for
   points-first).
-- **Buyback framing (see [08-securities-framework.md](08-securities-framework.md)):**
-  campaign buys are settlement of earner liabilities, not a buyback program.
-  Retroactive-only disclosure of buys is *not* a shield (the 2019 SEC
-  framework counts buybacks as "efforts of others" regardless of announcement;
-  Terraform/Coinbase treat publicized past buys as feeding expectations) —
-  the defense is the settlement purpose plus the copy rules below.
+- **No buys exist to defend.** v2 removed every revenue→token flow, so the
+  buyback line of attack (2019 framework "efforts of others"; Terraform;
+  Coinbase ecosystem approach) has no target. The company also does not
+  route ad payments through the token or instantly sell received $DWELL —
+  manufactured volume is wash-trading-adjacent and stays out of the design.
 
 ## Copy rules by phase (extends AGENTS.md ▸ Voice & copy)
 
 **Always (every public surface, including this repo):**
-- State mechanics as facts ("the token-side tranche — currently ~90% — is
-  converted to DWELL at market and split; 60% of the pool goes to the
-  viewer"). Never say or imply the price will rise, that buys are "price
-  support" or "buybacks," or that holding is an investment. **Never promise a
-  percentage of revenue** — the tranche is configuration, described as
-  "currently," changeable at any time; discretion to change or stop the
-  mechanic is reserved in the terms.
+- State mechanics as facts ("each campaign's rewards pool splits 60% to the
+  viewer, 10% to their referrer, 30% to the company — in dollars"). Never
+  say or imply the token price will rise or that holding is an investment.
+  Shares are configuration, described as "currently," changeable at any
+  time; discretion to change the split, fees, or redemption menu is
+  reserved in the terms.
 - Banned words/framings: "moon," "price will," "appreciate," "going up,"
   "invest," "returns," "passive income," APY-anything — plus "buyback,"
   "price support," "value accrual," "deflationary," "scarcity," burn framing,
   and **any forward-looking statement about future buys**.
-- **No dollar peg, anywhere**: dwells/points are token-denominated; the old
-  "1,000 dwells = $1.00" legend is banned. Dollar figures are estimates at
-  current market price, labeled as such.
+- **dwells are dollar-denominated (v2)**: the legend "1,000 dwells = $1.00
+  of earned ad value" is factual and allowed. What is banned is any link
+  from dwells to the token: no "convert to $DWELL," no snapshot, no
+  conversion price, ever.
 - **Never describe DWELL as ownership, equity, or a claim on the company**
   (the Bedrock structure separates token and equity — see
-  [08-securities-framework.md](08-securities-framework.md)).
+  [09-securities-framework.md](09-securities-framework.md)).
 - The earn framing is compensation: "get paid for your attention."
 - No quantified earnings claims ("earn up to $X/mo") — FTC
   deceptive-earnings-claims exposure, separate from securities.
 
-**Points phase:** points are described as what they are — a token-denominated
-earned balance (1,000 points = 12,000 DWELL at launch) with **no dollar peg
-and no cash reserve behind it**; value floats with the market and dollar
-figures are always presented as estimates. No token ticker hype, no
-countdowns framed as buying opportunities (there is nothing to buy — ever).
+**dwells (always):** described as what they are — dollar-denominated earned
+reward credits (1,000 dwells = $1.00), redeemable for USDC (10% fee) or
+Claude credits (10% boost), backed by the earmarked rewards-pool ledger. No
+token ticker anywhere near earn copy; dwells never convert to $DWELL.
 
-**Live phase:** claims, locked rates, and pool splits are shown as data
-(amounts, tx links). The cash-out path is presented as the stability option,
-without advice in either direction.
+**$DWELL surfaces (tokenomics page, raise page):** facts only — supply,
+allocation, Bedrock constraints, what the token is not. Never "ownership,"
+never a percentage of the company, never a buyback or revenue link.
 
 ## Tax operations
 
@@ -139,9 +138,11 @@ without advice in either direction.
   creates no user tax reporting. Live phase: collect W-9s before a user
   crosses **$2,000/year** (the 2026 1099-MISC threshold, indexed) and file
   1099-MISC box 3; without a certified TIN, 24% backup withholding applies.
-- **Company**: payouts are deductible §162 compensation at FMV. Buying tokens
-  and distributing them immediately keeps basis ≈ FMV, so no meaningful gain
-  on the payout leg (warehousing bought tokens would create one — don't).
+- **Company**: payouts are deductible §162 compensation at face value; USDC
+  bought to fund payouts and paid out promptly creates no meaningful gain.
+  $DWELL received as ad payment is income at FMV on receipt and sits in
+  treasury (disposition later is a separate taxable event — part of the
+  treasury-sale counsel gate).
 - **1099-DA (broker) stays with the offramp partner** as long as hard rules
   2–3 hold. Confirm the partner's reporting duty contractually.
 - Issuer-side treatment of the retained allocations (vesting, 83(b)-analog
@@ -152,7 +153,7 @@ without advice in either direction.
 A star.fun raise ([07-starfun-launch.md](07-starfun-launch.md)) is a public
 sale of tokens for money — hard rule 1 does not cover it, and no
 documentation can. The framework treats the populations separately
-([08-securities-framework.md](08-securities-framework.md)): the
+([09-securities-framework.md](09-securities-framework.md)): the
 **earned-rewards shelter covers earners only**; the **raise is its own
 securities event**, mitigated by (a) the **Bedrock structure** — the token
 carries zero equity rights; ownership framing is banned — replacing the old
@@ -160,9 +161,11 @@ fractional-company-ownership framing this section previously warned about,
 (b) a facts-only raise page with no managerial-effort or value-accrual
 representations, and (c) the **geofence/KYC decision** (recommended: exclude
 US persons from the raise + KYC, the pump.fun mitigation — US users can still
-earn even where they cannot buy). Consequences stand: the points-first
-shelter's one-way door closes at the raise (the token is live and priced from
-day one), and **counsel sign-off is a pre-raise hard gate** — on the raise,
+earn even where they cannot buy). Under v2 the raise no longer touches the
+rewards program at all — dwells are dollar-denominated and never convert, so
+there is no snapshot and no one-way door for earners; the token going live
+changes nothing on the earn side. **Counsel sign-off is a pre-raise hard
+gate** — on the raise,
 the Bedrock constitutional documents, the copy, and the geofence decision.
 Hard rules 2–4 (no custody, partner offramps, geofences) apply unchanged on
 Solana.

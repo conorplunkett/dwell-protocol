@@ -1,25 +1,26 @@
 # Dwell Protocol
 
 **Get paid for your attention.** DWELL shows one sponsored line while an AI
-assistant is thinking, and pays the person watching. Earnings accrue as
-**DWELL points** today and convert to the **$DWELL token** at launch.
+assistant is thinking, and pays the person watching in **dwells**
+(1,000 dwells = $1.00 of earned ad value), redeemable for **USDC to your
+wallet** (10% protocol fee) or **Claude credits** (at a 10% boost). dwells
+are reward credits, not the $DWELL token, and do not convert to it.
 Canonical domain: **[dwellprotocol.com](https://dwellprotocol.com)**.
 
-The mechanics, stated as facts (see the copy rules in
-[docs/05-legal-structure.md](docs/05-legal-structure.md) and the framework in
-[docs/08-securities-framework.md](docs/08-securities-framework.md)):
-advertisers pay fixed dollar CPMs by card; the token-side tranche of each
-campaign (currently ~90% — configuration, not a commitment) is earmarked on
-the protocol ledger during the points phase and, after launch, converted into
-$DWELL at market to settle what that campaign's earners are owed. Each
-campaign's pool splits **60% to the viewer, 10% to their referrer, and 30% to
-the protocol treasury (reserve, held)** — the referrer leg joins the treasury
-when a viewer has no referrer. Users are only ever paid what revenue already
-bought: no minting, no emissions schedule, no oracle. The token confers
-**zero equity rights** (Bedrock framework). Launch venue: **star.fun ×
-Bedrock (Solana)** — see
-[docs/07-starfun-launch.md](docs/07-starfun-launch.md); the Base/EVM contracts
-in `contracts/` are the CI-verified reference implementation and fallback.
+Two systems, no bridge (see [docs/01-tokenomics.md](docs/01-tokenomics.md),
+the copy rules in [docs/05-legal-structure.md](docs/05-legal-structure.md),
+and the framework in
+[docs/09-securities-framework.md](docs/09-securities-framework.md)):
+advertisers pay fixed dollar CPMs by card or USDC; each campaign's rewards
+pool splits **60% to the viewer, 10% to their referrer, and 30% to the
+company** (40% when unreferred) — all in dollars. Payouts are funded in
+USDC through licensed partners. **No leg of any payment buys $DWELL**, and
+ad revenue never flows to the token. $DWELL is a separate SPL token
+(star.fun × Bedrock launch, Solana) that trades and can pay for ad
+campaigns at a spot quote; it confers **zero equity rights** — see
+[docs/07-starfun-launch.md](docs/07-starfun-launch.md). The Base/EVM
+contracts in `contracts/` are a retired reference implementation of the
+pre-v2 design.
 
 ## Layout
 

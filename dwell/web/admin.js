@@ -46,7 +46,7 @@ const usd = (n) => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFract
 const usd0 = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("en-US"); // whole-dollar (CPM)
 // DWELL user-side value is denominated in POINTS. The ledger accrues them at
 // earn-time ad value (1 point per millicent — an earn basis, not a dollar
-// claim; points convert to $DWELL at launch). The API returns these balances
+// claim; dwells settle in USDC or Claude credits, never $DWELL). The API returns these balances
 // in USD terms, so points = usd × 1,000. Use pts() for anything a viewer
 // earns/holds; keep usd() for real money (advertiser spend, platform fees,
 // Stripe payouts).

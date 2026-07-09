@@ -1193,7 +1193,7 @@ function createRepo(pool) {
     async userForSession(sessionToken) {
       if (!sessionToken) return null;
       const { rows } = await pool.query(
-        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled
+        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled, u.wallet_address
            from web_sessions s join users u on u.id = s.user_id
           where s.token = $1 and s.expires_at > now()`,
         [sessionToken]
@@ -1526,7 +1526,7 @@ function createRepo(pool) {
     // User-scoped gift redemption (website flow). Re-checks the user's balance
     // inside the transaction against the ledger so concurrent redeems can't spend
     // the same credits twice. Returns the redemption id, or null if short.
-    async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, feeCents = 0, recipientEmail, referralRewardMillicents, referralCap }) {
+    async recordGiftRedemptionForUser({ id, userId, plan, months, amountCents, feeCents = 0, debitCents = null, recipientEmail, referralRewardMillicents, referralCap }) {
       return tx(async (c) => {
         // Serialize concurrent redeems on this user's balance (see
         // recordGiftRedemption) so the in-transaction check can't be overdrawn.
@@ -1538,9 +1538,11 @@ function createRepo(pool) {
               and entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit','payout_debit','gift_redemption_debit','admin_credit','admin_debit')`,
           [userId]
         );
-        // The user is debited face + fee; the fee lands platform-side so the
-        // two rows sum to the face value leaving the system (ledger stays closed).
-        const costMillicents = (BigInt(amountCents) + BigInt(feeCents)) * 1000n;
+        // Legacy pricing debits face + fee (fee lands platform-side, ledger
+        // closed). v2 boost pricing passes debitCents (< face): the user is
+        // debited less than face value and the delta is the platform's
+        // fulfillment cost, borne outside the ledger.
+        const costMillicents = (debitCents != null ? BigInt(debitCents) : BigInt(amountCents) + BigInt(feeCents)) * 1000n;
         if (BigInt(bal.rows[0].balance) < costMillicents) return null;
 
         const { rows } = await c.query(
@@ -1958,14 +1960,59 @@ function createRepo(pool) {
     // net the user received (or will receive, for 'pending').
     async payoutsForUser(userId) {
       const { rows } = await pool.query(
-        `select amount_cents, status, stripe_transfer_id, created_at
+        `select amount_cents, status, method, destination, tx_signature, created_at
            from payouts where user_id = $1 order by created_at desc limit 20`,
         [userId]
       );
       return rows.map((r) => ({
         amountUsd: r.amount_cents / 100,
         status: r.status,
+        method: r.method || "stripe",
+        destination: r.destination || null,
+        txSignature: r.tx_signature || null,
         createdAt: r.created_at,
+      }));
+    },
+
+    // Tokenomics v2: link a Solana wallet for USDC payouts. The unique index
+    // on wallet_address rejects an address already claimed by another account
+    // (surfaced as a 409 by the route).
+    async linkWallet(userId, address) {
+      try {
+        await pool.query(
+          `update users set wallet_address = $2, wallet_provider = 'external', wallet_linked_at = now()
+            where id = $1`,
+          [userId, address]
+        );
+        return { ok: true };
+      } catch (err) {
+        if (err.code === "23505") return { ok: false, taken: true };
+        throw err;
+      }
+    },
+
+    // Ops half of a USDC payout: the licensed partner executed the transfer;
+    // stamp the signature. Only pending usdc rows are eligible.
+    async markUsdcPayoutPaid(payoutId, txSignature) {
+      const { rowCount } = await pool.query(
+        `update payouts set status = 'paid', tx_signature = $2
+          where id = $1 and method = 'usdc' and status = 'pending'`,
+        [payoutId, txSignature]
+      );
+      return rowCount === 1;
+    },
+
+    // Queue view for ops: pending USDC payouts oldest-first.
+    async pendingUsdcPayouts() {
+      const { rows } = await pool.query(
+        `select p.id, p.user_id, u.email, p.amount_cents, p.destination, p.created_at
+           from payouts p join users u on u.id = p.user_id
+          where p.method = 'usdc' and p.status = 'pending'
+          order by p.created_at asc limit 200`
+      );
+      return rows.map((r) => ({
+        id: r.id, userId: r.user_id, email: r.email,
+        amountUsd: r.amount_cents / 100, destination: r.destination, createdAt: r.created_at,
       }));
     },
 
@@ -1974,7 +2021,7 @@ function createRepo(pool) {
     // fee, and create a 'pending' payouts row. The Stripe transfer happens after
     // commit; finalizePayout flips the row to paid/failed. Returns
     // { id, netCents } or null when the balance no longer covers the gross.
-    async recordPayoutRequest({ userId, grossCents, feeCents }) {
+    async recordPayoutRequest({ userId, grossCents, feeCents, method = "stripe", destination = null }) {
       return tx(async (c) => {
         await c.query("select pg_advisory_xact_lock($1, hashtext($2))", [LOCK_REDEEM, `user:${userId}`]);
         const bal = await c.query(
@@ -1988,9 +2035,9 @@ function createRepo(pool) {
 
         const netCents = grossCents - feeCents;
         const { rows } = await c.query(
-          `insert into payouts (user_id, amount_cents, status)
-           values ($1, $2, 'pending') returning id`,
-          [userId, netCents]
+          `insert into payouts (user_id, amount_cents, status, method, destination)
+           values ($1, $2, 'pending', $3, $4) returning id`,
+          [userId, netCents, method, destination]
         );
         await c.query(
           `insert into ledger (entry_type, amount_millicents, user_id, meta)

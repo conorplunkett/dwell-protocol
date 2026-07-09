@@ -1,9 +1,9 @@
 // DWELL — signed-in portal (portal.html). Email magic-link or OAuth sign-in,
 // then the dashboard: earnings, the activity ledger, the redeem tab (gift
 // cards + cash payouts live, $DWELL claim previewed), referrals, and install
-// status. Dwells are the unit everywhere: 1,000 dwells convert to 12,000
-// $DWELL at token launch; value floats with the market. USD figures shown
-// next to dwells are earn-basis (what advertisers paid), not a cash balance —
+// status. Dwells are the unit everywhere: dollar-denominated (1,000 dwells =
+// $1.00 of earned ad value), redeemable for USDC or Claude credits — never
+// $DWELL. USD figures next to dwells are earn-basis (what advertisers paid) —
 // the backend still speaks USD (balanceUsd etc.) and the conversion happens
 // at the display edge only.
 //
