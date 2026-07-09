@@ -237,8 +237,11 @@ function updateAdPreview() {
   const accent = hex || getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ff0000";
   const chip = document.getElementById("prev-chip");
   const lineEl = document.getElementById("prev-line");
-  if (chip) chip.textContent = ((brand || line || "Your ad here").trim()[0] || "Y").toUpperCase();
-  if (lineEl) lineEl.textContent = line || "Your ad here";
+  // Chip initial skips the $ so "$ANSEM" chips as "A"; the preview line pairs
+  // ticker + slogan the same way the live overlay renders them.
+  const chipSrc = (brand || line || "Your token here").trim().replace(/^\$+/, "");
+  if (chip) chip.textContent = (chipSrc[0] || "Y").toUpperCase();
+  if (lineEl) lineEl.textContent = (brand && line) ? `${brand} · ${line}` : (line || brand || "Your token here");
   adPrevBar.style.setProperty("--prev-accent", accent);
   adPrevBar.style.setProperty("--prev-ink", readableInk(accent));
   // Sample performance badge — illustrative (live market data lands later; see
@@ -551,10 +554,40 @@ loadPricing();
 // Real advertiser checkout: create a campaign + redirect to Stripe.
 const adForm = document.querySelector(".adform");
 if (adForm) {
+  // Email is optional in the form, but Stripe checkout needs it for the
+  // receipt — enforce it only on the card/submit path (native `required` would
+  // also block a future crypto path, where it stays optional).
+  const emailInput = adForm.querySelector('input[name="email"]');
+  emailInput?.addEventListener("input", () => emailInput.setCustomValidity(""));
+  // Shared required-field gate for every checkout rail. reportValidity covers
+  // the native `required` fields (ticker/slogan/link) — needed explicitly on
+  // the crypto rails, whose plain buttons bypass form submission; the hidden
+  // file input can't carry native `required`, so the icon is checked via the
+  // dropzone's filled state.
+  window.validateTickerFields = () => {
+    if (!adForm.reportValidity()) return false;
+    const iconZone = document.getElementById("icon-dropzone");
+    if (iconZone && !iconZone.classList.contains("dropzone--filled")) {
+      const msg = document.getElementById("dropzone-msg");
+      if (msg) {
+        msg.textContent = "Ticker icon is required — drop an image here or click to browse.";
+        msg.classList.add("dropzone-msg--err");
+      }
+      iconZone.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    return true;
+  };
   adForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const stripeBtn = adForm.querySelector(".stripe-btn");
     const get = (sel) => adForm.querySelector(sel)?.value?.trim() || "";
+    if (!window.validateTickerFields()) return;
+    if (emailInput && !emailInput.value.trim()) {
+      emailInput.setCustomValidity("Email is required for Stripe checkout — your receipt goes there.");
+      emailInput.reportValidity();
+      return;
+    }
     const payload = {
       email: get('input[name="email"]'),
       adLine: document.getElementById("adline")?.value?.trim() || "",
@@ -685,6 +718,8 @@ const USDC_CHECKOUT = false;
       }, 3500);
     };
     const create = async () => {
+      // Same required-field gate as the card rail (email stays optional here).
+      if (window.validateTickerFields && !window.validateTickerFields()) return;
       btn.disabled = true;
       const old = btn.innerHTML;
       btn.textContent = "Pricing your campaign…";
@@ -867,6 +902,139 @@ setInterval(() => {
   if (!reduced) requestAnimationFrame(tick);
 })();
 
+
+// --- Impressions odometer ("Get your token in front of N eyeballs") ---------
+// Mechanical-counter style: one dark cell per digit (the last cell red, like a
+// flip counter), each cell a vertical reel of 0–9 that rolls UPWARD to the new
+// digit. There's no public network-total endpoint yet, so the figure is an
+// optimistic projection: a fixed base plus steady time-based growth (so it's
+// consistent across visits and always climbing), plus a gentle live tick.
+(function impOdometer() {
+  const el = document.getElementById("imp-counter");
+  if (!el) return;
+  const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const IMP_BASE = 21_437_615;                       // network total at the epoch
+  const IMP_EPOCH = Date.parse("2026-07-01T00:00:00Z");
+  const IMP_RATE = 2.7;                              // impressions/second, network-wide
+  const projected = () => IMP_BASE + Math.floor(((Date.now() - IMP_EPOCH) / 1000) * IMP_RATE);
+
+  let value = projected();
+  let cols = [];      // [{reel, digit}] most-significant first, commas excluded
+
+  // The reel holds 0–9 twice so a 9→0 wrap can keep rolling upward (into the
+  // second copy) and snap back down transition-less once it's offscreen.
+  function build(str) {
+    el.classList.add("imp-odometer--live");
+    el.innerHTML = "";
+    cols = [];
+    for (const ch of str) {
+      if (ch === ",") {
+        const c = document.createElement("span");
+        c.className = "imp-comma";
+        c.textContent = ",";
+        el.appendChild(c);
+        continue;
+      }
+      const cell = document.createElement("span");
+      cell.className = "imp-digit";
+      const reel = document.createElement("span");
+      reel.className = "imp-reel";
+      for (let k = 0; k < 20; k++) {
+        const d = document.createElement("span");
+        d.textContent = String(k % 10);
+        reel.appendChild(d);
+      }
+      cell.appendChild(reel);
+      el.appendChild(cell);
+      const digit = Number(ch);
+      reel.style.transform = `translateY(${-digit}em)`;
+      cols.push({ reel, digit });
+    }
+    // Flip counters mark the low-order cell — tint the last digit accent red.
+    const cells = el.querySelectorAll(".imp-digit");
+    cells[cells.length - 1]?.classList.add("imp-digit--accent");
+  }
+
+  function render() {
+    const str = value.toLocaleString("en-US");
+    const digits = str.replace(/,/g, "");
+    if (digits.length !== cols.length) { build(str); return; }
+    let i = 0;
+    for (const ch of digits) {
+      const col = cols[i++];
+      const d = Number(ch);
+      if (d === col.digit) continue;
+      if (reduced) {
+        col.reel.style.transition = "none";
+        col.reel.style.transform = `translateY(${-d}em)`;
+      } else if (d < col.digit) {
+        // Wrap (e.g. 9→0): roll up into the reel's second 0–9 copy, then snap
+        // back to the equivalent low position once the transition lands.
+        const reel = col.reel;
+        reel.style.transform = `translateY(${-(d + 10)}em)`;
+        reel.addEventListener("transitionend", function snap() {
+          reel.removeEventListener("transitionend", snap);
+          reel.style.transition = "none";
+          reel.style.transform = `translateY(${-d}em)`;
+          void reel.offsetHeight; // flush so the transition re-arms cleanly
+          reel.style.transition = "";
+        });
+      } else {
+        col.reel.style.transform = `translateY(${-d}em)`;
+      }
+      col.digit = d;
+    }
+  }
+
+  build(value.toLocaleString("en-US"));
+  // Steady upward roll: re-sync to the projection (never letting the shown
+  // number go backwards) so the counter climbs a few impressions per tick.
+  setInterval(() => {
+    value = Math.max(value + 1, projected());
+    render();
+  }, 1200);
+})();
+
+// --- Boost fold: the hero "Boost your token" button folds the advertiser card
+// open right underneath it, pushing "Get it on your platform" lower. The card
+// is NOT a copy — script moves the real #advertisers section node between its
+// home slot (#advertisers-home, bottom of the page) and the fold slot under
+// the button, so it's the exact same component with all its wiring intact. ---
+(function boostFold() {
+  const btn = document.getElementById("boost-toggle");
+  const fold = document.getElementById("boost-fold");
+  const slot = document.getElementById("boost-fold-slot");
+  const home = document.getElementById("advertisers-home");
+  const card = document.getElementById("advertisers");
+  if (!btn || !fold || !slot || !home || !card) return;
+
+  let open = false;
+  btn.addEventListener("click", () => {
+    open = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    btn.classList.toggle("open", open);
+    if (open) {
+      slot.appendChild(card);            // mount under the button…
+      void fold.offsetHeight;            // …then let the 0fr→1fr fold animate
+      fold.classList.add("open");
+      // Nudge the CPM slider markers — they're width-dependent and the fold
+      // slot can be narrower than the section's home mount.
+      window.dispatchEvent(new Event("resize"));
+    } else {
+      fold.classList.remove("open");
+      // Send the card back home once the fold has collapsed shut.
+      fold.addEventListener("transitionend", function done(e) {
+        if (e.propertyName !== "grid-template-rows") return;
+        fold.removeEventListener("transitionend", done);
+        if (!fold.classList.contains("open")) {
+          home.after(card);
+          window.dispatchEvent(new Event("resize"));
+        }
+      });
+    }
+  });
+})();
 
 // --- Auto-hiding nav: hidden over the full-viewport protocol hero, slides in
 // once the user scrolls past a small threshold (and back out at the top). ---
