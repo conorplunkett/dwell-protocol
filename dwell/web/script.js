@@ -41,17 +41,18 @@ function changeBadgeHtml(src) {
 // Each entry carries a little brand logo chip (initial + brand color) shown
 // before the name in the moving banner, plus a recent-change % badge.
 const TICKER_ADS = [
-  { brand: "$ansem", logo: "🐂", color: "#0a0a0a", ink: "#fff", text: "The black bull runs", timescale: "auto", changes: { "5m": 4.2, "15m": 12, "1h": 38, "4h": 96, "1d": 235 } },
-  { brand: "$troll", logo: "🧌", color: "#3f6212", ink: "#fff", text: "Troll szn is upon us", timescale: "auto", changes: { "5m": 2.1, "15m": 9, "1h": 21, "4h": -7, "1d": 64 } },
-  { brand: "$pepe", logo: "🐸", color: "#4c9a2a", ink: "#fff", text: "The most memeable memecoin on Solana", timescale: "5m", changes: { "5m": 1.3, "15m": 3, "1h": 8, "4h": 19, "1d": 47 } },
-  { brand: "$chillguy", logo: "😎", color: "#d2a679", ink: "#1b1e25", text: "Just a chill guy", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } },
+  { brand: "$ansem", img: "assets/tokens/ansem.png", color: "#0a0a0a", text: "The black bull runs", timescale: "auto", changes: { "5m": 4.2, "15m": 12, "1h": 38, "4h": 96, "1d": 235 } },
+  { brand: "$troll", img: "assets/tokens/troll.png", color: "#f2f2f2", text: "Troll szn is upon us", timescale: "auto", changes: { "5m": 2.1, "15m": 9, "1h": 21, "4h": -7, "1d": 64 } },
+  { brand: "$pepe", img: "assets/tokens/pepe.png", color: "#4c9a2a", text: "The most memeable memecoin on Solana", timescale: "5m", changes: { "5m": 1.3, "15m": 3, "1h": 8, "4h": 19, "1d": 47 } },
+  { brand: "$fwog", img: "assets/tokens/fwog.png", color: "#7fae6e", text: "Just a little fwog", timescale: "auto", changes: { "5m": 3, "15m": 7, "1h": 15, "4h": 33, "1d": 88 } },
+  { brand: "$chillguy", img: "assets/tokens/chillguy.png", color: "#8c9a76", text: "Just a chill guy", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } },
 ];
 (function buildTicker() {
   const track = document.getElementById("ticker-track");
   if (!track) return;
   const cell = (ad) =>
     `<span class="tick">` +
-    `<span class="tick-logo" style="background:${ad.color};color:${ad.ink}">${ad.logo}</span>` +
+    `<span class="tick-logo" style="background:${ad.color}"><img src="${ad.img}" alt="" loading="lazy" /></span>` +
     `<span class="tick-brand">${ad.brand}</span>` +
     changeBadgeHtml(ad) +
     `<span class="tick-text">${ad.text}</span></span>`;
@@ -81,15 +82,29 @@ if (wordStock) {
 // Keep each line short — it must fit ONE line in the demo card at both desktop
 // and mobile widths (verified per-ad; see styles.css .brand-line).
 const ADS = [
-  { chip: "🐂", color: "#0a0a0a", ink: "#fff", text: "$ansem · The black bull", timescale: "auto", changes: { "5m": 4.2, "15m": 12, "1h": 38, "4h": 96, "1d": 235 } },
-  { chip: "🧌", color: "#3f6212", ink: "#fff", text: "$troll · Troll szn", timescale: "auto", changes: { "5m": 2.1, "15m": 9, "1h": 21, "4h": -7, "1d": 64 } },
-  { chip: "🐸", color: "#4c9a2a", ink: "#fff", text: "$pepe · Feels good man", timescale: "5m", changes: { "5m": 1.3, "15m": 3, "1h": 8, "4h": 19, "1d": 47 } },
-  { chip: "😎", color: "#d2a679", ink: "#1b1e25", text: "$chillguy · Just a chill guy", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } },
+  { img: "assets/tokens/ansem.png", color: "#0a0a0a", text: "$ansem · The black bull", timescale: "auto", changes: { "5m": 4.2, "15m": 12, "1h": 38, "4h": 96, "1d": 235 } },
+  { img: "assets/tokens/troll.png", color: "#f2f2f2", text: "$troll · Troll szn", timescale: "auto", changes: { "5m": 2.1, "15m": 9, "1h": 21, "4h": -7, "1d": 64 } },
+  { img: "assets/tokens/pepe.png", color: "#4c9a2a", text: "$pepe · Feels good man", timescale: "5m", changes: { "5m": 1.3, "15m": 3, "1h": 8, "4h": 19, "1d": 47 } },
+  { img: "assets/tokens/fwog.png", color: "#7fae6e", text: "$fwog · Just a little fwog", timescale: "auto", changes: { "5m": 3, "15m": 7, "1h": 15, "4h": 33, "1d": 88 } },
+  { img: "assets/tokens/chillguy.png", color: "#8c9a76", text: "$chillguy · Just a chill guy", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } },
 ];
+// Warm the cache so the rotating chip swaps its background-image instantly and
+// never flashes the previous token's logo mid-transition.
+[...TICKER_ADS, ...ADS].forEach((a) => { if (a.img) { const im = new Image(); im.src = a.img; } });
 let ai = 0;
 const rotator = document.getElementById("brand-line");
 const chip = document.querySelector(".brandchip");
 const brandChange = document.getElementById("brand-change");
+// Paint the token logo into the round chip (background-image so the same span
+// works for the static first frame in the HTML).
+function paintChip(ad) {
+  if (!chip) return;
+  chip.textContent = "";
+  chip.style.backgroundColor = ad.color;
+  chip.style.backgroundImage = `url("${ad.img}")`;
+  chip.style.backgroundSize = "cover";
+  chip.style.backgroundPosition = "center";
+}
 // Paint the badge (text + up/down color) for the ad at ADS[i].
 function paintBrandChange(ad) {
   if (!brandChange) return;
@@ -104,9 +119,7 @@ function paintBrandChange(ad) {
 if (rotator && chip) {
   const first = ADS[0];
   rotator.textContent = first.text;
-  chip.textContent = first.chip;
-  chip.style.background = first.color;
-  chip.style.color = first.ink;
+  paintChip(first);
   rotator.style.opacity = "1";
   chip.style.opacity = "1";
   paintBrandChange(first);
@@ -120,9 +133,7 @@ setInterval(() => {
   if (brandChange) brandChange.style.opacity = "0";
   setTimeout(() => {
     rotator.textContent = ad.text;
-    chip.textContent = ad.chip;
-    chip.style.background = ad.color;
-    chip.style.color = ad.ink;
+    paintChip(ad);
     rotator.style.opacity = "1";
     chip.style.opacity = "1";
     paintBrandChange(ad);
