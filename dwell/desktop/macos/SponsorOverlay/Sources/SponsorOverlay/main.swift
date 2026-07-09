@@ -158,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func bootstrap() {
         if demoMode {
             ads = [Ad(id: "demo-1", brand: "$ansem", line: "the black bull",
-                      url: "https://dwellprotocol.com/go/ansem", cat: "crypto")]
+                      url: "https://dwellprotocol.com/go/ansem", cat: "crypto", change: 235)]
             rotateAd()
             NSLog("[dwell] DEMO MODE: overlay follows any focused window; events log locally")
             return
@@ -289,7 +289,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Route through the https guard so the card never carries a non-https
             // destination (see Ad.destinationURLOrFallback).
             overlay.setCard(SponsorCard(campaignID: ad.id, sponsorName: ad.brand,
-                                        message: ad.line, destinationURL: ad.destinationURLOrFallback))
+                                        message: ad.line, destinationURL: ad.destinationURLOrFallback,
+                                        change: ad.change))
         }
         engine.rearm()
         servedImpressionToken = nil // fresh display → serve a new token when it next shows

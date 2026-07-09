@@ -72,3 +72,19 @@ export function composeAdText(brand, line) {
   if (cleanLine.toLowerCase().startsWith(cleanBrand.toLowerCase())) return cleanLine;
   return `${cleanBrand} — ${cleanLine}`;
 }
+
+// Format a recent-change % to the badge string, e.g. "(+235%)", "(+9.3%)",
+// "(-.5%)". Signed, at most 3 significant digit-chars, leading zero dropped,
+// magnitude clamped to 999. Returns "" for non-finite input (no badge). Mirrors
+// formatChangePct in server/src/util.js and the web/extension clients.
+export function formatChangePct(v) {
+  if (typeof v !== "number" || !Number.isFinite(v)) return "";
+  const a = Math.abs(v);
+  let body;
+  if (a >= 100) body = String(Math.min(999, Math.round(a)));
+  else if (a >= 10) body = String(Math.round(a));
+  else if (a >= 1) body = a.toFixed(1).replace(/\.0$/, "");
+  else if (a > 0) { body = a.toFixed(1).replace(/^0/, ""); if (body === ".0") body = "0"; }
+  else body = "0";
+  return `(${v < 0 ? "-" : "+"}${body}%)`;
+}

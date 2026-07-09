@@ -215,6 +215,25 @@ function normalizeHexColor(value: any) {
   return match ? `#${match[1].toLowerCase()}` : null;
 }
 
+// Recent-change % badge helpers (mirror of server/src/util.js). 'auto' is the
+// default and is NOT offered on the public ad form.
+const TIMESCALES = ["5m", "15m", "1h", "4h", "1d"];
+function normalizeTimescale(value: any) {
+  return TIMESCALES.includes(value) ? value : "auto";
+}
+function resolveChangePct(changes: any, timescale: any) {
+  if (!changes || typeof changes !== "object") return null;
+  const vals = TIMESCALES
+    .map((k) => changes[k])
+    .filter((v) => typeof v === "number" && Number.isFinite(v));
+  if (!vals.length) return null;
+  if (timescale && timescale !== "auto") {
+    const v = changes[timescale];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  }
+  return Math.max(...vals);
+}
+
 // ─────────────────────────── giftcards.js ──────────────────────────────────
 const GIFT_PLANS: any = {
   pro: { id: "pro", name: "Claude Pro", tagline: "For the curious", monthlyCents: 2000 },
@@ -870,7 +889,8 @@ function createRepo(pool: any) {
       // through payment (e.g. a row seeded straight to 'active') must never
       // show or mint credits — user credits have to be backed by real budget.
       const { rows } = await pool.query(
-        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard
+        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard,
+                change_timescale, changes
            from campaigns where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc limit $1`,
         [limit]
@@ -879,14 +899,14 @@ function createRepo(pool: any) {
     },
     async leaderboard(limit = 15) {
       const { rows } = await pool.query(
-        `select brand, ad_line, price_per_block_cents from campaigns
+        `select brand, ad_line, price_per_block_cents, change_timescale, changes from campaigns
           where status in ('active', 'exhausted') and show_on_leaderboard
           order by price_per_block_cents desc, activated_at asc limit $1`,
         [limit]
       );
       return rows;
     },
-    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, impressionsTotal, budgetCents, showOnLeaderboard }: any) {
+    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, impressionsTotal, budgetCents, showOnLeaderboard, changeTimescale }: any) {
       // impressionsTotal is the exact purchased count (floor(budget*1000/cpm)),
       // not necessarily a multiple of 1000. budgetCents is the exact charge.
       const impressions = Number.isFinite(impressionsTotal) ? impressionsTotal : blocks * 1000;
@@ -897,10 +917,12 @@ function createRepo(pool: any) {
         const { rows } = await c.query(
           `insert into campaigns
              (advertiser_id, brand, ad_line, url, category, color, price_per_block_cents,
-              blocks, impressions_total, impressions_remaining, budget_cents, show_on_leaderboard)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11) returning id`,
+              blocks, impressions_total, impressions_remaining, budget_cents, show_on_leaderboard,
+              change_timescale)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12) returning id`,
           [adv.rows[0].id, brand || null, adLine, url, category || "other", color || null,
-           pricePerBlockCents, blocks, impressions, budgetCents ?? null, showOnLeaderboard !== false]
+           pricePerBlockCents, blocks, impressions, budgetCents ?? null, showOnLeaderboard !== false,
+           changeTimescale || "auto"]
         );
         return rows[0].id;
       });
@@ -1282,7 +1304,8 @@ function createRepo(pool: any) {
       }
       // Auction winner: highest bid, oldest activated (same order as activeAds).
       const pick = await pool.query(
-        `select id, brand, ad_line, url, category, color, price_per_block_cents
+        `select id, brand, ad_line, url, category, color, price_per_block_cents,
+                change_timescale, changes
            from campaigns
           where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc
@@ -3086,11 +3109,11 @@ route("GET", "/v1/pricing", async () => {
 route("GET", "/v1/ads", async () => {
   await syncServing();
   const ads = (serving && earningsEnabled) ? await repo.activeAds() : [];
-  return json(200, { revenueShare: displayRevenueShare, ads: ads.map((a: any) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined })) });
+  return json(200, { revenueShare: displayRevenueShare, ads: ads.map((a: any) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined, change: resolveChangePct(a.changes, a.change_timescale) ?? undefined })) });
 });
 route("GET", "/v1/leaderboard", async () => {
   const rows = await repo.leaderboard();
-  return json(200, { leaderboard: rows.map((r: any, i: number) => ({ rank: i + 1, brand: r.brand, line: r.ad_line })) });
+  return json(200, { leaderboard: rows.map((r: any, i: number) => ({ rank: i + 1, brand: r.brand, line: r.ad_line, change: resolveChangePct(r.changes, r.change_timescale) ?? undefined })) });
 });
 
 // ── devices & events ──
@@ -3171,7 +3194,7 @@ route("POST", "/v1/impressions/serve", async (ctx: any) => {
   const a = result.ad;
   return json(200, {
     token: result.token,
-    ad: { id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined },
+    ad: { id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined, change: resolveChangePct(a.changes, a.change_timescale) ?? undefined },
     revenueShare: displayRevenueShare,
   });
 });
@@ -3664,7 +3687,7 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
   // differs. currency picks what the wallet pays with: 'usdc' (default) or
   // 'sol' (native transfer fee leg + wSOL->DWELL swap; needs the treasury's
   // SOL account configured).
-  const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency } = ctx.body || {};
+  const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency, timescale } = ctx.body || {};
   const payCurrency = ["sol", "dwell"].includes(currency) ? currency : "usdc";
   if (payCurrency === "sol" && !config.treasurySolAccount) {
     return json(400, { error: "SOL payments aren't enabled — pay with USDC" });
@@ -3731,6 +3754,7 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
   const campaignId = await repo.createPendingCampaign({
     email, brand, adLine, url, category, color: normalizeHexColor(color),
     pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard,
+    changeTimescale: normalizeTimescale(timescale),
   });
   const order = await repo.createUsdcOrder({
     campaignId,
@@ -3900,7 +3924,7 @@ route("POST", "/v1/ads/usdc/orders/:id/transaction", async (ctx: any) => {
 route("POST", "/v1/checkout", async (ctx: any) => {
   // Budget + CPM model: advertiser pays the full budget; impressions = floor(
   // budget*1000/cpm). CPM == price_per_block_cents (block = 1,000 impressions).
-  const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard } = ctx.body || {};
+  const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, timescale } = ctx.body || {};
   const budgetCents = Math.round(Number(budget) * 100);
   const cpmCents = Math.round(Number(cpm) * 100);
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(400, { error: "valid email required" });
@@ -3912,7 +3936,7 @@ route("POST", "/v1/checkout", async (ctx: any) => {
   const impressions = Math.floor((budgetCents * 1000) / cpmCents);
   if (!(impressions >= 1)) return json(400, { error: "budget too small for this CPM" });
   const blocks = Math.max(1, Math.round(impressions / 1000)); // legacy display column; impressions_total is authoritative
-  const campaignId = await repo.createPendingCampaign({ email, brand, adLine, url, category, color: normalizeHexColor(color), pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard });
+  const campaignId = await repo.createPendingCampaign({ email, brand, adLine, url, category, color: normalizeHexColor(color), pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard, changeTimescale: normalizeTimescale(timescale) });
   const session = await stripe.createCheckoutSession({
     mode: "payment", customer_email: email,
     // receipt_email isn't a Checkout Session param; it lives on the PaymentIntent.

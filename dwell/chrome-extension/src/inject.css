@@ -105,6 +105,15 @@
   flex: 0 0 auto;
   text-decoration: none;
 }
+.bb-change {
+  font-weight: 800;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+.bb-change.up { color: #35d07f; }
+.bb-change.down { color: #ff5c5c; }
 .bb-line {
   color: var(--ov-line);
   white-space: nowrap;

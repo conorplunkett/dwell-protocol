@@ -7,7 +7,7 @@ const crypto = require("node:crypto");
 const { verifyWebhookSignature } = require("./stripe");
 const { GIFT_PLANS, GIFT_MONTHS, giftPriceCents } = require("./giftcards");
 const { runPayouts } = require("./payouts");
-const { escapeHtml, isCleanAdLine, normalizeHexColor } = require("./util");
+const { escapeHtml, isCleanAdLine, normalizeHexColor, normalizeTimescale, resolveChangePct } = require("./util");
 const { WSOL_MINT } = require("./solana");
 
 // Crew = the affiliate "earn with your friends" panel in the extension popup.
@@ -186,13 +186,13 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const ads = serving ? await repo.activeAds() : [];
     json(res, 200, {
       revenueShare: displayRevenueShare,
-      ads: ads.map((a) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined })),
+      ads: ads.map((a) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined, change: resolveChangePct(a.changes, a.change_timescale) ?? undefined })),
     });
   });
 
   route("GET", "/v1/leaderboard", async (req, res) => {
     const rows = await repo.leaderboard();
-    json(res, 200, { leaderboard: rows.map((r, i) => ({ rank: i + 1, brand: r.brand, line: r.ad_line })) });
+    json(res, 200, { leaderboard: rows.map((r, i) => ({ rank: i + 1, brand: r.brand, line: r.ad_line, change: resolveChangePct(r.changes, r.change_timescale) ?? undefined })) });
   });
 
   // ---------- devices & events ----------
@@ -277,7 +277,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const a = result.ad;
     json(res, 200, {
       token: result.token,
-      ad: { id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined },
+      ad: { id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined, change: resolveChangePct(a.changes, a.change_timescale) ?? undefined },
       revenueShare: displayRevenueShare,
     });
   });
@@ -414,7 +414,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     // differs. currency picks what the wallet pays with: 'usdc' (default) or
     // 'sol' (native transfer fee leg + wSOL->DWELL swap; needs the treasury's
     // SOL account configured).
-    const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency } = body || {};
+    const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency, timescale } = body || {};
     const payCurrency = ["sol", "dwell"].includes(currency) ? currency : "usdc";
     if (payCurrency === "sol" && !config.treasurySolAccount) {
       return json(res, 400, { error: "SOL payments aren't enabled — pay with USDC" });
@@ -481,6 +481,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const campaignId = await repo.createPendingCampaign({
       email, brand, adLine, url, category, color: normalizeHexColor(color),
       pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard,
+      changeTimescale: normalizeTimescale(timescale),
     });
     const order = await repo.createUsdcOrder({
       campaignId,
@@ -670,7 +671,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
 
   // ---------- money in: advertiser checkout ----------
   route("POST", "/v1/checkout", async (req, res, body) => {
-    const { email, adLine, url, brand, category, color, pricePerBlock, blocks, showOnLeaderboard } = body || {};
+    const { email, adLine, url, brand, category, color, pricePerBlock, blocks, showOnLeaderboard, timescale } = body || {};
     const priceCents = Math.round(Number(pricePerBlock) * 100);
     const nBlocks = parseInt(blocks, 10);
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(res, 400, { error: "valid email required" });
@@ -682,6 +683,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const campaignId = await repo.createPendingCampaign({
       email, brand, adLine, url, category, color: normalizeHexColor(color),
       pricePerBlockCents: priceCents, blocks: nBlocks, showOnLeaderboard,
+      changeTimescale: normalizeTimescale(timescale),
     });
     const session = await stripe.createCheckoutSession({
       mode: "payment", customer_email: email,

@@ -141,6 +141,7 @@
           <div class="demo-line">
             <span class="brandchip">🐂</span>
             <span class="brand-line" id="brand-line">$ansem · The black bull</span>
+            <span class="change-badge up" id="brand-change">(+235%)</span>
           </div>
         </div>
       </div>
@@ -261,7 +262,7 @@
                   <div class="status">· $ansem — the black bull runs… <span class="muted">(2s · thinking)</span></div>
                   <hr class="divider" />
                   <div class="prompt"><span class="chev">›</span> <span class="cursor"></span></div>
-                  <div class="adline"><span class="ad">ad·</span> <a href="#">$ansem — the black bull</a></div>
+                  <div class="adline"><span class="ad">ad·</span> <a href="#">$ansem — the black bull</a> <span class="change-badge up">(+235%)</span></div>
                 </div>
               </div>
             </div>
@@ -391,6 +392,17 @@
           </label>
 
           <label class="field">
+            <span class="flabel">Performance window <em>(optional — the timeframe your change % is measured over)</em></span>
+            <select id="adtimescale" name="timescale" class="adselect">
+              <option value="5m">5 minutes</option>
+              <option value="15m">15 minutes</option>
+              <option value="1h">1 hour</option>
+              <option value="4h">4 hours</option>
+              <option value="1d" selected>1 day</option>
+            </select>
+          </label>
+
+          <label class="field">
             <span class="flabel">Ad color <em>(optional, #hex — your colour in the terminal &amp; spinner)</em></span>
             <div class="colorfield">
               <input type="color" id="adcolor-swatch" value="#ff0000" aria-label="Pick ad color" />
@@ -425,6 +437,7 @@
             <div class="adpreview-bar" id="adpreview-bar">
               <span class="adpreview-chip" id="prev-chip">Y</span>
               <span class="adpreview-line" id="prev-line">Your ad here</span>
+              <span class="change-badge up" id="prev-change">(+128%)</span>
               <span class="adpreview-dots" id="prev-dots" aria-hidden="true"><i></i><i></i><i></i></span>
             </div>
           </div>

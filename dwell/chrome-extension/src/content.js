@@ -111,10 +111,12 @@
   bar.innerHTML =
     '<span class="bb-chip">🐂</span>' +
     '<span class="bb-name">$ansem</span>' +
+    '<span class="bb-change up">(+235%)</span>' +
     '<span class="bb-line">the black bull</span>';
   const elChip = bar.querySelector(".bb-chip");
   const elName = bar.querySelector(".bb-name");
   const elLine = bar.querySelector(".bb-line");
+  const elChange = bar.querySelector(".bb-change");
 
   // The ad currently on screen. We surface ONE ad at a time — the top of the
   // returned inventory (the auction winner) — and never rotate within a page;
@@ -254,6 +256,15 @@
       elName.textContent = ad.brand || "";
       elName.style.display = ad.brand ? "" : "none";
       elLine.textContent = ad.line;
+      // Recent-change % badge — green up / red down; hidden when the ad carries
+      // no change data (real campaigns until live market data is wired).
+      if (elChange) {
+        const badge = self.BB_changeBadge ? self.BB_changeBadge(ad) : null;
+        elChange.textContent = badge ? badge.text : "";
+        elChange.style.display = badge ? "" : "none";
+        elChange.classList.toggle("up", !!badge && badge.dir === "up");
+        elChange.classList.toggle("down", !!badge && badge.dir === "down");
+      }
     }
     // Head-only ad: no sub-tag pill. Keep the bb-test class so test-mode ads
     // stay visually distinguishable (and the live tests can assert on it).
