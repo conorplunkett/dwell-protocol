@@ -248,9 +248,19 @@
   function render() {
     const ad = currentAd();
     if (ad) {
-      elChip.textContent = ad.chip;
-      elChip.style.background = ad.color;
-      elChip.style.color = ad.ink;
+      // A demo token carries a bundled logo (resolved to a chrome-extension://
+      // URL); real served ads don't, so fall back to the letter/emoji chip.
+      const chipImg = self.BB_chipImg ? self.BB_chipImg(ad) : null;
+      if (chipImg) {
+        elChip.textContent = "";
+        elChip.innerHTML = '<img alt="" src="' + chipImg + '">';
+        elChip.style.background = ad.color || "";
+      } else {
+        elChip.innerHTML = "";
+        elChip.textContent = ad.chip;
+        elChip.style.background = ad.color;
+        elChip.style.color = ad.ink;
+      }
       // logo · brand · message — brand is its own bold element. Hide it if an
       // ad somehow arrives without one so we don't render an empty gap.
       elName.textContent = ad.brand || "";
