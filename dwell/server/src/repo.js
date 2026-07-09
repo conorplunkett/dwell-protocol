@@ -1100,26 +1100,31 @@ function createRepo(pool) {
     // Find or create a user from a Google/Apple OAuth callback, then open a
     // web session. Looks up by provider ID first, then by email. Patches any
     // missing fields on an existing account.
-    async upsertUserByOAuth({ email, googleId, appleId, referralCode, emailVerified }, sessionTtlMs) {
+    async upsertUserByOAuth({ email, googleId, appleId, twitterId, referralCode, emailVerified }, sessionTtlMs) {
       return tx(async (c) => {
         // Only a provider-verified email may match or merge into an existing
         // account — otherwise an attacker who controls an OAuth identity with an
         // unverified email claim could take over a victim's account (and its
         // balance) by email. Unverified emails are dropped; the provider id is
-        // the only trusted key.
+        // the only trusted key. X (Twitter) OAuth returns no email, so those
+        // accounts are keyed on twitter_id alone.
         const matchEmail = emailVerified ? (email || null) : null;
 
         let found = null;
         if (googleId) {
-          const r = await c.query("select id, email, google_id, apple_id from users where google_id = $1", [googleId]);
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where google_id = $1", [googleId]);
           found = r.rows[0] || null;
         }
         if (!found && appleId) {
-          const r = await c.query("select id, email, google_id, apple_id from users where apple_id = $1", [appleId]);
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where apple_id = $1", [appleId]);
+          found = r.rows[0] || null;
+        }
+        if (!found && twitterId) {
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where twitter_id = $1", [twitterId]);
           found = r.rows[0] || null;
         }
         if (!found && matchEmail) {
-          const r = await c.query("select id, email, google_id, apple_id from users where email = $1", [matchEmail]);
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where email = $1", [matchEmail]);
           found = r.rows[0] || null;
         }
 
@@ -1127,16 +1132,17 @@ function createRepo(pool) {
         if (found) {
           const sets = ["email_verified = true"];
           const vals = [found.id];
-          if (matchEmail && !found.email)   { sets.push(`email = $${vals.length + 1}`);     vals.push(matchEmail); }
-          if (googleId && !found.google_id) { sets.push(`google_id = $${vals.length + 1}`); vals.push(googleId); }
-          if (appleId && !found.apple_id)   { sets.push(`apple_id = $${vals.length + 1}`);  vals.push(appleId); }
+          if (matchEmail && !found.email)     { sets.push(`email = $${vals.length + 1}`);      vals.push(matchEmail); }
+          if (googleId && !found.google_id)   { sets.push(`google_id = $${vals.length + 1}`);  vals.push(googleId); }
+          if (appleId && !found.apple_id)     { sets.push(`apple_id = $${vals.length + 1}`);   vals.push(appleId); }
+          if (twitterId && !found.twitter_id) { sets.push(`twitter_id = $${vals.length + 1}`); vals.push(twitterId); }
           await c.query(`update users set ${sets.join(", ")} where id = $1`, vals);
           userId = found.id;
         } else {
           const r = await c.query(
-            `insert into users (email, email_verified, google_id, apple_id)
-             values ($1, true, $2, $3) returning id`,
-            [matchEmail || null, googleId || null, appleId || null]
+            `insert into users (email, email_verified, google_id, apple_id, twitter_id)
+             values ($1, true, $2, $3, $4) returning id`,
+            [matchEmail || null, googleId || null, appleId || null, twitterId || null]
           );
           userId = r.rows[0].id;
           await applyCode(c, userId, referralCode); // first sign-in only; affiliate or referral
@@ -1648,6 +1654,23 @@ function createRepo(pool) {
            set models = excluded.models, surfaces = excluded.surfaces,
                surface_other = excluded.surface_other, updated_at = now()`,
         [userId, JSON.stringify(models), JSON.stringify(surfaces), surfaceOther]
+      );
+    },
+
+    // First-login onboarding post: true once the user has confirmed they posted
+    // the prebuilt DWELL note to their X timeline. Drives the needsPost gate on
+    // /v1/web/me — the dashboard stays locked until it's set, and accounts
+    // without it may not be paid out.
+    async hasPostedOnboarding(userId) {
+      const r = await pool.query("select onboarding_posted_at from users where id = $1", [userId]);
+      return r.rows[0]?.onboarding_posted_at != null;
+    },
+    // Self-attested — set the first time the user confirms the post. Idempotent:
+    // once stamped, the timestamp is preserved so re-confirming is a no-op.
+    async markOnboardingPosted(userId) {
+      await pool.query(
+        "update users set onboarding_posted_at = coalesce(onboarding_posted_at, now()) where id = $1",
+        [userId]
       );
     },
 

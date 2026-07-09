@@ -48,6 +48,8 @@ function loadConfig(env = process.env) {
     appleTeamId: env.APPLE_TEAM_ID || "",
     appleKeyId: env.APPLE_KEY_ID || "",
     applePrivateKey: (env.APPLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    twitterClientId: env.TWITTER_CLIENT_ID || "",
+    twitterClientSecret: env.TWITTER_CLIENT_SECRET || "",
     // mail
     mailProvider: env.MAIL_PROVIDER || "console",
     resendApiKey: env.RESEND_API_KEY,

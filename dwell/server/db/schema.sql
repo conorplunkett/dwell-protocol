@@ -171,9 +171,14 @@ alter table gift_redemptions alter column device_id drop not null;
 
 -- Website login sessions. The user proves email ownership via a magic link, and
 -- the redemption page carries this bearer token to read the balance and redeem.
--- OAuth provider IDs (added post-launch for Google/Apple sign-in)
+-- OAuth provider IDs (added post-launch for Google/Apple/X sign-in)
 alter table users add column if not exists google_id text unique;
 alter table users add column if not exists apple_id text unique;
+alter table users add column if not exists twitter_id text unique;
+-- First-login onboarding: the user posts a prebuilt DWELL note to their X
+-- timeline (replacing the old refer-a-friend email gate). Self-attested — set
+-- when the user confirms they posted. Accounts without it may not be paid out.
+alter table users add column if not exists onboarding_posted_at timestamptz;
 
 create table if not exists web_sessions (
   token text primary key,

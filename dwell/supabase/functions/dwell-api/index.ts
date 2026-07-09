@@ -74,6 +74,8 @@ function loadConfig() {
     appleTeamId: env("APPLE_TEAM_ID"),
     appleKeyId: env("APPLE_KEY_ID"),
     applePrivateKey: env("APPLE_PRIVATE_KEY").replace(/\\n/g, "\n"),
+    twitterClientId: env("TWITTER_CLIENT_ID"),
+    twitterClientSecret: env("TWITTER_CLIENT_SECRET"),
     mailProvider: env("MAIL_PROVIDER", "console"),
     resendApiKey: env("RESEND_API_KEY"),
     mailFrom: env("MAIL_FROM"),
@@ -1385,20 +1387,24 @@ function createRepo(pool: any) {
       );
       return rows.map((r: any) => ({ ...r, balance: Number(r.balance) }));
     },
-    async upsertUserByOAuth({ email, googleId, appleId, referralCode, emailVerified }: any, sessionTtlMs: number) {
+    async upsertUserByOAuth({ email, googleId, appleId, twitterId, referralCode, emailVerified }: any, sessionTtlMs: number) {
       return tx(async (c: any) => {
         const matchEmail = emailVerified ? (email || null) : null;
         let found: any = null;
         if (googleId) {
-          const r = await c.query("select id, email, google_id, apple_id from users where google_id = $1", [googleId]);
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where google_id = $1", [googleId]);
           found = r.rows[0] || null;
         }
         if (!found && appleId) {
-          const r = await c.query("select id, email, google_id, apple_id from users where apple_id = $1", [appleId]);
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where apple_id = $1", [appleId]);
+          found = r.rows[0] || null;
+        }
+        if (!found && twitterId) {
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where twitter_id = $1", [twitterId]);
           found = r.rows[0] || null;
         }
         if (!found && matchEmail) {
-          const r = await c.query("select id, email, google_id, apple_id from users where email = $1", [matchEmail]);
+          const r = await c.query("select id, email, google_id, apple_id, twitter_id from users where email = $1", [matchEmail]);
           found = r.rows[0] || null;
         }
         let userId;
@@ -1408,13 +1414,14 @@ function createRepo(pool: any) {
           if (matchEmail && !found.email) { sets.push(`email = $${vals.length + 1}`); vals.push(matchEmail); }
           if (googleId && !found.google_id) { sets.push(`google_id = $${vals.length + 1}`); vals.push(googleId); }
           if (appleId && !found.apple_id) { sets.push(`apple_id = $${vals.length + 1}`); vals.push(appleId); }
+          if (twitterId && !found.twitter_id) { sets.push(`twitter_id = $${vals.length + 1}`); vals.push(twitterId); }
           await c.query(`update users set ${sets.join(", ")} where id = $1`, vals);
           userId = found.id;
         } else {
           const r = await c.query(
-            `insert into users (email, email_verified, google_id, apple_id)
-             values ($1, true, $2, $3) returning id`,
-            [matchEmail || null, googleId || null, appleId || null]
+            `insert into users (email, email_verified, google_id, apple_id, twitter_id)
+             values ($1, true, $2, $3, $4) returning id`,
+            [matchEmail || null, googleId || null, appleId || null, twitterId || null]
           );
           userId = r.rows[0].id;
           await applyCode(c, userId, referralCode);
@@ -1856,6 +1863,21 @@ function createRepo(pool: any) {
            set models = excluded.models, surfaces = excluded.surfaces,
                surface_other = excluded.surface_other, updated_at = now()`,
         [userId, JSON.stringify(models), JSON.stringify(surfaces), surfaceOther]
+      );
+    },
+    // First-login onboarding post: true once the user has confirmed they posted
+    // the prebuilt DWELL note to their X timeline. Drives the needsPost gate on
+    // /v1/web/me — the dashboard stays locked until it's set, and accounts
+    // without it may not be paid out.
+    async hasPostedOnboarding(userId: string) {
+      const r = await pool.query("select onboarding_posted_at from users where id = $1", [userId]);
+      return r.rows[0]?.onboarding_posted_at != null;
+    },
+    // Self-attested — set the first time the user confirms the post. Idempotent.
+    async markOnboardingPosted(userId: string) {
+      await pool.query(
+        "update users set onboarding_posted_at = coalesce(onboarding_posted_at, now()) where id = $1",
+        [userId]
       );
     },
     async referralStats(userId: string) {
@@ -3891,7 +3913,17 @@ function verifyOAuthState(state: string | null) {
   const parts = payload.split(".");
   const ts = parseInt(parts[0], 10);
   if (!Number.isFinite(ts) || Date.now() - ts >= 10 * 60 * 1000) return null;
-  return { ref: parts[2] || "" };
+  return { ref: parts[2] || "", nonce: parts[1] || "" };
+}
+// X (Twitter) OAuth 2.0 mandates PKCE even for confidential clients. We stay
+// stateless by deriving the verifier from the signed state's nonce with a server
+// secret — only its S256 hash (the challenge) travels through the browser, and
+// the callback recomputes the verifier from the returned state.
+function pkceVerifier(nonce: string) {
+  return crypto.createHmac("sha256", config.adminKey || "fallback").update(`pkce:${nonce}`).digest("hex");
+}
+function pkceChallenge(verifier: string) {
+  return crypto.createHash("sha256").update(verifier).digest("base64url");
 }
 function derEcdsaToP1363(der: any) {
   let i = 2; i++;
@@ -3990,6 +4022,49 @@ route("GET", "/v1/auth/apple/callback", async (ctx: any) => {
   }
 });
 
+// ── X (Twitter) OAuth 2.0 (PKCE) ──
+// X returns no email, so accounts are keyed on the numeric X user id alone. The
+// confidential client authenticates the token exchange with HTTP Basic.
+route("GET", "/v1/auth/twitter", async (ctx: any) => {
+  if (!config.twitterClientId) return redirect(`${config.siteUrl}/portal.html?login=no-twitter`);
+  const state = makeOAuthState(ctx.query.get("ref"));
+  const st = verifyOAuthState(state);
+  const params = new URLSearchParams({
+    response_type: "code", client_id: config.twitterClientId,
+    redirect_uri: `${config.apiBaseUrl}/v1/auth/twitter/callback`,
+    scope: "tweet.read users.read offline.access", state,
+    code_challenge: pkceChallenge(pkceVerifier(st!.nonce)), code_challenge_method: "S256",
+  });
+  return redirect(`https://twitter.com/i/oauth2/authorize?${params}`);
+});
+route("GET", "/v1/auth/twitter/callback", async (ctx: any) => {
+  const query = ctx.query;
+  if (query.get("error") || !query.get("code")) return redirect(`${config.siteUrl}/portal.html?login=cancelled`);
+  const oauthState = verifyOAuthState(query.get("state"));
+  if (!oauthState) return redirect(`${config.siteUrl}/portal.html?login=error`);
+  try {
+    const basic = Buffer.from(`${config.twitterClientId}:${config.twitterClientSecret}`).toString("base64");
+    const tokRes = await fetch("https://api.twitter.com/2/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${basic}` },
+      body: new URLSearchParams({ code: query.get("code"), grant_type: "authorization_code", client_id: config.twitterClientId, redirect_uri: `${config.apiBaseUrl}/v1/auth/twitter/callback`, code_verifier: pkceVerifier(oauthState.nonce) }).toString(),
+    });
+    const tokens = await tokRes.json();
+    if (!tokens.access_token) throw new Error("no access_token from X");
+    const uiRes = await fetch("https://api.twitter.com/2/users/me", { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+    const tu = await uiRes.json();
+    if (!tu?.data?.id) throw new Error("no user id from X");
+    const { sessionToken } = await repo.upsertUserByOAuth(
+      { twitterId: String(tu.data.id), referralCode: oauthState.ref, emailVerified: false },
+      config.webSessionTtlMs
+    );
+    return redirect(`${config.siteUrl}/portal.html#session=${sessionToken}`);
+  } catch (err: any) {
+    console.error("[dwell] twitter oauth:", err.message);
+    return redirect(`${config.siteUrl}/portal.html?login=error`);
+  }
+});
+
 // ── website login + redemption ──
 route("POST", "/v1/web/login", async (ctx: any) => {
   const body = ctx.body || {};
@@ -4013,13 +4088,13 @@ route("GET", "/v1/web/me", async (ctx: any) => {
   const user = await repo.userForSession(sessionFrom(ctx));
   if (!user) return json(401, { error: "not signed in" });
   const bal = await repo.balanceForUser(user.id);
-  const [hasSurvey, referred] = await Promise.all([
+  const [hasSurvey, posted] = await Promise.all([
     repo.hasOnboardingSurvey(user.id),
-    repo.hasReferredAnyone(user.id),
+    repo.hasPostedOnboarding(user.id),
   ]);
   return json(200, {
     email: user.email, balanceUsd: bal.balanceMillicents / 100000,
-    needsSurvey: !hasSurvey, needsReferral: !referred,
+    needsSurvey: !hasSurvey, needsPost: !posted,
   });
 });
 // Sign out: revoke the session server-side so the bearer token is dead even if
@@ -4229,6 +4304,16 @@ route("POST", "/v1/web/onboarding/survey", async (ctx: any) => {
   if (!models.length || !surfaces.length) return json(400, { error: "select at least one model and one surface" });
   const surfaceOther = surfaces.includes("other") ? (String(body.surfaceOther || "").trim().slice(0, 200) || null) : null;
   await repo.saveOnboardingSurvey(user.id, { models, surfaces, surfaceOther });
+  return json(200, { ok: true });
+});
+// First-login onboarding post: the user confirms they posted the prebuilt DWELL
+// note to their X timeline. Self-attested — clears the needsPost gate so the
+// dashboard unlocks. Idempotent. Accounts that never post may have their payouts
+// delayed or withheld (see terms.html).
+route("POST", "/v1/web/onboarding/post", async (ctx: any) => {
+  const user = await repo.userForSession(sessionFrom(ctx));
+  if (!user) return json(401, { error: "not signed in" });
+  await repo.markOnboardingPosted(user.id);
   return json(200, { ok: true });
 });
 route("POST", "/v1/web/redemptions", async (ctx: any) => {

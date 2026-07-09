@@ -831,21 +831,10 @@ const fakeMailer = {
   await check("email invites: send + self-refer guard (retired program: no joined/rewarded transitions)", async () => {
     const inviterSess = await loginVia("inviter@example.com");
 
-    // first-login onboarding gate: a brand-new user must refer someone before
-    // the dashboard unlocks, so /v1/web/me reports needsReferral=true
-    assert.strictEqual(
-      (await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${inviterSess}` })).body.needsReferral,
-      true, "new user needs to refer a friend first");
-
     // can't invite your own email
     const self = await api("POST", "/v1/web/affiliate/invite", { email: "inviter@example.com" },
       { Authorization: `Bearer ${inviterSess}` });
     assert.strictEqual(self.status, 400);
-
-    // a failed self-invite doesn't clear the gate
-    assert.strictEqual(
-      (await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${inviterSess}` })).body.needsReferral,
-      true, "rejected invite leaves the gate up");
 
     // a malformed address is rejected too
     assert.strictEqual(
@@ -858,11 +847,6 @@ const fakeMailer = {
     assert.strictEqual(inv.status, 200);
     assert.strictEqual(inv.body.sent, true, "crew invite reports sent:true");
     assert.strictEqual(inv.body.invite.status, "sent");
-
-    // a valid invite clears the onboarding gate — the friend needn't sign up
-    assert.strictEqual(
-      (await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${inviterSess}` })).body.needsReferral,
-      false, "one valid crew invite unlocks the dashboard");
 
     // the crew invite went out via the crew-invite mailer (rewardPct, not $20)
     const invMail = mailbox.at(-1);
@@ -913,6 +897,63 @@ const fakeMailer = {
       "redeemer receives a gift-card redemption confirmation");
     assert.ok(!mailbox.some((m) => m.to === "inviter@example.com" && m.rewardUsd > 0),
       "retired program: the inviter is not emailed any referral bonus");
+  });
+
+  // ---------- first-login onboarding: post-to-X gate ----------
+  await check("onboarding post gate: new user needsPost until they confirm the X post; idempotent", async () => {
+    const sess = await loginVia("poster@example.com");
+
+    // a brand-new user must post the prebuilt note to X before the dashboard
+    // unlocks, so /v1/web/me reports needsPost=true (and no longer needsReferral)
+    let me = (await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${sess}` })).body;
+    assert.strictEqual(me.needsPost, true, "new user needs to post to X first");
+    assert.strictEqual(me.needsReferral, undefined, "needsReferral gate is retired from /v1/web/me");
+
+    // confirming the post clears the gate
+    assert.strictEqual(
+      (await api("POST", "/v1/web/onboarding/post", {}, { Authorization: `Bearer ${sess}` })).status, 200);
+    assert.strictEqual(
+      (await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${sess}` })).body.needsPost,
+      false, "confirming the post unlocks the dashboard");
+
+    // the confirmation is stamped once and idempotent — re-confirming keeps the
+    // original timestamp
+    const uid = await userId("poster@example.com");
+    const t1 = (await poolNs.query("select onboarding_posted_at from users where id = $1", [uid])).rows[0].onboarding_posted_at;
+    assert.ok(t1, "onboarding_posted_at is set");
+    assert.strictEqual(
+      (await api("POST", "/v1/web/onboarding/post", {}, { Authorization: `Bearer ${sess}` })).status, 200);
+    const t2 = (await poolNs.query("select onboarding_posted_at from users where id = $1", [uid])).rows[0].onboarding_posted_at;
+    assert.strictEqual(t2.getTime(), t1.getTime(), "re-confirming preserves the original timestamp");
+
+    // the endpoint requires a session
+    assert.strictEqual((await api("POST", "/v1/web/onboarding/post", {})).status, 401);
+  });
+
+  // ---------- X (Twitter) OAuth account keying ----------
+  await check("twitter oauth: keyed on twitter_id, no email; merges into an email account via verified email only", async () => {
+    // X returns no email — a fresh X sign-in creates an emailless account keyed
+    // on the numeric X id, and re-signing in returns the same account.
+    const a = await repo.upsertUserByOAuth({ twitterId: "x_1001", emailVerified: false }, config.webSessionTtlMs);
+    assert.ok(a.sessionToken, "first X sign-in opens a session");
+    const uid1 = (await poolNs.query("select id, email from users where twitter_id = 'x_1001'")).rows[0];
+    assert.ok(uid1, "account is keyed on twitter_id");
+    assert.strictEqual(uid1.email, null, "X account carries no email");
+
+    const b = await repo.upsertUserByOAuth({ twitterId: "x_1001", emailVerified: false }, config.webSessionTtlMs);
+    assert.ok(b.sessionToken);
+    assert.strictEqual(
+      (await poolNs.query("select count(*)::int n from users where twitter_id = 'x_1001'")).rows[0].n, 1,
+      "re-signing in reuses the same X account (no duplicate)");
+
+    // a Google sign-in with a verified email creates an account; later linking
+    // the same verified email via X merges onto it rather than forking a new row
+    await repo.upsertUserByOAuth({ googleId: "g_2002", email: "linkme@example.com", emailVerified: true }, config.webSessionTtlMs);
+    await repo.upsertUserByOAuth({ twitterId: "x_3003", email: "linkme@example.com", emailVerified: true }, config.webSessionTtlMs);
+    const merged = (await poolNs.query("select google_id, twitter_id from users where email = 'linkme@example.com'")).rows;
+    assert.strictEqual(merged.length, 1, "verified email merges the X identity onto the existing account");
+    assert.strictEqual(merged[0].google_id, "g_2002");
+    assert.strictEqual(merged[0].twitter_id, "x_3003", "twitter_id is attached to the merged account");
   });
 
   // ---------- affiliates ----------
