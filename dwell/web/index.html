@@ -393,13 +393,17 @@
 
           <label class="field">
             <span class="flabel">Performance window <em>(optional — the timeframe your change % is measured over)</em></span>
-            <select id="adtimescale" name="timescale" class="adselect">
-              <option value="5m">5 minutes</option>
-              <option value="15m">15 minutes</option>
-              <option value="1h">1 hour</option>
-              <option value="4h">4 hours</option>
-              <option value="1d" selected>1 day</option>
-            </select>
+            <div class="tsgroup" id="tsgroup" role="group" aria-label="Performance window">
+              <button type="button" class="tsbtn" data-ts="5m">5m</button>
+              <button type="button" class="tsbtn" data-ts="15m">15m</button>
+              <button type="button" class="tsbtn" data-ts="1h">1h</button>
+              <button type="button" class="tsbtn" data-ts="4h">4h</button>
+              <button type="button" class="tsbtn" data-ts="1d">1d</button>
+              <button type="button" class="tsbtn tsbtn-auto is-active" data-ts="auto">Auto<span
+                class="tshelp" tabindex="0" role="note" aria-label="What Auto does"
+                data-tip="Auto shows whichever window has the biggest, most positive change.">?</span></button>
+            </div>
+            <input type="hidden" id="adtimescale" name="timescale" value="auto" />
           </label>
 
           <label class="field">

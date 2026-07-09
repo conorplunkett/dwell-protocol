@@ -261,6 +261,25 @@ const PREVIEW_CHANGES = { "5m": 6, "15m": 14, "1h": 33, "4h": 72, "1d": 128 };
   if (form && adPrevBar) { form.addEventListener("input", updateAdPreview); updateAdPreview(); }
 }
 
+// --- Performance-window segmented control ---
+// Buttons drive the hidden #adtimescale input the checkout payloads read; Auto
+// (the default, rightmost) resolves to the biggest window at render time. The
+// "?" helper is informational, so clicking it never changes the selection.
+{
+  const group = document.getElementById("tsgroup");
+  const hidden = document.getElementById("adtimescale");
+  if (group && hidden) {
+    group.addEventListener("click", (e) => {
+      if (e.target.closest(".tshelp")) return;
+      const btn = e.target.closest(".tsbtn");
+      if (!btn || !group.contains(btn)) return;
+      hidden.value = btn.dataset.ts;
+      group.querySelectorAll(".tsbtn").forEach((b) => b.classList.toggle("is-active", b === btn));
+      updateAdPreview();
+    });
+  }
+}
+
 // --- Destination URL: accept bare domains by auto-adding https:// ---
 // The backend requires https://, so prepend the scheme when the advertiser
 // tabs out of the field (and again on submit), and upgrade a typed http://.
