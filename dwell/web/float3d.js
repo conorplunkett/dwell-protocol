@@ -17,7 +17,7 @@
 (function float3d() {
   // Which lander surfaces float. `display` sets the generated wrapper's box so
   // the host layout is preserved; `tilt` scales the lean (the big advertiser
-  // card swings at half strength so it doesn't feel like it's flipping).
+  // card swings at quarter strength so it doesn't feel like it's flipping).
   var TARGETS = [
     { sel: ".nav .logo", display: "inline-block", tilt: 1 },     // Dwell mark, top-left
     { sel: ".nav .navbtn-cta", display: "inline-block", tilt: 1 }, // Advertise button
@@ -25,7 +25,7 @@
     { sel: ".hero-adv .wl-adv", display: "inline-block", tilt: 1 }, // "Want to be seen by AI native users?"
     { sel: ".surfaces .win", display: "block", tilt: 1 },        // screenshots
     { sel: ".downloads .dl-btn", display: "block", tilt: 1 },    // install buttons
-    { sel: ".advertisers .adv-card", display: "block", tilt: 0.5 }, // ad purchase card — half tilt
+    { sel: ".advertisers .adv-card", display: "block", tilt: 0.25 }, // ad purchase card — quarter tilt
   ];
 
   var MAX = 11; // max tilt in degrees
