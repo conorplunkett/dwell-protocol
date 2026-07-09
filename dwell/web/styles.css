@@ -329,29 +329,47 @@ a { color: inherit; text-decoration: none; }
 }
 .wl-adv::after { content: " →"; white-space: pre; }
 .wl-adv:hover { border-color: var(--accent); background: var(--bg-cream); transform: translateY(-2px); }
-/* The hero CTA is a <button> now (it toggles the boost fold, not a jump link):
-   arrow points down, flips up while the fold is open. */
+/* The hero CTA is a <button> now (it toggles the boost fold, not a jump link).
+   Default (closed) is the highlighted state — accent-filled with the boost ↑.
+   While the fold is open it drops to the soft white style and reads as the
+   close-it-back-down control (↓). */
 button.wl-adv { cursor: pointer; }
-#boost-toggle::after { content: " ↓"; transition: transform .3s; }
-#boost-toggle.open::after { content: " ↑"; }
+#boost-toggle {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+  box-shadow: 0 12px 28px -14px rgba(var(--accent-rgb), .7);
+}
+#boost-toggle:hover { background: var(--accent-d); border-color: var(--accent-d); }
+#boost-toggle::after { content: " ↑"; }
+#boost-toggle.open {
+  background: var(--bg-tint); border-color: var(--line); color: var(--accent-d);
+  box-shadow: none;
+}
+#boost-toggle.open:hover { border-color: var(--accent); background: var(--bg-cream); }
+#boost-toggle.open::after { content: " ↓"; }
 
 /* ── BOOST FOLD — the advertiser card unfolding out of the hero button.
    grid-template-rows 0fr→1fr animates the height; the inner scale/translate
-   (transform-origin at the button) makes the card spread + grow out of it. ── */
+   (transform-origin at the button) makes the card spread + grow out of it.
+   The negative open margin swallows the hero's 48px bottom padding so the
+   card sits nearly flush under the button. ── */
 .boost-fold {
   display: grid; grid-template-rows: 0fr;
-  transition: grid-template-rows .65s cubic-bezier(.22, 1, .36, 1);
+  transition: grid-template-rows .65s cubic-bezier(.22, 1, .36, 1),
+              margin-top .65s cubic-bezier(.22, 1, .36, 1);
 }
 .boost-fold-inner { overflow: hidden; min-height: 0; }
 .boost-fold-inner > .advertisers {
-  margin-top: 18px;
+  margin-top: 0;
   transform-origin: top center;
   transform: scale(.82) translateY(-32px);
   opacity: 0;
   transition: transform .65s cubic-bezier(.22, 1, .36, 1), opacity .45s ease;
 }
-.boost-fold.open { grid-template-rows: 1fr; }
+.boost-fold.open { grid-template-rows: 1fr; margin-top: -42px; }
 .boost-fold.open .advertisers { transform: none; opacity: 1; }
+/* Unfolding out of the "Boost your token" button already says what this is —
+   drop the card's own blue "Boost your Token" eyebrow in that mount. */
+.boost-fold .eyebrow { display: none; }
 .wl-note { margin: 12px 0 0; font: 500 13px/1.5 var(--sans); color: var(--gray-2); }
 .wl-note:empty { margin: 0; }
 .wl-note--err { color: var(--err-fg); }
@@ -714,14 +732,14 @@ button.wl-adv { cursor: pointer; }
    accent red (flip-clock style); each cell's reel rolls UPWARD to the next
    digit (transform set by script.js). ── */
 .imp-odometer--live {
-  display: inline-flex; align-items: center; gap: 3px;
-  vertical-align: -2px; margin: 0 2px;
+  display: inline-flex; align-items: center; gap: 2px;
+  vertical-align: baseline; margin: 0 1px;
 }
 .imp-digit {
   position: relative; overflow: hidden;
-  width: .78em; height: 1.06em; /* reel steps are exactly 1em (JS translates in em) */
+  width: .78em; height: 1em; /* reel steps are exactly 1em (JS translates in em) */
   background: var(--ink); color: #fff; border-radius: .14em;
-  font-family: var(--mono); font-weight: 700; font-size: .92em;
+  font-family: var(--mono); font-weight: 700; font-size: .74em; /* cells cap at the cap-height of the headline — never taller than the text */
   box-shadow: inset 0 -1.5em 0.6em -1.4em rgba(0,0,0,.55), inset 0 1.5em 0.6em -1.4em rgba(255,255,255,.14);
 }
 /* Hairline across the middle — the flip-counter split. */
@@ -735,8 +753,8 @@ button.wl-adv { cursor: pointer; }
   transition: transform .9s cubic-bezier(.33, 1, .35, 1);
   will-change: transform;
 }
-.imp-reel span { display: block; height: 1em; line-height: 1.04em; width: 100%; text-align: center; }
-.imp-comma { font-family: var(--mono); font-weight: 700; color: var(--ink); font-size: .92em; }
+.imp-reel span { display: block; height: 1em; line-height: 1.02em; width: 100%; text-align: center; }
+.imp-comma { font-family: var(--mono); font-weight: 700; color: var(--ink); font-size: .74em; }
 .adv-intro { font-size: 16px; color: var(--gray); margin: 0 0 32px; line-height: 1.6; max-width: 820px; }
 .adv-intro strong { color: var(--ink); }
 
