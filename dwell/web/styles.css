@@ -728,7 +728,7 @@ button.wl-adv { cursor: pointer; }
    digit (transform set by script.js). ── */
 .imp-odometer--live {
   display: inline-flex; align-items: center; gap: 2px;
-  vertical-align: baseline; margin: 0 1px;
+  vertical-align: middle; margin: 0 1px; transform: translateY(-.16em);
 }
 .imp-digit {
   position: relative; overflow: hidden;
