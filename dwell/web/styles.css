@@ -330,22 +330,17 @@ a { color: inherit; text-decoration: none; }
 .wl-adv::after { content: " →"; white-space: pre; }
 .wl-adv:hover { border-color: var(--accent); background: var(--bg-cream); transform: translateY(-2px); }
 /* The hero CTA is a <button> now (it toggles the boost fold, not a jump link).
-   Default (closed) is the highlighted state — accent-filled with the boost ↑.
-   While the fold is open it drops to the soft white style and reads as the
-   close-it-back-down control (↓). */
+   Default (closed) keeps the soft white .wl-adv style with a ↓ (the card opens
+   downward); while the fold is open it flips to the highlighted accent state
+   with ↑ — the close-it-back-up control. */
 button.wl-adv { cursor: pointer; }
-#boost-toggle {
+#boost-toggle::after { content: " ↓"; }
+#boost-toggle.open {
   background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
   box-shadow: 0 12px 28px -14px rgba(var(--accent-rgb), .7);
 }
-#boost-toggle:hover { background: var(--accent-d); border-color: var(--accent-d); }
-#boost-toggle::after { content: " ↑"; }
-#boost-toggle.open {
-  background: var(--bg-tint); border-color: var(--line); color: var(--accent-d);
-  box-shadow: none;
-}
-#boost-toggle.open:hover { border-color: var(--accent); background: var(--bg-cream); }
-#boost-toggle.open::after { content: " ↓"; }
+#boost-toggle.open:hover { background: var(--accent-d); border-color: var(--accent-d); }
+#boost-toggle.open::after { content: " ↑"; }
 
 /* ── BOOST FOLD — the advertiser card unfolding out of the hero button.
    grid-template-rows 0fr→1fr animates the height; the inner scale/translate
