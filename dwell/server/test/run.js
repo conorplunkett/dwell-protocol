@@ -918,6 +918,19 @@ globalThis.fetch = async (url, opts) => {
     assert.ok(bad.headers.get("location").includes("login=error"));
     assert.strictEqual(xOAuth2.calls.length, before, "bad state is rejected before any token call");
 
+    // a failed token exchange (X rejects the client) bounces AND leaves a
+    // durable diag_errors row carrying X's payload — the redirect swallows the
+    // error from the user, so this row is how operators diagnose sign-in.
+    const kick = await api("GET", "/v1/auth/twitter");
+    const kickUrl = new URL(kick.headers.get("location"));
+    xOAuth2.expectedChallenge = null; // fake X now refuses the exchange
+    const failed = await api("GET", `/v1/auth/twitter/callback?code=AUTHCODE9&state=${encodeURIComponent(kickUrl.searchParams.get("state"))}`);
+    assert.ok(failed.headers.get("location").includes("login=error"));
+    const diag = await poolNs.query(
+      "select message from diag_errors where path = '/v1/auth/twitter/callback' order by created_at desc limit 1");
+    assert.ok(diag.rows[0], "failed exchange writes a diag_errors row");
+    assert.ok(/no access_token from X/.test(diag.rows[0].message), "the row carries X's rejection");
+
     // returning sign-in: same X id reuses the one account (no duplicate)
     const again = await api("GET", "/v1/auth/twitter");
     const url2 = new URL(again.headers.get("location"));

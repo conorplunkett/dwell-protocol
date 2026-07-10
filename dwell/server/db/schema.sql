@@ -220,6 +220,19 @@ create table if not exists processed_webhook_events (
   created_at timestamptz not null default now()
 );
 
+-- Durable diagnostics for errors that requests otherwise swallow (OAuth
+-- callbacks redirect on failure; background sends catch-and-continue). The
+-- admin dashboard's error feed reads this newest-first. Previously created
+-- ad-hoc by the edge function only; schema.sql is now the authority.
+create table if not exists diag_errors (
+  id bigserial primary key,
+  method text,
+  path text,
+  message text,
+  stack text,
+  created_at timestamptz not null default now()
+);
+
 -- Server-side click verification. The extension asks for a single-use token
 -- (authenticated by deviceKey), and the ad link points at /v1/go/:token.
 -- Hitting it once records the click and redirects — so clicks can't be forged
