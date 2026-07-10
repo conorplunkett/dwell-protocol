@@ -1211,7 +1211,7 @@ function createRepo(pool) {
     async userForSession(sessionToken) {
       if (!sessionToken) return null;
       const { rows } = await pool.query(
-        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled, u.wallet_address
+        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled, u.wallet_address, u.twitter_username
            from web_sessions s join users u on u.id = s.user_id
           where s.token = $1 and s.expires_at > now()`,
         [sessionToken]

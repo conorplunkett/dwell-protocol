@@ -1508,7 +1508,7 @@ function createRepo(pool: any) {
     async userForSession(sessionToken: string | null) {
       if (!sessionToken) return null;
       const { rows } = await pool.query(
-        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled, u.wallet_address
+        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled, u.wallet_address, u.twitter_username
            from web_sessions s join users u on u.id = s.user_id
           where s.token = $1 and s.expires_at > now()`,
         [sessionToken]
@@ -4414,7 +4414,8 @@ route("GET", "/v1/web/me", async (ctx: any) => {
     repo.getOrCreateReferralCode(user.id),
   ]);
   return json(200, {
-    email: user.email, balanceUsd: bal.balanceMillicents / 100000,
+    email: user.email, twitterUsername: user.twitter_username || null,
+    balanceUsd: bal.balanceMillicents / 100000,
     needsSurvey: !hasSurvey, needsPost: !posted,
     referralLink: `${config.siteUrl}/portal.html?ref=${code}`,
   });

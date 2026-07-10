@@ -142,7 +142,7 @@ function portalLink(code) {
 function mockGet(path) {
   const p = path.split("?")[0];
   if (p === "/v1/web/me") {
-    return { email: MOCK.email, points: MOCK.points, needsSurvey: false, needsPost: false, referralLink: "https://dwellprotocol.com/portal.html?ref=DEVCODE" };
+    return { email: MOCK.email, twitterUsername: null, points: MOCK.points, needsSurvey: false, needsPost: false, referralLink: "https://dwellprotocol.com/portal.html?ref=DEVCODE" };
   }
   if (p === "/v1/web/earnings") {
     const win = /window=(\w+)/.exec(path)?.[1] || "7d";
@@ -384,12 +384,16 @@ function showPortalPage(email) {
   hideAllPages();
   $("portal-page").hidden = false;
   accountEmail = email;
-  $("balance-email").textContent = email;
-  // Portal nav: surface who's signed in, to the left of the wallet chip.
+  $("balance-email").textContent = email || "";
+  // Portal nav: surface who's signed in, to the left of the wallet chip. X-only
+  // accounts have no email (that's the point of email-less sign-in) — fall back
+  // to the @handle captured at login (accountTwitterUsername) rather than
+  // rendering "Signed in as null"; hide the chip if neither is available.
   const who = $("nav-signed-in");
   if (who) {
-    who.textContent = "Signed in as " + email;
-    who.hidden = false;
+    const label = email || (accountTwitterUsername ? "@" + accountTwitterUsername : "");
+    who.hidden = !label;
+    if (label) who.textContent = "Signed in as " + label;
   }
   showSection("earnings");
 }
@@ -820,6 +824,9 @@ let accountEmail = "";
 let onboardNeedsPost = false;
 // The user's own referral link (from /v1/web/me), appended to the prebuilt post.
 let onboardRefLink = "";
+// The user's X @handle (from /v1/web/me) — the display fallback for accounts
+// with no email (X-only sign-in).
+let accountTwitterUsername = "";
 
 // Paint the dwells balance everywhere it appears: the Earnings header block
 // and the Redeem tab's header. One number, one conversion rule. The gift grid
@@ -1386,6 +1393,7 @@ async function boot() {
   setBalance(toPoints(me.body, "points", "balanceUsd"));
   onboardNeedsPost = !!me.body.needsPost;
   onboardRefLink = me.body.referralLink || "";
+  accountTwitterUsername = me.body.twitterUsername || "";
   // First-login onboarding runs in order: survey questions, then post the
   // prebuilt note to X, then the dashboard. Each gate is skipped once cleared.
   if (me.body.needsSurvey) { showSurvey(me.body.email); return; }
