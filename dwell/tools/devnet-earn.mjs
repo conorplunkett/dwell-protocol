@@ -26,6 +26,9 @@ const { Client } = require("pg");
 
 const API = process.env.API_BASE || "http://localhost:8787";
 const DB = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/dwell";
+// The server keeps its tables in their own Postgres schema (DB_SCHEMA,
+// default 'dwell') — pin search_path the same way so the token lookup sees them.
+const DB_SCHEMA = process.env.DB_SCHEMA || "dwell";
 const EMAIL = process.env.EARN_EMAIL || `devnet@example.com`;
 const BATCH = parseInt(process.env.BATCH_IMPRESSIONS || "100", 10);
 const TICK_MS = parseInt(process.env.TICK_MS || "2000", 10);
@@ -46,7 +49,7 @@ async function latestToken(db, email) {
 }
 
 async function main() {
-  const db = new Client({ connectionString: DB });
+  const db = new Client({ connectionString: DB, options: `-c search_path=${DB_SCHEMA}` });
   await db.connect();
 
   // health + an active campaign to bill against
