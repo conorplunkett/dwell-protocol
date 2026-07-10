@@ -1001,6 +1001,79 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
   }, 1200);
 })();
 
+// --- USDC "up for grabs" LCD counter ("Start earning $N USDC…") -------------
+// A physical seven-segment tally in the section label. The figure is the live
+// USDC pool available to earners — i.e. the earner share of sold ad inventory
+// (advertiser sales minus the protocol take). There's no public inventory
+// endpoint yet, so it's hardcoded to a $1,500 base and climbs optimistically
+// during the visit so it reads live. When the endpoint ships, replace `base`
+// with the fetched pool:  poolUsd = advertiserSalesUsd * (1 - PROTOCOL_TAKE).
+(function usdcCounter() {
+  const root = document.getElementById("usdc-counter");
+  const wrap = root && root.querySelector(".usdc-digits");
+  if (!wrap) return;
+  const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Which of the 7 bars light per digit (a top, b/c right, d bottom, e/f left, g mid).
+  const SEG = {
+    0: "abcdef", 1: "bc", 2: "abged", 3: "abgcd", 4: "fgbc",
+    5: "afgcd", 6: "afgecd", 7: "abc", 8: "abcdefg", 9: "abcdfg",
+  };
+  const NAMES = ["a", "b", "c", "d", "e", "f", "g"];
+
+  const USDC_BASE = 1500;   // hardcoded pool (≈ earner share of ad inventory)
+  let value = USDC_BASE;
+  let cells = [];           // [{ segs: {a:<i>,…} }] most-significant first
+
+  // Build one seven-segment digit and track its segment elements.
+  function makeDigit() {
+    const d = document.createElement("span");
+    d.className = "seg7";
+    const segs = {};
+    for (const n of NAMES) {
+      const i = document.createElement("i");
+      i.className = "s" + n;
+      d.appendChild(i);
+      segs[n] = i;
+    }
+    return { el: d, segs };
+  }
+
+  // Rebuild the strip to hold exactly `n` digits (grows as the pool grows).
+  function build(n) {
+    wrap.innerHTML = "";
+    cells = [];
+    for (let k = 0; k < n; k++) {
+      const c = makeDigit();
+      wrap.appendChild(c.el);
+      cells.push(c);
+    }
+  }
+
+  function render() {
+    const str = String(Math.floor(value)); // significant digits only, no leading zeros
+    if (str.length !== cells.length) build(str.length);
+    for (let k = 0; k < str.length; k++) {
+      const lit = SEG[Number(str[k])] || "";
+      const segs = cells[k].segs;
+      for (const n of NAMES) segs[n].classList.toggle("on", lit.includes(n));
+    }
+    root.setAttribute(
+      "aria-label",
+      "$" + Math.floor(value).toLocaleString("en-US") + " USDC available to earn"
+    );
+  }
+
+  render();
+  if (reduced) return; // hold at the base; no live climb
+  // Optimistic climb: nudge up a little every 3s so a trailing digit keeps
+  // ticking and the device reads live, anchored near the $1,500 base.
+  setInterval(() => {
+    value += 1 + Math.floor(Math.random() * 2); // +$1–2 per tick
+    render();
+  }, 3000);
+})();
+
 // --- Boost fold: the hero "Boost your token" button folds the advertiser card
 // open right underneath it, pushing "Get it on your platform" lower. The card
 // is NOT a copy — script moves the real #advertisers section node between its

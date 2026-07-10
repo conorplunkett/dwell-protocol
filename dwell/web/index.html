@@ -164,8 +164,22 @@
       <div class="boost-fold-inner" id="boost-fold-slot"></div>
     </div>
 
-    <!-- Section label for the quick-install row -->
-    <div class="tryit">Get it on your platform</div>
+    <!-- Section label for the quick-install row. The dollar figure is a physical
+         LCD counter (green 7-seg on black, styled after a JDM11-6H tally) whose
+         value is the live USDC "up for grabs" pool — the earner share of ad
+         inventory. Hardcoded to ~$1,500 for now; script.js rolls it optimistically
+         so it reads live. Screen-reader label lives on #usdc-counter. -->
+    <div class="tryit earn-line">
+      <span class="earn-lead">Start earning</span>
+      <span class="usdc-counter" id="usdc-counter" role="img" aria-label="$1,500 USDC available to earn">
+        <span class="usdc-counter-screen">
+          <span class="usdc-sign" aria-hidden="true">$</span>
+          <span class="usdc-digits" aria-hidden="true"></span>
+        </span>
+        <span class="usdc-counter-etch" aria-hidden="true">USDC · LIVE</span>
+      </span>
+      <span class="earn-trail">USDC while you use AI</span>
+    </div>
 
     <!-- DOWNLOAD CTAs — three quick installs above the surfaces showcase.
          Chrome + Desktop route to the existing FreeAI listings until DWELL's

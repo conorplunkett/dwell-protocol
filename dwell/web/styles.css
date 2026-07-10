@@ -428,6 +428,84 @@ button.wl-adv { cursor: pointer; }
   font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
 }
 
+/* "Start earning $N USDC while you use AI" — the label reads as a sentence with
+   a physical LCD tally counter dropped inline. Larger + wrappable so the device
+   sits comfortably in the run of text. */
+.earn-line {
+  flex-wrap: wrap; gap: 10px 12px; font-size: 15px; margin: 44px 0 18px;
+}
+.earn-lead, .earn-trail { line-height: 1; }
+
+/* ── USDC LCD counter ──────────────────────────────────────────────────────
+   A physical seven-segment tally: dark bezel housing a green-on-black glass
+   screen. Sizing is driven by font-size on .usdc-counter — every segment
+   dimension below is in em, so one size knob scales the whole device. */
+.usdc-counter {
+  --seg-thick: .15em;         /* segment bar thickness */
+  --digit-w: .66em;           /* one digit cell width */
+  --digit-h: 1.12em;          /* one digit cell height */
+  display: inline-flex; flex-direction: column; align-items: stretch; gap: .22em;
+  font-size: 30px; padding: .2em .26em .16em;
+  border-radius: 7px;
+  background: linear-gradient(180deg, var(--lcd-bezel-a), var(--lcd-bezel-b));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    inset 0 -2px 5px rgba(0,0,0,.55),
+    0 4px 10px -3px rgba(0,0,0,.5);
+  transform: translateY(-.02em);
+}
+.usdc-counter-screen {
+  display: flex; align-items: center; gap: .12em;
+  padding: .16em .28em; border-radius: 4px;
+  background:
+    radial-gradient(120% 140% at 50% 0%, rgba(77,255,160,.08), transparent 60%),
+    var(--lcd-screen);
+  box-shadow: inset 0 0 .5em rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.6);
+}
+.usdc-sign {
+  font-family: var(--mono); font-weight: 700; font-size: .84em; line-height: 1;
+  color: var(--lcd-on); text-shadow: 0 0 .32em var(--lcd-glow);
+  transform: translateY(-.02em);
+}
+.usdc-digits { display: inline-flex; gap: .12em; }
+
+/* One seven-segment digit. Segments are absolutely-positioned bars toggled via
+   .on (script.js sets it per digit). Unlit bars stay faintly visible = ghosts. */
+.seg7 { position: relative; width: var(--digit-w); height: var(--digit-h); }
+.seg7 > i {
+  position: absolute; display: block; border-radius: 1px;
+  background: var(--lcd-off); transition: background .28s ease, box-shadow .28s ease;
+}
+.seg7 > i.on {
+  background: var(--lcd-on);
+  box-shadow: 0 0 .18em var(--lcd-glow), 0 0 .34em var(--lcd-glow);
+}
+/* Horizontal bars (a top, g middle, d bottom). */
+.seg7 .sa, .seg7 .sg, .seg7 .sd {
+  left: var(--seg-thick); right: var(--seg-thick); height: var(--seg-thick);
+}
+.seg7 .sa { top: 0; }
+.seg7 .sg { top: calc((var(--digit-h) - var(--seg-thick)) / 2); }
+.seg7 .sd { bottom: 0; }
+/* Vertical bars (f/b upper, e/c lower). */
+.seg7 .sf, .seg7 .sb, .seg7 .se, .seg7 .sc {
+  width: var(--seg-thick);
+  height: calc((var(--digit-h) - 3 * var(--seg-thick)) / 2 + var(--seg-thick));
+}
+.seg7 .sf { left: 0; top: calc(var(--seg-thick) / 2); }
+.seg7 .sb { right: 0; top: calc(var(--seg-thick) / 2); }
+.seg7 .se { left: 0; bottom: calc(var(--seg-thick) / 2); }
+.seg7 .sc { right: 0; bottom: calc(var(--seg-thick) / 2); }
+
+/* Etched bezel label, echoing the "COUNTER / RESET" markings on the real unit. */
+.usdc-counter-etch {
+  align-self: center; font-family: var(--mono); font-weight: 700;
+  font-size: 7px; letter-spacing: .22em; color: var(--lcd-etch);
+  text-shadow: 0 1px 0 rgba(0,0,0,.6);
+}
+@media (max-width: 520px) { .usdc-counter { font-size: 25px; } }
+@media (prefers-reduced-motion: reduce) { .seg7 > i { transition: none; } }
+
 /* DOWNLOAD CTAs — three quick installs above the surfaces showcase. Chrome +
    Desktop are greyed "coming soon"; Terminal is a compact copy-paste. */
 .downloads { padding: 16px 0 64px; }
