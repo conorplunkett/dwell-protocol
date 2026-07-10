@@ -229,10 +229,10 @@ column; one pick per job, named fallback.
 | Job | Pick | Fallback |
 |---|---|---|
 | Swap quote + tx composition | **Jupiter Swap API** (`/quote` + `/swap-instructions`) | Direct Meteora pool route (single pool, zero external dep) |
-| Wallet connection | **Privy** (already picked; Solana external + embedded wallets) | Reown AppKit, or raw Wallet Standard adapter |
+| Wallet connection | **Raw Wallet Standard handshake** (already shipped in `web/script.js` — discovers Phantom, Solflare, Backpack **and MetaMask**, which now ships native Solana accounts) | Privy (embedded wallets), Reown AppKit |
 | Payment request format | **Solana Pay transaction-request spec** (open standard: QR / deeplink / wallet-native) | Plain connect-and-sign in the portal |
 | RPC + tx detection | **Helius** (webhooks on the treasury/distributor ATAs, priority-fee API, staked tx landing) | QuickNode, Triton |
-| Cross-chain entry (USDC on Base/Ethereum/Arbitrum) | **deBridge (DLN)** widget/API — fast, Solana-native, no wrapped assets | Mayan (Wormhole swift); LI.FI if we want one aggregator API |
+| Cross-chain entry (USDC on Base/Ethereum/Arbitrum) | **deBridge (DLN)** deep link → widget — fast, Solana-native, no wrapped assets (see § MetaMask below) | **Relay** (powers MetaMask's own in-wallet bridge); Mayan (Wormhole Swift); LI.FI if we want one aggregator API |
 | Native USDC treasury moves | **Circle CCTP v2** (canonical burn-and-mint) | deBridge |
 | Hosted checkout (only if we'd rather not build) | **Helio / MoonPay Checkout** (Solana Pay under the hood) | Sphere |
 | Wallet screening (compliance, optional at launch) | **TRM Labs** API on the paying wallet | Chainalysis |
@@ -243,10 +243,96 @@ express "pay 10% here and atomically market-buy DWELL with the rest to a
 third account" — that composition is exactly what `/swap-instructions` +
 one prepended SPL transfer gives us, and it's the whole point of the design.
 
-Cross-chain MVP is deliberately thin: the deBridge widget delivers USDC to
-the advertiser's own Solana wallet, then the normal checkout runs. A later
-V2 can use DLN order hooks to make bridge-and-pay one action; not a launch
-requirement.
+Cross-chain MVP is deliberately thin: deBridge delivers USDC to the
+advertiser's own Solana wallet, then the normal checkout runs — the full
+design is the next section.
+
+## MetaMask & cross-chain entry (verified 2026-07-10)
+
+Two different problems hide inside "accept MetaMask, cross-chain" — and the
+first one is already solved by code in the tree.
+
+### 1. MetaMask *is* a Solana wallet now — the direct rail is free
+
+MetaMask ships **native Solana accounts** (extension ≥ 13.5, mobile ≥ 7.57:
+every MetaMask account carries an EVM address *and* a Solana address side by
+side) and announces them through the **Wallet Standard** two-event handshake —
+the exact discovery mechanism the lander already runs, no SDK and no
+MetaMask-specific code. A MetaMask user holding USDC or SOL **on Solana**
+connects and signs the existing atomic checkout exactly like a Phantom user.
+
+Enablement checks, small and one-time (fold into the `DWELL_MINT` /
+`USDC_CHECKOUT` gate work):
+
+- `pickWallet()` in `web/script.js` prefers Phantom, else takes the first
+  discovered wallet — when more than one wallet announces itself, show a
+  picker instead, so MetaMask+Phantom users choose explicitly.
+- One devnet signature to confirm MetaMask's Wallet Standard feature set
+  handles our legacy-encoded transaction via `solana:signAndSendTransaction`
+  (MetaMask implements the standard but its docs don't enumerate features —
+  same verify-with-a-real-wallet drill as the 2026-07-08 encoder check).
+- MetaMask mobile is **mainnet-only** for Solana; devnet testing stays on the
+  extension.
+
+### 2. Funds on EVM chains — bridge with a third party, checkout unchanged
+
+When the advertiser's money sits on Ethereum/Base/Arbitrum, we do **not**
+build an EVM payment rail (no second verifier, no second treasury, no wrapped
+assets). A third-party intent bridge tops up the *same wallet's* Solana
+account, then the normal checkout runs:
+
+```
+MetaMask — USDC on Base/Ethereum/Arbitrum
+   │  deBridge (DLN): dst = native USDC on Solana,
+   │  recipient = the SAME MetaMask account's own Solana address,
+   │  amount = order total + small buffer          (fills in ~1–4 s)
+   ▼
+the advertiser's MetaMask Solana account holds USDC
+   ▼
+normal checkout: one atomic advertiser-signed transaction   (unchanged)
+```
+
+The advertiser never changes wallets and never leaves the flow; we never
+custody anything (the bridge's counterparty risk sits between the advertiser
+and deBridge, not on us); the backend, verifier, and order lifecycle don't
+change by a single line.
+
+Integration is staged to match the repo's no-heavy-deps rule:
+
+1. **MVP — prefilled deep link.** A "Bridge from another chain" link on the
+   USDC panel opens `app.debridge.finance` with source/destination/token/
+   amount prefilled via URL params. Zero third-party script on our page —
+   same pattern as the Solana Pay link. The order poller already waits for
+   payment, so the advertiser bridges, returns, and pays.
+2. **Enhancement — embedded widget.** deBridge's widget builder emits an
+   embeddable, themeable iframe (connects MetaMask on the EVM side natively,
+   supports an affiliate-fee knob). Drop-in on the lander behind the same
+   `USDC_CHECKOUT` flag once the deep-link flow proves demand.
+3. **No-code fallback that always exists:** MetaMask's built-in Bridge tab
+   (powered by Relay/LI.FI) moves EVM funds to the user's own Solana account
+   without us shipping anything — checkout copy can say so.
+
+Options considered (July 2026 — re-verify before integration):
+
+| Option | Verdict |
+|---|---|
+| **deBridge DLN** — pick | Intent-based, Solana-native since day one, ~1–4 s fills, delivers **native** assets (no wrapped), deep link + widget + API, affiliate-fee knob |
+| **Relay** — fallback | Payments-grade cross-chain infra; ~2.7 s median EVM→Solana; API + SwapWidget; powers MetaMask's own bridging — swapping it in later is low-friction |
+| LI.FI | One aggregator API over many bridges incl. CCTP; more surface than this job needs |
+| Mayan (Wormhole Swift) | Solid Solana-native alternate, kept from the earlier table |
+| Circle CCTP v2 directly | The right primitive for **our own** treasury moves (canonical burn-and-mint), but checkout would need us to run attestation plumbing and gas on both chains — that's the bridge vendors' job |
+| Hosted checkout (Helio/MoonPay, Sphere, Coinbase Commerce) | Rejected as primary: none can express the two-leg atomic design, all add a settlement counterparty, and Coinbase Commerce can't settle on Solana |
+
+### V2 — one-signature bridge-and-pay (not launch-gating)
+
+DLN **order hooks** (`dlnHook`) can attach a Solana instruction to the fill,
+so a single MetaMask signature on Base could deliver USDC straight to the
+treasury with the order's reference key riding in the hook — true one-click
+cross-chain checkout for the plain-transfer (Phase 0 / points) rail. It needs
+verifier work first: the fill transaction is signed by the DLN taker, not the
+advertiser, so verification must key entirely off the hook-carried reference
+and the runtime balance deltas (the deltas are already how the verifier
+works). The two-step flow above is the MVP; this is the polish.
 
 ## Backend spec (landed — both backends in the same commit, per AGENTS.md)
 
@@ -324,8 +410,8 @@ TGE; otherwise skip straight to Phase 1.
 | Phase | Gate | Scope |
 |---|---|---|
 | 0 (optional) | now | USDC transfer → ledger earmark, review-before-pay lifecycle |
-| 1 | `DWELL_MINT` set (TGE) | Atomic pay+swap checkout, Solana wallets, Helius verification, portal UI |
-| 2 | Phase 1 stable | deBridge cross-chain entry; TRM screening; hosted-checkout alternate if demand warrants |
+| 1 | `DWELL_MINT` set (TGE) | Atomic pay+swap checkout, Solana wallets **incl. MetaMask via Wallet Standard** (+ wallet picker, devnet sign check), Helius verification, portal UI |
+| 2 | Phase 1 stable | deBridge cross-chain entry (deep link → widget, § MetaMask above); TRM screening; hosted-checkout alternate if demand warrants |
 
 ## Verification (2026-07-08)
 
@@ -371,4 +457,7 @@ it stays dependency-light), so it was validated end-to-end:
   recorded fixtures.
 - **Compliance**: the paying wallet is a counterparty — screening (TRM) is
   cheap insurance before accepting large orders; the copy rules keep the
-  checkout page mechanics-as-facts.
+  checkout page mechanics-as-facts. Cross-chain entry raises the stakes:
+  bridged-in funds obscure provenance one hop further, so wallet screening
+  moves from optional to strongly recommended the day the deBridge link
+  ships.

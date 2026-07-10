@@ -399,7 +399,7 @@
           </label>
 
           <label class="field">
-            <span class="flabel">Ticker icon <em>(required, PNG/JPG/WebP ≤ 64 KB)</em></span>
+            <span class="flabel">Ticker icon <em>(required, PNG/JPG/WebP ≤ 5 MB)</em></span>
             <!-- Real click-to-browse (native label→input forwarding) + drag-and-drop,
                  wired in script.js. tabindex/keydown cover keyboard users, since the
                  file input itself is visually hidden and not tabbable. -->
@@ -416,7 +416,7 @@
 
           <label class="field">
             <span class="flabel">Ticker slogan · 3–60 char <em class="count" id="adline-count">0 / 60</em></span>
-            <input type="text" id="adline" maxlength="60" placeholder="the black bull" required />
+            <input type="text" id="adline" maxlength="60" placeholder="$ansem charges upwards" required />
           </label>
 
           <label class="field">
@@ -505,17 +505,25 @@
                and selects this pane when crypto checkout is enabled; with it
                off the card pane below shows alone. -->
           <div class="paypane" id="pay-crypto" hidden>
-            <button class="usdc-btn" id="usdc-btn" type="button">
-              <span class="usdc-btn-label">Pay with</span> <strong>USDC or SOL on Solana</strong>
-            </button>
+            <!-- Rail slider: quote the campaign in USDC (default) or SOL.
+                 Clicking a side prices the order on that rail and renders the
+                 panel underneath; the thumb reuses the .paytabs math
+                 (translateX(i*100%), 2 segments by default). -->
+            <div class="paytabs railtabs" id="railtabs" role="tablist" aria-label="Crypto rail">
+              <span class="paytabs-thumb" id="railtabs-thumb" aria-hidden="true"></span>
+              <button type="button" class="paytab active" id="rail-usdc" role="tab" aria-selected="true">Quote USDC on Solana</button>
+              <button type="button" class="paytab" id="rail-sol" role="tab" aria-selected="false">Quote SOL on Solana</button>
+            </div>
             <div class="usdc-panel" id="usdc-panel" hidden>
               <div class="usdc-row"><span>Total</span><strong id="usdc-price">$0.00</strong></div>
               <div class="usdc-row"><span>Protocol fee · 10%</span><strong id="usdc-fee">$0.00</strong></div>
               <div class="usdc-row"><span>To the rewards pool · 90%</span><strong id="usdc-tranche">$0.00</strong></div>
               <div class="usdc-row" id="usdc-sol-row" hidden><span>≈ total in SOL</span><strong id="usdc-sol-total">—</strong></div>
-              <a class="usdc-paylink" id="usdc-paylink" href="#" rel="noopener">Open in your Solana wallet</a>
-              <button type="button" class="usdc-copy" id="usdc-copy">Copy payment link</button>
-              <button type="button" class="usdc-copy" id="usdc-switch">Pay with SOL instead</button>
+              <!-- Talks to the injected wallet (Phantom/Solflare/Backpack…) via
+                   the Wallet Standard — desktop browsers have no solana: protocol
+                   handler, so a plain link never opens the extension. Mobile
+                   (no injected wallet) falls back to the solana: deeplink. -->
+              <button type="button" class="usdc-paylink" id="usdc-paywallet">Pay from your Solana wallet</button>
               <p class="usdc-status" id="usdc-status" role="status"></p>
             </div>
           </div>
@@ -534,8 +542,7 @@
               <div class="usdc-row"><span>Ad budget</span><strong id="dwell-price">$0.00</strong></div>
               <div class="usdc-row usdc-row-boost"><span>$DWELL boost</span><strong id="dwell-boost">+10% impressions</strong></div>
               <div class="usdc-row"><span>≈ pay in $DWELL</span><strong id="dwell-amount">—</strong></div>
-              <a class="usdc-paylink" id="dwell-paylink" href="#" rel="noopener">Open in your Solana wallet</a>
-              <button type="button" class="usdc-copy" id="dwell-copy">Copy payment link</button>
+              <button type="button" class="usdc-paylink" id="dwell-paywallet">Pay from your Solana wallet</button>
               <p class="usdc-status" id="dwell-status" role="status"></p>
             </div>
           </div>

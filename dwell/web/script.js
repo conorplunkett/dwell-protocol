@@ -186,7 +186,7 @@ const iconThumb = document.getElementById("dropzone-thumb");
 const iconName = document.getElementById("dropzone-name");
 const iconRemove = document.getElementById("dropzone-remove");
 if (iconDropzone && iconInput) {
-  const MAX_ICON_BYTES = 64 * 1024;
+  const MAX_ICON_BYTES = 5 * 1024 * 1024;
   const ICON_TYPES = ["image/png", "image/jpeg", "image/webp"];
   const showIconError = (msg) => {
     iconMsg.textContent = msg;
@@ -196,7 +196,7 @@ if (iconDropzone && iconInput) {
   const acceptIconFile = (file) => {
     if (!file) return;
     if (!ICON_TYPES.includes(file.type)) return showIconError("PNG, JPG, or WebP only — try again.");
-    if (file.size > MAX_ICON_BYTES) return showIconError(`That's ${Math.ceil(file.size / 1024)} KB — 64 KB max. Try a smaller image.`);
+    if (file.size > MAX_ICON_BYTES) return showIconError(`That's ${(file.size / (1024 * 1024)).toFixed(1)} MB — 5 MB max. Try a smaller image.`);
     const reader = new FileReader();
     reader.onload = () => {
       iconThumb.src = reader.result;
@@ -692,19 +692,69 @@ const CRYPTO_CHECKOUT = true;
     };
   };
 
-  // Wire one crypto pane. `ids` names its elements; `currency` is the initial
-  // rail; `fill(data)` populates the pane-specific rows and returns a status
-  // string; `altBtn` (optional) is the USDC↔SOL switch, which re-orders on the
-  // toggled currency.
-  const wirePane = ({ ids, currency, fill, altCurrency }) => {
-    const btn = document.getElementById(ids.btn);
-    const panel = document.getElementById(ids.panel);
-    const statusEl = document.getElementById(ids.status);
-    const payLink = document.getElementById(ids.paylink);
-    const copyBtn = document.getElementById(ids.copy);
-    const altBtn = ids.alt ? document.getElementById(ids.alt) : null;
-    if (!btn || !panel) return;
-    let cur = currency;
+  // ── Wallet discovery (Wallet Standard) ────────────────────────────────
+  // Desktop browsers have no handler for solana: URLs — extensions never
+  // register one, so a plain link can't open Phantom. Instead, every modern
+  // Solana wallet (Phantom, Solflare, Backpack, …) announces itself through
+  // the Wallet Standard's two-event handshake; collecting them needs no SDK.
+  const wsWallets = [];
+  const wsApi = {
+    register: (...ws) => {
+      ws.forEach((w) => {
+        if (w?.features?.["standard:connect"] && w?.features?.["solana:signAndSendTransaction"] && !wsWallets.includes(w)) wsWallets.push(w);
+      });
+      return () => {};
+    },
+  };
+  try {
+    window.addEventListener("wallet-standard:register-wallet", (e) => { try { e.detail(wsApi); } catch (_) {} });
+    window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: wsApi }));
+  } catch (_) { /* discovery is best-effort — the mobile deeplink below still works */ }
+  const pickWallet = () => wsWallets.find((w) => /phantom/i.test(w.name || "")) || wsWallets[0] || null;
+
+  // Connect → fetch the unsigned transaction for that pubkey → one signature
+  // in the wallet's own popup. No injected wallet (mobile browsers) falls back
+  // to the solana: deeplink, which the wallet APP does register.
+  const payWithWallet = async (order, setStatus, btn) => {
+    const wallet = pickWallet();
+    if (!wallet) { window.location.href = order.solanaPayUrl; return; }
+    btn.disabled = true;
+    try {
+      setStatus(`Connecting to ${wallet.name}…`);
+      const conn = await wallet.features["standard:connect"].connect();
+      const account =
+        (conn.accounts || []).find((a) => (a.chains || []).some((c) => String(c).startsWith("solana:"))) ||
+        (conn.accounts || [])[0];
+      if (!account) throw new Error(`${wallet.name} returned no Solana account`);
+      setStatus("Building your transaction…");
+      const res = await fetch(`${API_BASE}/v1/ads/usdc/orders/${order.orderId}/transaction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account: account.address }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "couldn't build the transaction — try again");
+      const tx = Uint8Array.from(atob(data.transaction), (c) => c.charCodeAt(0));
+      setStatus(`Approve in ${wallet.name} — one signature.`);
+      const chain = (account.chains || []).find((c) => String(c).startsWith("solana:")) || "solana:mainnet";
+      await wallet.features["solana:signAndSendTransaction"].signAndSendTransaction({ transaction: tx, account, chain });
+      setStatus("Payment sent — confirming on-chain…", "ok");
+    } catch (err) {
+      setStatus(err?.message || "The wallet didn't approve — try again.", "err");
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  // One order panel (rows + pay button + status). `create(currency)` prices
+  // the campaign on that rail, fills the rows, and hands the pay button the
+  // live order; polling flips the status to confirmed/expired/failed.
+  const wirePanel = ({ panelId, statusId, payId, fill }) => {
+    const panel = document.getElementById(panelId);
+    const statusEl = document.getElementById(statusId);
+    const payBtn = document.getElementById(payId);
+    if (!panel || !statusEl || !payBtn) return { create: async () => false };
+    let order = null;
     let pollTimer = null;
     const setStatus = (t, cls) => { statusEl.textContent = t; statusEl.className = "usdc-status" + (cls ? " " + cls : ""); };
     const poll = (orderId) => {
@@ -717,69 +767,53 @@ const CRYPTO_CHECKOUT = true;
           if (o.status === "confirmed") {
             clearInterval(pollTimer);
             setStatus("Payment confirmed — your ad is in review and goes live once approved.", "ok");
-            payLink.hidden = true;
-            if (altBtn) altBtn.hidden = true;
+            payBtn.hidden = true;
           } else if (o.status === "expired") {
             clearInterval(pollTimer);
-            setStatus("This order expired. Reopen crypto checkout to price a fresh one.", "err");
+            setStatus("This order expired. Quote again to price a fresh one.", "err");
           } else if (o.status === "failed") {
             clearInterval(pollTimer);
-            setStatus("That payment didn't verify (" + (o.failReason || "unknown") + "). Reopen crypto checkout to retry.", "err");
+            setStatus("That payment didn't verify (" + (o.failReason || "unknown") + "). Quote again to retry.", "err");
           }
         } catch (_) { /* offline — keep polling */ }
       }, 3500);
     };
-    const create = async () => {
+    payBtn.addEventListener("click", () => { if (order) payWithWallet(order, setStatus, payBtn); });
+    const create = async (currency, onErr) => {
       // Same required-field gate as the card rail (email stays optional here).
-      if (window.validateTickerFields && !window.validateTickerFields()) return;
-      btn.disabled = true;
-      const old = btn.innerHTML;
-      btn.textContent = "Pricing your campaign…";
+      if (window.validateTickerFields && !window.validateTickerFields()) return false;
       try {
         const res = await fetch(`${API_BASE}/v1/ads/usdc/orders`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...readForm(), currency: cur }),
+          body: JSON.stringify({ ...readForm(), currency }),
         });
         const data = await res.json();
         if (!res.ok) {
           // A 404 means this deployment hasn't configured its crypto accounts
           // yet — steer to the card rail instead of echoing "not found".
-          btn.textContent = res.status === 404
-            ? "Crypto checkout isn't live here yet — pay with card"
-            : (data.error || "Something went wrong");
-          setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2600);
-          return;
+          onErr(res.status === 404 ? "Crypto checkout isn't live here yet — pay with card" : (data.error || "Something went wrong"));
+          return false;
         }
-        btn.innerHTML = old;
-        btn.disabled = false;
-        const statusText = fill(data, cur);
-        payLink.hidden = false;
-        payLink.href = data.solanaPayUrl;
-        copyBtn.onclick = () => {
-          navigator.clipboard?.writeText(data.solanaPayUrl).then(
-            () => { copyBtn.textContent = "Copied"; setTimeout(() => (copyBtn.textContent = "Copy payment link"), 1600); },
-            () => {}
-          );
-        };
-        if (altBtn) { altBtn.hidden = false; altBtn.textContent = cur === "sol" ? "Pay with USDC instead" : "Pay with SOL instead"; }
-        setStatus(statusText);
+        order = data;
+        fill(data, currency);
+        payBtn.hidden = false;
+        setStatus("");
         panel.hidden = false;
         poll(data.orderId);
+        return true;
       } catch (_) {
-        btn.textContent = "Network error — try again";
-        setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2600);
+        onErr("Network error — try again");
+        return false;
       }
     };
-    btn.addEventListener("click", create);
-    if (altBtn && altCurrency) altBtn.addEventListener("click", () => { cur = cur === currency ? altCurrency : currency; create(); });
+    return { create };
   };
 
-  // USDC/SOL pane (default rail usdc; the switch flips to sol).
-  wirePane({
-    currency: "usdc",
-    altCurrency: "sol",
-    ids: { btn: "usdc-btn", panel: "usdc-panel", status: "usdc-status", paylink: "usdc-paylink", copy: "usdc-copy", alt: "usdc-switch" },
+  // USDC ↔ SOL rail slider (USDC default). Either side quotes on click and
+  // renders the shared order panel underneath.
+  const cryptoPanel = wirePanel({
+    panelId: "usdc-panel", statusId: "usdc-status", payId: "usdc-paywallet",
     fill: (data, cur) => {
       document.getElementById("usdc-price").textContent = usd(data.priceUsdc);
       document.getElementById("usdc-fee").textContent = usd(data.feeUsdc);
@@ -789,18 +823,39 @@ const CRYPTO_CHECKOUT = true;
       if (cur === "sol" && Number.isFinite(data.estPayTotalSol)) {
         document.getElementById("usdc-sol-total").textContent = data.estPayTotalSol.toFixed(4) + " SOL";
       }
-      return cur === "sol"
-        ? "Open the link in your Solana wallet and approve — one signature pays the protocol fee and funds the rewards pool, in SOL. The SOL amount re-prices when the wallet fetches the transaction."
-        : "Open the link in your Solana wallet and approve — one signature pays the protocol fee and funds the rewards pool.";
     },
+  });
+  const railThumb = document.getElementById("railtabs-thumb");
+  const rails = [
+    { btn: document.getElementById("rail-usdc"), currency: "usdc" },
+    { btn: document.getElementById("rail-sol"), currency: "sol" },
+  ];
+  rails.forEach(({ btn, currency }, idx) => {
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      rails.forEach((r) => r.btn && (r.btn.disabled = true));
+      const old = btn.textContent;
+      btn.textContent = "Pricing…";
+      let failMsg = null;
+      const ok = await cryptoPanel.create(currency, (msg) => { failMsg = msg; });
+      btn.textContent = failMsg || old;
+      if (failMsg) setTimeout(() => { btn.textContent = old; }, 2600);
+      if (ok) {
+        if (railThumb) railThumb.style.transform = `translateX(${idx * 100}%)`;
+        rails.forEach((r, i) => {
+          r.btn?.classList.toggle("active", i === idx);
+          r.btn?.setAttribute("aria-selected", String(i === idx));
+        });
+      }
+      rails.forEach((r) => r.btn && (r.btn.disabled = false));
+    });
   });
 
   // $DWELL pane — post-launch: pay the USD price in $DWELL at a spot quote
   // (the payment goes to the company treasury and is held; docs/01), with
   // +10% impressions. Unreachable while its tab is disabled.
-  wirePane({
-    currency: "dwell",
-    ids: { btn: "dwell-btn", panel: "dwell-panel", status: "dwell-status", paylink: "dwell-paylink", copy: "dwell-copy" },
+  const dwellPanel = wirePanel({
+    panelId: "dwell-panel", statusId: "dwell-status", payId: "dwell-paywallet",
     fill: (data) => {
       document.getElementById("dwell-price").textContent = usd(data.priceUsdc);
       const boostPct = Number.isFinite(data.boostBps) ? (data.boostBps / 100) : 10;
@@ -809,8 +864,22 @@ const CRYPTO_CHECKOUT = true;
         document.getElementById("dwell-amount").textContent =
           Number(data.estPayTotalDwell).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " $DWELL";
       }
-      return "Open the link in your Solana wallet and approve — one signature pays the campaign price in $DWELL. Your campaign runs with +" + boostPct + "% impressions. The $DWELL amount re-prices when the wallet fetches the transaction.";
     },
+  });
+  const dwellBtn = document.getElementById("dwell-btn");
+  dwellBtn?.addEventListener("click", async () => {
+    dwellBtn.disabled = true;
+    const old = dwellBtn.innerHTML;
+    dwellBtn.textContent = "Pricing your campaign…";
+    let failMsg = null;
+    await dwellPanel.create("dwell", (msg) => { failMsg = msg; });
+    if (failMsg) {
+      dwellBtn.textContent = failMsg;
+      setTimeout(() => { dwellBtn.innerHTML = old; dwellBtn.disabled = false; }, 2600);
+    } else {
+      dwellBtn.innerHTML = old;
+      dwellBtn.disabled = false;
+    }
   });
 })();
 
