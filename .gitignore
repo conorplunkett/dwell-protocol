@@ -1,5 +1,6 @@
 node_modules/
 __pycache__/
+.DS_Store
 
 # Chrome Web Store build output (regenerate with `make package-ext`).
 dwell/chrome-extension/dist/
