@@ -86,6 +86,8 @@
   let mockAd = (typeof self !== "undefined" && self.BB_MOCK_AD) || null;
   // House/default ad — filler shown only when the auction is empty. Never billed.
   let houseAd = (typeof self !== "undefined" && self.BB_DEFAULT_AD) || null;
+  // Admin killswitch for the house ad (mirrors /v1/config → houseAdEnabled).
+  let houseEnabled = true;
   let enabled = true;
   let testMode = false;
   let active = false;
@@ -127,8 +129,9 @@
     if (testMode) return mockAd || (ads.length ? ads[0] : null);
     if (ads.length) return ads[0];
     // No live inventory: fall back to the house ad so the bar promotes DWELL
-    // instead of going blank. It's filler — tick() never bills it (see below).
-    return houseAd;
+    // instead of going blank — unless the admin turned it off. It's filler:
+    // tick() never bills it (see below).
+    return houseEnabled ? houseAd : null;
   }
 
   bar.addEventListener("click", () => {
@@ -381,6 +384,7 @@
     // Honour both the user toggle and the server killswitch (state.serving).
     enabled = state ? state.enabled !== false && state.serving !== false : true;
     testMode = state ? !!state.testMode : false;
+    houseEnabled = state ? state.houseAdEnabled !== false : true;
     // Only ever show what the service worker vouches for (live, funded
     // inventory). No local fallback to the bundled demo list: an ad that no
     // campaign paid for must never render or count as earned.
@@ -404,6 +408,7 @@
       if (Array.isArray(s.ads)) ads = s.ads;
       if (s.mockAd) mockAd = s.mockAd;
       if (s.houseAd) houseAd = s.houseAd;
+      if (typeof s.houseAdEnabled === "boolean") houseEnabled = s.houseAdEnabled;
     },
     _stopTimers: () => {
       clearInterval(pollTimer);

@@ -291,6 +291,14 @@ function makeChrome(stateRef, sentRef) {
     assert.ok(!sent.some((m) => m.type === "BB_CLICK"), "house ad reported a click");
   });
 
+  await check("the admin killswitch (houseAdEnabled:false) suppresses the house ad", () => {
+    T.setState({ enabled: true, testMode: false, ads: [], houseAd: sandbox.BB_DEFAULT_AD, houseAdEnabled: false });
+    assert.strictEqual(T.currentAd(), null, "house ad shown while disabled by admin");
+    // Re-enabling brings it back (no inventory).
+    T.setState({ enabled: true, testMode: false, ads: [], houseAd: sandbox.BB_DEFAULT_AD, houseAdEnabled: true });
+    assert.ok(T.currentAd() && T.currentAd().house === true, "house ad not restored when re-enabled");
+  });
+
   await check("live inventory takes precedence over the house ad", () => {
     T.setState({ enabled: true, testMode: false, ads: [{ id: "c1", chip: "A", line: "Acme" }], houseAd: sandbox.BB_DEFAULT_AD });
     const ad = T.currentAd();

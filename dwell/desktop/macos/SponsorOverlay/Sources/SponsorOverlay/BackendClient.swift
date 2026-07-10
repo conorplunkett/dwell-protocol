@@ -129,6 +129,20 @@ final class BackendClient {
         }
     }
 
+    /// Fetch the public config flags. Completion carries `houseAdEnabled`
+    /// (defaults to true when the request fails or the field is absent) so the
+    /// overlay can gate the non-billable house ad on the admin killswitch.
+    func fetchConfig(completion: @escaping (_ houseAdEnabled: Bool) -> Void) {
+        get("v1/config") { result in
+            guard case .success(let data) = result,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return completion(true)
+            }
+            // Only an explicit `false` disables it; missing ⇒ on.
+            completion((obj["houseAdEnabled"] as? Bool) ?? true)
+        }
+    }
+
     func postEvents(credentials: DeviceCredentials, batchKey: String,
                     events: [[String: Any]], completion: @escaping (Bool) -> Void) {
         post("v1/events", body: [

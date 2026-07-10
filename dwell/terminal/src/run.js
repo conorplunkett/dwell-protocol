@@ -112,10 +112,15 @@ async function prepareDwellSession({
   }
   const ads = await backend.ads();
   let ad = ads[0];
-  // No funded inventory ⇒ fall back to the non-billable house ad. It promotes
-  // DWELL itself; critically, we start NO monitor for it (below), so it never
-  // serves or redeems an impression and the user earns nothing from it.
-  const house = !ad;
+  // No funded inventory ⇒ fall back to the non-billable house ad, unless the
+  // admin turned it off (/v1/config → houseAdEnabled). It promotes DWELL itself;
+  // critically, we start NO monitor for it (below), so it never serves or
+  // redeems an impression and the user earns nothing from it.
+  const house = !ad && config.houseAdEnabled !== false;
+  if (!ad && !house) {
+    debug(env, "backend returned no active ads; house ad disabled by admin");
+    return null;
+  }
   if (house) ad = HOUSE_AD;
 
   let device = null;

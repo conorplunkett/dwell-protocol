@@ -175,11 +175,12 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
   route("GET", "/healthz", async (req, res) => json(res, 200, { ok: true }));
 
   route("GET", "/v1/config", async (req, res) => {
-    let leaderboardPublic = false, liveTopCpm = false, adNoticeVisible = false;
+    let leaderboardPublic = false, liveTopCpm = false, adNoticeVisible = false, houseAdEnabled = true;
     try { leaderboardPublic = (await repo.getSetting("leaderboard_public")) === true; } catch { /* settings table absent */ }
     try { liveTopCpm = (await repo.getSetting("live_top_cpm")) === true; } catch { /* settings table absent */ }
     try { adNoticeVisible = (await repo.getSetting("ad_notice_visible")) === true; } catch { /* settings table absent */ }
-    json(res, 200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) });
+    try { houseAdEnabled = (await repo.getSetting("house_ad_enabled")) !== false; } catch { /* settings table absent → default on */ }
+    json(res, 200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, houseAdEnabled, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) });
   });
 
   route("GET", "/v1/ads", async (req, res) => {
@@ -1717,6 +1718,19 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     if (typeof body.visible !== "boolean") return json(res, 400, { error: "visible (boolean) required" });
     await repo.setSetting("ad_notice_visible", body.visible);
     json(res, 200, { ok: true, visible: body.visible });
+  });
+  // Whether clients show the non-billable house ad when the auction is empty (ON by default).
+  route("GET", "/v1/admin/house-ad", async (req, res, body, rawBody, query) => {
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    let enabled = true;
+    try { enabled = (await repo.getSetting("house_ad_enabled")) !== false; } catch { /* settings table absent → default on */ }
+    json(res, 200, { enabled });
+  });
+  route("POST", "/v1/admin/house-ad", async (req, res, body) => {
+    if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
+    if (typeof body.enabled !== "boolean") return json(res, 400, { error: "enabled (boolean) required" });
+    await repo.setSetting("house_ad_enabled", body.enabled);
+    json(res, 200, { ok: true, enabled: body.enabled });
   });
 
   // ---------- completion-receipt auto-send toggle + batched sweep ----------

@@ -22,6 +22,7 @@ const DEFAULTS = {
   enabled: true,
   testMode: false, // show the mock ad continuously so you can verify the loop
   serving: true, // mirrors the server killswitch (/v1/config); ads off when false
+  houseAdEnabled: true, // mirrors /v1/config; show the house ad on an empty auction
   revenueShare: 0.5, // offline fallback only — /v1/config's revenueShare always overrides
   grossCpm: 12, // gross USD per 1,000 qualifying (2-second) impressions
   blockedCategories: [],
@@ -151,6 +152,7 @@ async function refreshConfig() {
     const data = await res.json();
     const patch = {};
     if (typeof data.serving === "boolean") patch.serving = data.serving;
+    if (typeof data.houseAdEnabled === "boolean") patch.houseAdEnabled = data.houseAdEnabled;
     if (typeof data.revenueShare === "number") patch.revenueShare = data.revenueShare;
     if (Object.keys(patch).length) await chrome.storage.local.set(patch);
   } catch (_) {}

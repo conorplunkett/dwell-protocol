@@ -73,6 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var linkedEmail: String?
     private var pollTimer: Timer?
     private var adsPaused = false
+    /// Admin killswitch for the non-billable house ad (mirrors /v1/config →
+    /// houseAdEnabled). Defaults on; refreshed alongside ads.
+    private var houseAdEnabled = true
     /// Last assistant-window bounds the overlay was positioned over, for
     /// move/resize deduplication (spec `lastBounds`).
     private var lastShownBounds: CGRect?
@@ -180,13 +183,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func didSignIn() {
+        refreshConfig()
         refreshAds()
         refreshBalance()
         refreshLinkStatus()
         Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            self?.refreshConfig()
             self?.refreshAds()
             self?.refreshBalance()
             self?.refreshLinkStatus()
+        }
+    }
+
+    /// Refresh the house-ad killswitch from /v1/config. If it flips off while the
+    /// house ad is on screen, drop it immediately so the card can't linger.
+    private func refreshConfig() {
+        client.fetchConfig { [weak self] houseAdEnabled in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.houseAdEnabled = houseAdEnabled
+                if !houseAdEnabled, self.currentAd?.isHouse == true { self.currentAd = nil }
+            }
         }
     }
 
@@ -287,10 +304,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func rotateAd() {
         // No funded inventory ⇒ fall back to the non-billable house ad so the
-        // card promotes DWELL instead of never appearing. It never serves or
-        // redeems an impression (see serveImpressionIfNeeded / handleQualified),
-        // so the user earns nothing while it's shown.
-        currentAd = ads.randomElement() ?? Ad.house
+        // card promotes DWELL instead of never appearing (unless the admin turned
+        // it off via /v1/config). It never serves or redeems an impression (see
+        // serveImpressionIfNeeded / handleQualified), so the user earns nothing.
+        currentAd = ads.randomElement() ?? (houseAdEnabled ? Ad.house : nil)
         if let ad = currentAd {
             // Route through the https guard so the card never carries a non-https
             // destination (see Ad.destinationURLOrFallback).
