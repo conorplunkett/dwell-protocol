@@ -396,6 +396,22 @@ enhancements for enablement). All colors via `theme.css` tokens. **Hidden for
 now**: the button only renders when the `USDC_CHECKOUT` flag in `script.js` is
 flipped, and the backend 404s regardless until `DWELL_MINT` is set.
 
+**Buy $DWELL** (`#dwell-buy-btn`, under the Pay-with-$DWELL button): for
+advertisers who want the +10% $DWELL rail but hold no $DWELL yet. It opens
+[Jupiter](https://jup.ag)'s official swap widget (`terminal.jup.ag/main-v1.js`,
+lazy-loaded on first click, `displayMode:"modal"`) pre-filled to swap
+**USDC → $DWELL** for the ad-budget dollar amount + ~5% buffer
+(`fixedInputMint`, `initialInputMint=USDC_MINT`, `initialOutputMint=DWELL_MINT`,
+`initialAmount = budget × 1.05 × 10⁶`, `swapMode:"ExactIn"`); the swap is signed
+from the user's own wallet, then they Pay with $DWELL. No new server env var —
+it reuses `DWELL_MINT`/`USDC_MINT`, which `/v1/config` now surfaces to the
+lander **only when `DWELL_MINT` is set** (`dwellMint`, `usdcMint`). That single
+gate lights up the whole $DWELL rail at launch: `script.js` reveals the Buy
+button and enables the $DWELL tab when the config reports the mint. The widget's
+Solana RPC comes from `window.DWELL_RPC` / `<meta name="dwell-rpc">` (public
+mainnet default) — **never** the server's keyed `SOLANA_RPC_URL`, which stays
+server-side.
+
 ## Optional Phase 0 — USDC before the token exists
 
 The points phase already has the accounting for this
