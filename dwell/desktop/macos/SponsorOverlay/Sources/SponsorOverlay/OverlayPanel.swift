@@ -13,6 +13,7 @@ struct SponsorCard {
     var message: String // ≤60 chars, validated by overlay-core
     var destinationURL: URL
     var change: Double? // recent-change %, nil when the campaign has no change data
+    var logoName: String? // bundled token logo (e.g. "ansem"); nil → letter chip
 }
 
 final class OverlayPanelController {
@@ -68,6 +69,21 @@ final class OverlayPanelController {
             body = s
         } else { body = "0" }
         return "(\(v < 0 ? "-" : "+")\(body)%)"
+    }
+
+    // Demo tokens that ship a bundled logo. A card whose brand matches one gets an
+    // image chip; anything else (real served ads) keeps the letter chip.
+    private static let bundledLogos: Set<String> = ["ansem", "troll", "pepe", "fwog", "chillguy"]
+    // Map a brand like "$ansem" to a bundled logo name, or nil if none ships.
+    static func tokenLogoName(for brand: String) -> String? {
+        let key = brand.trimmingCharacters(in: CharacterSet(charactersIn: "$ ")).lowercased()
+        return bundledLogos.contains(key) ? key : nil
+    }
+    // Load a bundled token logo (reuses the onboarding resource copy, so no extra
+    // Package resource). Returns nil if absent — the caller falls back to a letter.
+    static func tokenImage(_ name: String) -> NSImage? {
+        guard let url = Bundle.module.url(forResource: name, withExtension: "png", subdirectory: "onboarding/tokens") else { return nil }
+        return NSImage(contentsOf: url)
     }
 
     // Layout metrics mirroring the extension bar (padding 14, gap 9, 18px chip).
@@ -236,14 +252,29 @@ final class OverlayPanelController {
         root.layer?.borderColor = Palette.barBorder.cgColor
 
         var x = Self.padX
-        let chip = NSTextField(labelWithString: String(card.sponsorName.prefix(1)).uppercased())
-        chip.font = .systemFont(ofSize: 11, weight: .heavy)
-        chip.textColor = Palette.chipText
-        chip.alignment = .center
-        chip.wantsLayer = true
-        chip.layer?.backgroundColor = Palette.chipBackground.cgColor
-        chip.layer?.cornerRadius = 5
-        chip.frame = NSRect(x: x, y: (h - Self.chipSize) / 2, width: Self.chipSize, height: Self.chipSize)
+        // A bundled token logo (demo/known tokens) renders as an image chip;
+        // everything else keeps the palette letter chip.
+        let chipView: NSView
+        if let logo = card.logoName, let image = Self.tokenImage(logo) {
+            let iv = NSImageView()
+            iv.image = image
+            iv.imageScaling = .scaleProportionallyUpOrDown
+            iv.wantsLayer = true
+            iv.layer?.backgroundColor = Palette.chipBackground.cgColor
+            iv.layer?.cornerRadius = 5
+            iv.layer?.masksToBounds = true
+            chipView = iv
+        } else {
+            let chip = NSTextField(labelWithString: String(card.sponsorName.prefix(1)).uppercased())
+            chip.font = .systemFont(ofSize: 11, weight: .heavy)
+            chip.textColor = Palette.chipText
+            chip.alignment = .center
+            chip.wantsLayer = true
+            chip.layer?.backgroundColor = Palette.chipBackground.cgColor
+            chip.layer?.cornerRadius = 5
+            chipView = chip
+        }
+        chipView.frame = NSRect(x: x, y: (h - Self.chipSize) / 2, width: Self.chipSize, height: Self.chipSize)
         x += Self.chipSize + Self.gap
 
         let line = NSTextField(labelWithString: lineText)
@@ -268,12 +299,12 @@ final class OverlayPanelController {
         // The whole bar is the click target (like the extension). There is no
         // dismiss control — the card is shown only while the assistant is
         // generating and hides on its own when generation ends.
-        for view in [chip, line] {
+        for view in [chipView, line] {
             view.addGestureRecognizer(
                 NSClickGestureRecognizer(target: self, action: #selector(cardTapped)))
         }
 
-        root.addSubview(chip)
+        root.addSubview(chipView)
         root.addSubview(line)
         panel.contentView = root
     }

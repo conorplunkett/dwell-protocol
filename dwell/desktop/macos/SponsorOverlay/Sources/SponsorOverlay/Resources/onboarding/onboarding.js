@@ -31,9 +31,11 @@
   // Rotating sponsor lines for the live demo pill. `change` is the recent-change
   // % badge shown after the brand — green up / red down.
   var ADS = [
-    { chip: "🐂", color: "#0a0a0a", ink: "#fff",    brand: "$ansem",    line: "the black bull",  change: 235 },
-    { chip: "🧌", color: "#3f6212", ink: "#fff",    brand: "$troll",    line: "troll szn",       change: 64 },
-    { chip: "🐸", color: "#4c9a2a", ink: "#fff",    brand: "$pepe",     line: "feels good man",  change: 1.3 },
+    { img: "tokens/ansem.png",    color: "#0a0a0a", brand: "$ansem",    line: "the black bull",  change: 235 },
+    { img: "tokens/troll.png",    color: "#f2f2f2", brand: "$troll",    line: "troll szn",       change: 64 },
+    { img: "tokens/pepe.png",     color: "#4c9a2a", brand: "$pepe",     line: "feels good man",  change: 1.3 },
+    { img: "tokens/fwog.png",     color: "#7fae6e", brand: "$fwog",     line: "just a little fwog", change: 88 },
+    { img: "tokens/chillguy.png", color: "#8c9a76", brand: "$chillguy", line: "just a chill guy", change: -1 },
   ];
   // Format a change % to the badge string (mirrors formatChangePct elsewhere).
   function fmtChange(v) {
@@ -459,9 +461,12 @@
       var chg = badge
         ? ' <span class="pchg ' + (ad.change < 0 ? "down" : "up") + '">' + esc(badge) + '</span>'
         : "";
+      var chip = ad.img
+        ? '<span class="pchip" style="background:' + ad.color + '"><img alt="" src="' + esc(ad.img) + '"></span>'
+        : '<span class="pchip" style="background:' + ad.color + ';color:' + (ad.ink || "#fff") + '">' + esc(ad.chip) + '</span>';
       return el(
         '<div class="pill ad swap">' +
-          '<span class="pchip" style="background:' + ad.color + ';color:' + ad.ink + '">' + esc(ad.chip) + '</span>' +
+          chip +
           '<span class="ptxt"><b style="color:#fff">' + esc(ad.brand) + '</b>' + chg + ' — ' + esc(ad.line) + '</span>' +
         '</div>');
     }
