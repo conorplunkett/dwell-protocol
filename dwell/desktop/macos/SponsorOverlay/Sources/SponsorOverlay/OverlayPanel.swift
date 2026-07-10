@@ -12,6 +12,7 @@ struct SponsorCard {
     var sponsorName: String
     var message: String // ≤60 chars, validated by overlay-core
     var destinationURL: URL
+    var change: Double? // recent-change %, nil when the campaign has no change data
 }
 
 final class OverlayPanelController {
@@ -41,6 +42,32 @@ final class OverlayPanelController {
         static let chipBackground = NSColor(red: 1, green: 0, blue: 0, alpha: 1)                  // --ov-chip-bg  #ff0000
         static let chipText = NSColor(white: 1, alpha: 1)                                         // --ov-chip-ink #ffffff
         static let line = NSColor(white: 1, alpha: 1)                                             // --ov-line     #ffffff
+        // Recent-change % badge — bright green up / red down on the dark bar.
+        static let changeUp = NSColor(red: 53/255, green: 208/255, blue: 127/255, alpha: 1)       // #35d07f
+        static let changeDown = NSColor(red: 255/255, green: 92/255, blue: 92/255, alpha: 1)      // #ff5c5c
+    }
+
+    // Format a recent-change % to the badge string (mirrors formatChangePct in
+    // server/src/util.js): signed, ≤3 significant digit-chars, leading zero
+    // dropped, magnitude clamped to 999. Empty when there's no change.
+    static func formatChange(_ value: Double?) -> String {
+        guard let v = value, v.isFinite else { return "" }
+        let a = abs(v)
+        let body: String
+        if a >= 100 { body = String(Int(min(999, (a).rounded()))) }
+        else if a >= 10 { body = String(Int(a.rounded())) }
+        else if a >= 1 {
+            var s = String(format: "%.1f", a)
+            if s.hasSuffix(".0") { s.removeLast(2) }  // 9.3, but 9.0 → 9
+            body = s
+        }
+        else if a > 0 {
+            var s = String(format: "%.1f", a)
+            if s.hasPrefix("0") { s.removeFirst() }   // 0.5 → .5
+            if s == ".0" { s = "0" }
+            body = s
+        } else { body = "0" }
+        return "(\(v < 0 ? "-" : "+")\(body)%)"
     }
 
     // Layout metrics mirroring the extension bar (padding 14, gap 9, 18px chip).
@@ -188,7 +215,9 @@ final class OverlayPanelController {
         let h = Self.height
         let lineFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
 
-        let lineText = "\(card.sponsorName) · \(card.message)"
+        let baseText = "\(card.sponsorName) · \(card.message)"
+        let badgeText = Self.formatChange(card.change)
+        let lineText = badgeText.isEmpty ? baseText : "\(baseText)  \(badgeText)"
         var lineW = ceil(lineText.size(withAttributes: [.font: lineFont]).width)
 
         // Everything except the (ellipsizable) line is fixed width:
@@ -222,6 +251,19 @@ final class OverlayPanelController {
         line.textColor = Palette.line
         line.lineBreakMode = .byTruncatingTail
         line.frame = NSRect(x: x, y: (h - 17) / 2, width: lineW, height: 17)
+        // Color just the change badge green/red, leaving the rest --ov-line white.
+        if !badgeText.isEmpty {
+            let attr = NSMutableAttributedString(string: lineText, attributes: [.font: lineFont, .foregroundColor: Palette.line])
+            let range = (lineText as NSString).range(of: badgeText, options: .backwards)
+            if range.location != NSNotFound {
+                let up = (card.change ?? 0) >= 0
+                attr.addAttributes([
+                    .foregroundColor: up ? Palette.changeUp : Palette.changeDown,
+                    .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .bold),
+                ], range: range)
+            }
+            line.attributedStringValue = attr
+        }
 
         // The whole bar is the click target (like the extension). There is no
         // dismiss control — the card is shown only while the assistant is

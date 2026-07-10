@@ -17,6 +17,7 @@ export function initialState({ sessionId, ad, trackingUrl }) {
       brand: ad.brand || "",
       category: ad.category || "",
       color: ad.color || "",
+      change: typeof ad.change === "number" ? ad.change : undefined,
     } : null,
     trackingUrl: trackingUrl || "",
     impression: {

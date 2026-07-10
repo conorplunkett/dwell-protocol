@@ -355,7 +355,8 @@ function createRepo(pool) {
       // through payment (e.g. a row seeded straight to 'active') must never
       // show or mint credits — user credits have to be backed by real budget.
       const { rows } = await pool.query(
-        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard
+        `select id, brand, ad_line, url, category, color, price_per_block_cents, show_on_leaderboard,
+                change_timescale, changes
            from campaigns
           where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc
@@ -367,7 +368,7 @@ function createRepo(pool) {
 
     async leaderboard(limit = 15) {
       const { rows } = await pool.query(
-        `select brand, ad_line, price_per_block_cents
+        `select brand, ad_line, price_per_block_cents, change_timescale, changes
            from campaigns
           where status in ('active', 'exhausted') and show_on_leaderboard
           order by price_per_block_cents desc, activated_at asc
@@ -378,7 +379,7 @@ function createRepo(pool) {
     },
 
     // ---------- advertiser checkout ----------
-    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, impressionsTotal, budgetCents, showOnLeaderboard }) {
+    async createPendingCampaign({ email, brand, adLine, url, category, color, pricePerBlockCents, blocks, impressionsTotal, budgetCents, showOnLeaderboard, changeTimescale }) {
       // impressionsTotal is the exact purchased count (floor(budget*1000/cpm)),
       // not necessarily a multiple of 1000; budgetCents is the exact charge.
       // Legacy price×blocks callers pass neither and keep the old behavior.
@@ -393,11 +394,13 @@ function createRepo(pool) {
         const { rows } = await c.query(
           `insert into campaigns
              (advertiser_id, brand, ad_line, url, category, color, price_per_block_cents,
-              blocks, impressions_total, impressions_remaining, budget_cents, show_on_leaderboard)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11)
+              blocks, impressions_total, impressions_remaining, budget_cents, show_on_leaderboard,
+              change_timescale)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12)
            returning id`,
           [adv.rows[0].id, brand || null, adLine, url, category || "other", color || null,
-           pricePerBlockCents, blocks, impressions, budgetCents ?? null, showOnLeaderboard !== false]
+           pricePerBlockCents, blocks, impressions, budgetCents ?? null, showOnLeaderboard !== false,
+           changeTimescale || "auto"]
         );
         return rows[0].id;
       });
@@ -970,7 +973,8 @@ function createRepo(pool) {
       }
       // Auction winner: highest bid, oldest activated (same order as activeAds).
       const pick = await pool.query(
-        `select id, brand, ad_line, url, category, color, price_per_block_cents
+        `select id, brand, ad_line, url, category, color, price_per_block_cents,
+                change_timescale, changes
            from campaigns
           where status = 'active' and impressions_remaining > 0 and paid_at is not null
           order by price_per_block_cents desc, activated_at asc
@@ -1675,6 +1679,28 @@ function createRepo(pool) {
         [userId]
       );
     },
+    // Record the outcome of a server-side X verification of the onboarding post.
+    // A found post stamps verified_at + url; a miss clears them. checked_at always
+    // advances so the admin review knows how fresh the result is. Admin-only data.
+    async saveOnboardingPostVerification(userId, { url }) {
+      await pool.query(
+        `update users set onboarding_post_verified_at = case when $2::text is not null then now() else null end,
+                          onboarding_post_url = $2, onboarding_post_checked_at = now()
+           where id = $1`,
+        [userId, url || null]
+      );
+    },
+    // Read the fields the admin payout review needs to judge a user's onboarding
+    // post without exposing them in any earner-facing endpoint.
+    async userForAdmin(userId) {
+      const r = await pool.query(
+        `select id, email, twitter_id, stripe_account_id, payouts_enabled,
+                onboarding_posted_at, onboarding_post_verified_at, onboarding_post_url, onboarding_post_checked_at
+           from users where id = $1`,
+        [userId]
+      );
+      return r.rows[0] || null;
+    },
 
     // Counts + the dashboard list, one row per friend with their email and the
     // stage they're at: 'invited' (email sent, not signed up yet) comes from
@@ -1991,23 +2017,26 @@ function createRepo(pool) {
       }
     },
 
-    // Ops half of a USDC payout: the licensed partner executed the transfer;
-    // stamp the signature. Only pending usdc rows are eligible.
+    // Ops half of a USDC payout: an admin executed the transfer through the
+    // licensed partner and stamps the signature. A USDC payout is a 'requested'
+    // row (admin-approved model, same queue as Stripe); approving it and
+    // recording the on-chain signature is one action. Only method='usdc' rows
+    // still awaiting settlement are eligible.
     async markUsdcPayoutPaid(payoutId, txSignature) {
       const { rowCount } = await pool.query(
         `update payouts set status = 'paid', tx_signature = $2
-          where id = $1 and method = 'usdc' and status = 'pending'`,
+          where id = $1 and method = 'usdc' and status in ('requested', 'pending')`,
         [payoutId, txSignature]
       );
       return rowCount === 1;
     },
 
-    // Queue view for ops: pending USDC payouts oldest-first.
+    // Queue view for ops: USDC payouts awaiting settlement, oldest-first.
     async pendingUsdcPayouts() {
       const { rows } = await pool.query(
         `select p.id, p.user_id, u.email, p.amount_cents, p.destination, p.created_at
            from payouts p join users u on u.id = p.user_id
-          where p.method = 'usdc' and p.status = 'pending'
+          where p.method = 'usdc' and p.status = 'requested'
           order by p.created_at asc limit 200`
       );
       return rows.map((r) => ({
@@ -2034,9 +2063,12 @@ function createRepo(pool) {
         if (BigInt(bal.rows[0].balance) < grossMillicents) return null;
 
         const netCents = grossCents - feeCents;
+        // Queue as 'requested': the balance is debited (funds held so the user
+        // can't also spend them on a redemption), but no transfer fires until an
+        // admin approves the request. See claimPayoutRequest / rejectPayoutRequest.
         const { rows } = await c.query(
           `insert into payouts (user_id, amount_cents, status, method, destination)
-           values ($1, $2, 'pending', $3, $4) returning id`,
+           values ($1, $2, 'requested', $3, $4) returning id`,
           [userId, netCents, method, destination]
         );
         await c.query(
@@ -2053,7 +2085,7 @@ function createRepo(pool) {
              JSON.stringify({ source: "payout_fee", payoutId: rows[0].id, userId })]
           );
         }
-        return { id: rows[0].id, netCents };
+        return { id: rows[0].id, netCents, grossCents, feeCents };
       });
     },
 
@@ -2084,6 +2116,93 @@ function createRepo(pool) {
             [payoutId, outcome.transferId]
           );
         }
+      });
+    },
+
+    // ---------- manual payout approval (admin) ----------
+    // Every pending 'requested' payout, newest first, joined to the requester and
+    // the gross/fee held in the debit ledger meta, plus the onboarding-post
+    // verification the admin uses to decide. Admin-only.
+    async listPayoutRequests() {
+      const r = await pool.query(
+        `select p.id, p.user_id, p.amount_cents as net_cents, p.created_at,
+                (l.meta->>'grossCents')::int as gross_cents,
+                (l.meta->>'feeCents')::int as fee_cents,
+                u.email, u.twitter_id, u.stripe_account_id, u.payouts_enabled,
+                u.onboarding_posted_at, u.onboarding_post_verified_at,
+                u.onboarding_post_url, u.onboarding_post_checked_at
+           from payouts p
+           join users u on u.id = p.user_id
+           left join ledger l on l.entry_type = 'payout_debit' and l.meta->>'payoutId' = p.id::text
+          where p.status = 'requested'
+          order by p.created_at asc`
+      );
+      return r.rows;
+    },
+    // Atomically move a request from 'requested' → 'pending' (transfer in flight),
+    // returning what the route needs to fire the Stripe transfer. Null if the
+    // request was already claimed/handled, so two admins can't pay it twice.
+    async claimPayoutRequest(payoutId) {
+      return tx(async (c) => {
+        const p = await c.query(
+          "update payouts set status = 'pending' where id = $1 and status = 'requested' returning id, user_id, amount_cents",
+          [payoutId]
+        );
+        if (!p.rows[0]) return null;
+        const u = await c.query("select stripe_account_id, payouts_enabled from users where id = $1", [p.rows[0].user_id]);
+        const meta = await c.query(
+          "select meta from ledger where entry_type = 'payout_debit' and meta->>'payoutId' = $1::text",
+          [payoutId]
+        );
+        return {
+          id: p.rows[0].id, userId: p.rows[0].user_id, netCents: p.rows[0].amount_cents,
+          grossCents: Number(meta.rows[0]?.meta?.grossCents || 0),
+          feeCents: Number(meta.rows[0]?.meta?.feeCents || 0),
+          stripeAccountId: u.rows[0]?.stripe_account_id || null,
+          payoutsEnabled: !!u.rows[0]?.payouts_enabled,
+        };
+      });
+    },
+    // Undo a claim without touching the ledger: 'pending' → 'requested'. Used when
+    // approval can't proceed (e.g. the user's Stripe account isn't ready) so the
+    // held funds stay held and the request remains in the queue.
+    async releasePayoutClaim(payoutId) {
+      await pool.query("update payouts set status = 'requested' where id = $1 and status = 'pending'", [payoutId]);
+    },
+    // Decline a pending request: flip 'requested' → 'rejected' and reverse both
+    // ledger legs (credit the gross back, negate the fee) so the balance returns
+    // to exactly its pre-request state. Null if it wasn't in 'requested'.
+    async rejectPayoutRequest(payoutId) {
+      return tx(async (c) => {
+        const p = await c.query(
+          "update payouts set status = 'rejected' where id = $1 and status = 'requested' returning id, user_id",
+          [payoutId]
+        );
+        if (!p.rows[0]) return null;
+        const userId = p.rows[0].user_id;
+        const meta = await c.query(
+          "select meta from ledger where entry_type = 'payout_debit' and meta->>'payoutId' = $1::text",
+          [payoutId]
+        );
+        const grossCents = Number(meta.rows[0]?.meta?.grossCents || 0);
+        const feeCents = Number(meta.rows[0]?.meta?.feeCents || 0);
+        if (grossCents > 0) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, user_id, meta)
+             values ('admin_credit', $1, $2, $3)`,
+            [(BigInt(grossCents) * 1000n).toString(), userId,
+             JSON.stringify({ source: "payout_reversal", payoutId })]
+          );
+        }
+        if (feeCents > 0) {
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, meta)
+             values ('platform_fee', $1, $2)`,
+            [(-BigInt(feeCents) * 1000n).toString(),
+             JSON.stringify({ source: "payout_fee_reversal", payoutId })]
+          );
+        }
+        return { ok: true, userId, grossCents };
       });
     },
 

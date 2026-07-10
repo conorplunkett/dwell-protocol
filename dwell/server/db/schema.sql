@@ -58,6 +58,14 @@ create table if not exists campaigns (
   impressions_remaining integer not null,
   budget_cents integer,                    -- exact amount charged (the advertiser's budget); null on pre-budget campaigns
   show_on_leaderboard boolean not null default true,
+  -- Recent-change % badge (the crypto-ticker figure next to the ad). timescale is
+  -- the advertiser-chosen performance window; 'auto' (the default, hidden from the
+  -- public form) renders whichever window shows the biggest number. `changes` is a
+  -- per-timescale map, e.g. {"5m":4.2,"1h":38,"1d":235}; null until live market data
+  -- is wired (see dwell/ROADMAP.md) — real campaigns render no badge meanwhile.
+  change_timescale text not null default 'auto'
+    check (change_timescale in ('5m', '15m', '1h', '4h', '1d', 'auto')),
+  changes jsonb,
   -- lifecycle: pending_payment -> (paid) pending_review -> (approved) active
   --            -> exhausted; or rejected/cancelled.
   status text not null default 'pending_payment'
@@ -78,6 +86,12 @@ alter table campaigns add column if not exists budget_cents integer;
 -- Set when the one-time "campaign finished" advertiser receipt has been emailed;
 -- the send is guarded on this being null so a receipt goes out at most once.
 alter table campaigns add column if not exists completion_email_sent_at timestamptz;
+-- Recent-change % badge fields on databases created before they existed.
+alter table campaigns add column if not exists change_timescale text not null default 'auto';
+alter table campaigns drop constraint if exists campaigns_change_timescale_check;
+alter table campaigns add constraint campaigns_change_timescale_check
+  check (change_timescale in ('5m', '15m', '1h', '4h', '1d', 'auto'));
+alter table campaigns add column if not exists changes jsonb;
 
 create index if not exists campaigns_auction_idx
   on campaigns (status, price_per_block_cents desc)
@@ -179,6 +193,13 @@ alter table users add column if not exists twitter_id text unique;
 -- timeline (replacing the old refer-a-friend email gate). Self-attested — set
 -- when the user confirms they posted. Accounts without it may not be paid out.
 alter table users add column if not exists onboarding_posted_at timestamptz;
+-- Server-side X (Twitter) verification of that onboarding post, used only by the
+-- admin payout review (never surfaced in the earner UI). verified_at + url are
+-- set when a matching public post is found on the user's timeline; checked_at
+-- records the last verification attempt regardless of outcome.
+alter table users add column if not exists onboarding_post_verified_at timestamptz;
+alter table users add column if not exists onboarding_post_url text;
+alter table users add column if not exists onboarding_post_checked_at timestamptz;
 
 create table if not exists web_sessions (
   token text primary key,
@@ -315,12 +336,14 @@ alter table ledger add constraint ledger_entry_type_check check (entry_type in (
   'token_claim_debit'        -- live mode: entitlement moved into an onchain Merkle root (- user)
 ));
 
--- On-demand web payouts are debit-first: the balance is charged and a payouts
--- row created as 'pending' before the Stripe transfer fires, then flipped to
--- 'paid' or 'failed' (with a ledger reversal). Widen the original two-state
--- check so existing databases accept the intermediate state.
+-- Web payouts are debit-first: the balance is charged and a payouts row created
+-- before any Stripe transfer fires. On-demand user cash-outs now queue as
+-- 'requested' (funds held, awaiting manual admin approval); approval flips to
+-- 'pending' while the transfer is in flight, then 'paid' or 'failed' (with a
+-- ledger reversal), and admin decline flips to 'rejected' (also reversed).
+-- Widen the original check so existing databases accept every state.
 alter table payouts drop constraint if exists payouts_status_check;
-alter table payouts add constraint payouts_status_check check (status in ('pending', 'paid', 'failed'));
+alter table payouts add constraint payouts_status_check check (status in ('requested', 'pending', 'paid', 'failed', 'rejected'));
 
 -- ── Affiliates ───────────────────────────────────────────────────────────────
 -- A separate, application-gated program (distinct from referrals). A user
@@ -523,7 +546,7 @@ create table if not exists usdc_orders (
   -- native lamport transfer and the swap leg runs wSOL -> DWELL. pay_*_units
   -- are in the pay currency's base units (micro-USDC / lamports); for SOL they
   -- re-price on every transaction build, like min_dwell_out.
-  pay_currency text not null default 'usdc' check (pay_currency in ('usdc', 'sol')),
+  pay_currency text not null default 'usdc' check (pay_currency in ('usdc', 'sol', 'dwell')),
   pay_total_units bigint not null,            -- what the wallet pays in total, pay-currency base units
   pay_fee_units bigint not null,              -- the treasury leg the verifier enforces, pay-currency base units
   quote jsonb not null,                       -- Jupiter swap quote at order/build time

@@ -69,6 +69,30 @@ identical — and only the wallet-facing legs change:
    runtime's pre/post balances instead of a USDC token delta — the DWELL-side
    check is unchanged.
 
+### The $DWELL rail
+
+Advertisers who already hold $DWELL can pay the ad budget **directly in $DWELL**
+(`currency: "dwell"`) — the simplest rail, because there is no swap: the token
+is already $DWELL. The atomic transaction is **two plain SPL transfers** of the
+payer's own $DWELL (SPL `Transfer`, ix 3 — no decimals needed): 10% to the
+treasury's DWELL account, 90% straight to the distributor vault, plus the memo
+and reference key. Pricing works like SOL: a USDC→DWELL quote converts the USD
+budget into $DWELL units, re-priced on every build. The verifier checks the
+**treasury DWELL delta** (fee) and the **distributor DWELL delta** (the 90%,
+which is exact — a direct transfer has no slippage).
+
+The perk — the **"10% boost"** on the tab — is **+10% impressions for the same
+spend** (`DWELL_PAY_BOOST_BPS`, default 1000): a $DWELL-paid campaign buys 10%
+more reach. It applies to `impressions_total` only; the 90% rewards pool stays
+sized to the actual $DWELL paid, so viewers collectively earn the same pool
+over more impressions (a lower per-view locked rate) — pure extra reach, not a
+subsidy of the viewer pool. Needs `TREASURY_DWELL_ATA` configured; unset
+disables the rail (400) while USDC/SOL keep working.
+
+The lander presents all three rails as a segmented slider in order — **Pay
+with USDC/SOL** (default), **Pay with $DWELL** (badged "10% boost"), **Credit
+card** — hidden behind the same `USDC_CHECKOUT` flag.
+
 ## The advertiser dollar (USDC path)
 
 Per $100 of ad spend, versus the card column in

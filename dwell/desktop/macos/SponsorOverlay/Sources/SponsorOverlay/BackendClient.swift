@@ -19,6 +19,9 @@ struct Ad: Codable {
     var line: String
     var url: String
     var cat: String?
+    // Recent-change % (already resolved server-side for the chosen/auto window);
+    // nil when the campaign carries no change data.
+    var change: Double?
 }
 
 struct Earnings: Codable {

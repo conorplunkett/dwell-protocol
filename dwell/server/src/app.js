@@ -7,7 +7,7 @@ const crypto = require("node:crypto");
 const { verifyWebhookSignature } = require("./stripe");
 const { GIFT_PLANS, GIFT_MONTHS, giftPriceCents } = require("./giftcards");
 const { runPayouts } = require("./payouts");
-const { escapeHtml, isCleanAdLine, normalizeHexColor } = require("./util");
+const { escapeHtml, isCleanAdLine, normalizeHexColor, normalizeTimescale, resolveChangePct } = require("./util");
 const { WSOL_MINT } = require("./solana");
 
 // Crew = the affiliate "earn with your friends" panel in the extension popup.
@@ -186,13 +186,13 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const ads = serving ? await repo.activeAds() : [];
     json(res, 200, {
       revenueShare: displayRevenueShare,
-      ads: ads.map((a) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined })),
+      ads: ads.map((a) => ({ id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined, change: resolveChangePct(a.changes, a.change_timescale) ?? undefined })),
     });
   });
 
   route("GET", "/v1/leaderboard", async (req, res) => {
     const rows = await repo.leaderboard();
-    json(res, 200, { leaderboard: rows.map((r, i) => ({ rank: i + 1, brand: r.brand, line: r.ad_line })) });
+    json(res, 200, { leaderboard: rows.map((r, i) => ({ rank: i + 1, brand: r.brand, line: r.ad_line, change: resolveChangePct(r.changes, r.change_timescale) ?? undefined })) });
   });
 
   // ---------- devices & events ----------
@@ -277,7 +277,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const a = result.ad;
     json(res, 200, {
       token: result.token,
-      ad: { id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined },
+      ad: { id: a.id, brand: a.brand, line: a.ad_line, url: a.url, cat: a.category, color: a.color || undefined, change: resolveChangePct(a.changes, a.change_timescale) ?? undefined },
       revenueShare: displayRevenueShare,
     });
   });
@@ -399,10 +399,15 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     feeUsdc: microUsd(o.fee_micro_usdc),
     trancheUsdc: microUsd(o.tranche_micro_usdc),
     payCurrency: o.pay_currency,
-    // Pay-currency base units (micro-USDC / lamports); SOL re-prices per build.
+    // Pay-currency base units (micro-USDC / lamports / raw DWELL); SOL and DWELL
+    // re-price per build.
     payTotalUnits: String(o.pay_total_units),
     payFeeUnits: String(o.pay_fee_units),
     ...(o.pay_currency === "sol" ? { estPayTotalSol: Number(o.pay_total_units) / 1e9 } : {}),
+    ...(o.pay_currency === "dwell" ? {
+      estPayTotalDwell: Number(o.pay_total_units) / 10 ** config.dwellDecimals,
+      boostBps: config.dwellPayBoostBps,
+    } : {}),
     minDwellOut: String(o.min_dwell_out),
     reference: o.reference_pubkey,
     txSignature: o.tx_signature || null,
@@ -416,10 +421,13 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     // differs. currency picks what the wallet pays with: 'usdc' (default) or
     // 'sol' (native transfer fee leg + wSOL->DWELL swap; needs the treasury's
     // SOL account configured).
-    const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency } = body || {};
-    const payCurrency = currency === "sol" ? "sol" : "usdc";
+    const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency, timescale } = body || {};
+    const payCurrency = ["sol", "dwell"].includes(currency) ? currency : "usdc";
     if (payCurrency === "sol" && !config.treasurySolAccount) {
       return json(res, 400, { error: "SOL payments aren't enabled — pay with USDC" });
+    }
+    if (payCurrency === "dwell" && !config.treasuryDwellAta) {
+      return json(res, 400, { error: "$DWELL payments aren't enabled — pay with USDC" });
     }
     const budgetCents = Math.round(Number(budget) * 100);
     const cpmCents = Math.round(Number(cpm) * 100);
@@ -433,8 +441,14 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     if (!(budgetCents >= P.minBudgetCents && budgetCents <= P.maxBudgetCents)) {
       return json(res, 400, { error: `budget must be $${(P.minBudgetCents / 100).toFixed(0)}–$${(P.maxBudgetCents / 100).toLocaleString("en-US")}` });
     }
-    const impressions = Math.floor((budgetCents * 1000) / cpmCents);
-    if (!(impressions >= 1)) return json(res, 400, { error: "budget too small for this CPM" });
+    // Paying in $DWELL boosts the campaign's impressions (docs/08) — same spend,
+    // +DWELL_PAY_BOOST_BPS more reach. Applied to impressions only; the 90%
+    // rewards pool stays sized to the actual $DWELL paid, so the boost is pure
+    // extra reach, not a subsidy of the viewer pool.
+    const boostBps = payCurrency === "dwell" ? config.dwellPayBoostBps : 0;
+    const baseImpressions = Math.floor((budgetCents * 1000) / cpmCents);
+    const impressions = Math.floor(baseImpressions * (10000 + boostBps) / 10000);
+    if (!(baseImpressions >= 1)) return json(res, 400, { error: "budget too small for this CPM" });
 
     // 90/10 in micro-USDC, exact: the fee is the 10000-RESERVE_TRANCHE_BPS
     // remainder, the tranche keeps every leftover micro unit. The USD split is
@@ -443,17 +457,27 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const feeMicro = (priceMicro * BigInt(10000 - config.reserveTrancheBps)) / 10000n;
     const trancheMicro = priceMicro - feeMicro;
 
-    let quote, payTotalUnits, payFeeUnits;
+    let quote, payTotalUnits, payFeeUnits, minDwellOut;
     try {
       if (payCurrency === "sol") {
         const sol = await solana.priceOrderInSol(priceMicro.toString(), 10000 - config.reserveTrancheBps);
         payTotalUnits = sol.totalLamports.toString();
         payFeeUnits = sol.feeLamports.toString();
         quote = await solana.jupiterQuote({ inputMint: WSOL_MINT, outputMint: config.dwellMint, amount: sol.trancheLamports.toString() });
+        minDwellOut = String(quote.otherAmountThreshold || quote.outAmount);
+      } else if (payCurrency === "dwell") {
+        // No swap: the advertiser sends $DWELL directly. Price the budget into
+        // $DWELL; 90% to the distributor is the min_dwell_out (exact transfer).
+        const d = await solana.priceOrderInDwell(priceMicro.toString(), 10000 - config.reserveTrancheBps);
+        payTotalUnits = d.totalDwell.toString();
+        payFeeUnits = d.feeDwell.toString();
+        quote = d.quote;
+        minDwellOut = d.trancheDwell.toString();
       } else {
         payTotalUnits = priceMicro.toString();
         payFeeUnits = feeMicro.toString();
         quote = await solana.jupiterQuote({ inputMint: config.usdcMint, outputMint: config.dwellMint, amount: trancheMicro.toString() });
+        minDwellOut = String(quote.otherAmountThreshold || quote.outAmount);
       }
     } catch (err) {
       console.error("[dwell] usdc order quote failed:", err?.message);
@@ -464,6 +488,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const campaignId = await repo.createPendingCampaign({
       email, brand, adLine, url, category, color: normalizeHexColor(color),
       pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard,
+      changeTimescale: normalizeTimescale(timescale),
     });
     const order = await repo.createUsdcOrder({
       campaignId,
@@ -474,7 +499,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       payTotalUnits,
       payFeeUnits,
       quote,
-      minDwellOut: String(quote.otherAmountThreshold || quote.outAmount),
+      minDwellOut,
       referencePubkey: solana.newReferencePubkey(),
       ttlMinutes: config.usdcOrderTtlMinutes,
     });
@@ -486,8 +511,13 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       trancheUsdc: microUsd(trancheMicro),
       payCurrency,
       ...(payCurrency === "sol" ? { estPayTotalSol: Number(payTotalUnits) / 1e9 } : {}),
+      ...(payCurrency === "dwell" ? {
+        estPayTotalDwell: Number(payTotalUnits) / 10 ** config.dwellDecimals,
+        boostBps: config.dwellPayBoostBps,
+        boostImpressions: impressions - baseImpressions,
+      } : {}),
       estDwellOut: String(quote.outAmount),
-      minDwellOut: String(quote.otherAmountThreshold || quote.outAmount),
+      minDwellOut,
       expiresAt: order.expires_at,
       // Solana Pay transaction request: wallets GET label/icon then POST
       // {account} to this link and receive the unsigned transaction.
@@ -582,27 +612,41 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const payer = String(body?.account || "");
     if (!solana.isPubkey(payer)) return json(res, 400, { error: "account must be a Solana pubkey" });
     try {
-      // SOL rail: re-price the lamport legs first (the USD split is fixed;
-      // what that costs in SOL floats), then quote the swap of the tranche.
       let built = { ...order };
-      if (order.pay_currency === "sol") {
-        const sol = await solana.priceOrderInSol(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
-        built.pay_total_units = sol.totalLamports.toString();
-        built.pay_fee_units = sol.feeLamports.toString();
+      let transaction, tail = "";
+
+      if (order.pay_currency === "dwell") {
+        // $DWELL rail: no swap. Re-price the $DWELL legs (its price floats), pin
+        // them + the 90% floor to the order, then build the two-transfer tx.
+        const d = await solana.priceOrderInDwell(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
+        built.pay_total_units = d.totalDwell.toString();
+        built.pay_fee_units = d.feeDwell.toString();
+        const minOut = d.trancheDwell.toString();
+        await repo.refreshUsdcOrderQuote(order.id, d.quote, minOut, {
+          payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units,
+        });
+        transaction = await solana.buildOrderTransaction({ order: { ...built, min_dwell_out: minOut }, payer });
+        tail = ` (≈ ${(Number(built.pay_total_units) / 10 ** config.dwellDecimals).toLocaleString("en-US", { maximumFractionDigits: 2 })} $DWELL, +${config.dwellPayBoostBps / 100}% impressions)`;
+      } else {
+        // SOL rail: re-price the lamport legs first (the USD split is fixed;
+        // what that costs in SOL floats), then quote the swap of the tranche.
+        if (order.pay_currency === "sol") {
+          const sol = await solana.priceOrderInSol(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
+          built.pay_total_units = sol.totalLamports.toString();
+          built.pay_fee_units = sol.feeLamports.toString();
+        }
+        const quote = await solana.jupiterQuote(solana.tranchQuoteParams(built));
+        const minOut = String(quote.otherAmountThreshold || quote.outAmount);
+        await repo.refreshUsdcOrderQuote(order.id, quote, minOut, order.pay_currency === "sol"
+          ? { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units }
+          : {});
+        transaction = await solana.buildOrderTransaction({ order: { ...built, min_dwell_out: minOut }, payer, quoteResponse: quote });
+        if (order.pay_currency === "sol") tail = ` (≈ ${(Number(built.pay_total_units) / 1e9).toFixed(4)} SOL)`;
       }
-      const quote = await solana.jupiterQuote(solana.tranchQuoteParams(built));
-      const minOut = String(quote.otherAmountThreshold || quote.outAmount);
-      await repo.refreshUsdcOrderQuote(order.id, quote, minOut, order.pay_currency === "sol"
-        ? { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units }
-        : {});
-      const transaction = await solana.buildOrderTransaction({
-        order: { ...built, min_dwell_out: minOut },
-        payer,
-        quoteResponse: quote,
-      });
+
       json(res, 200, {
         transaction,
-        message: `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} DWELL buy to the rewards pool${order.pay_currency === "sol" ? ` (≈ ${(Number(built.pay_total_units) / 1e9).toFixed(4)} SOL)` : ""}`,
+        message: `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} ${order.pay_currency === "dwell" ? "to the rewards pool" : "DWELL buy to the rewards pool"}${tail}`,
       });
     } catch (err) {
       if (err.code === "NO_FUNDS" || err.code === "BAD_ACCOUNT") return json(res, 400, { error: err.message });
@@ -634,7 +678,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
 
   // ---------- money in: advertiser checkout ----------
   route("POST", "/v1/checkout", async (req, res, body) => {
-    const { email, adLine, url, brand, category, color, pricePerBlock, blocks, showOnLeaderboard } = body || {};
+    const { email, adLine, url, brand, category, color, pricePerBlock, blocks, showOnLeaderboard, timescale } = body || {};
     const priceCents = Math.round(Number(pricePerBlock) * 100);
     const nBlocks = parseInt(blocks, 10);
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(res, 400, { error: "valid email required" });
@@ -646,6 +690,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const campaignId = await repo.createPendingCampaign({
       email, brand, adLine, url, category, color: normalizeHexColor(color),
       pricePerBlockCents: priceCents, blocks: nBlocks, showOnLeaderboard,
+      changeTimescale: normalizeTimescale(timescale),
     });
     const session = await stripe.createCheckoutSession({
       mode: "payment", customer_email: email,
@@ -1136,13 +1181,15 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const user = await repo.userForSession(sessionFrom(req, body, query));
     if (!user) return json(res, 401, { error: "not signed in" });
     const bal = await repo.balanceForUser(user.id);
-    const [hasSurvey, posted] = await Promise.all([
+    const [hasSurvey, posted, code] = await Promise.all([
       repo.hasOnboardingSurvey(user.id),
       repo.hasPostedOnboarding(user.id),
+      repo.getOrCreateReferralCode(user.id),
     ]);
     json(res, 200, {
       email: user.email, balanceUsd: bal.balanceMillicents / 100000,
       needsSurvey: !hasSurvey, needsPost: !posted,
+      referralLink: `${config.siteUrl}/portal.html?ref=${code}`,
     });
   });
 
@@ -1623,24 +1670,16 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const netCents = grossCents - feeCents;
     if (netCents <= 0) return json(res, 403, { error: "balance too small to pay out" });
 
+    // Manual model: queue the request (funds held via the debit) and stop. No
+    // money moves until an admin approves it — so nothing here transfers, and
+    // the response says nothing about how the request is reviewed.
     const requested = await repo.recordPayoutRequest({ userId: user.id, grossCents, feeCents });
     if (!requested) return json(res, 409, { error: "insufficient credits" });
-
-    try {
-      const transfer = await stripe.createTransfer({
-        amount: netCents, currency: "usd", destination: user.stripe_account_id,
-        transfer_group: `payout_${user.id}_${requested.id}`,
-      });
-      await repo.finalizePayout(requested.id, { transferId: transfer.id });
-    } catch (err) {
-      console.error("[dwell] payout transfer failed:", err.message);
-      await repo.finalizePayout(requested.id, { failed: true, userId: user.id, grossCents, feeCents });
-      return json(res, 502, { error: "transfer failed — your balance was not charged" });
-    }
 
     const after = await repo.balanceForUser(user.id);
     json(res, 200, {
       ok: true,
+      requested: true,
       grossUsd: grossCents / 100,
       feeUsd: feeCents / 100,
       netUsd: netCents / 100,
@@ -1911,6 +1950,107 @@ async function act(kind,id){
   route("POST", "/v1/admin/payouts", async (req, res, body) => {
     if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
     json(res, 200, await runPayouts({ repo, stripe, config }));
+  });
+
+  // ---------- manual payout approval (admin) ----------
+  // Server-side X (Twitter) check that a user's onboarding post is live on their
+  // timeline. Admin payout review ONLY — never called from an earner path and
+  // never surfaced in the portal. Persists the result and returns a status the
+  // admin UI renders as a badge.
+  function onboardingPostMatches(t) {
+    const text = String(t?.text || "");
+    if (/dwellprotocol\.com/i.test(text) || /@dwellprotocol/i.test(text)) return true;
+    const urls = (t && t.entities && t.entities.urls) || [];
+    return urls.some((u) => /dwellprotocol\.com/i.test((u && (u.expanded_url || u.url)) || ""));
+  }
+  async function verifyOnboardingPost(u) {
+    if (!u.twitter_id) return { status: "no_x_account" };
+    if (!config.twitterBearerToken) return { status: "unconfigured" };
+    try {
+      const url = `https://api.twitter.com/2/users/${encodeURIComponent(u.twitter_id)}/tweets` +
+        `?max_results=100&exclude=retweets,replies&tweet.fields=entities`;
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${config.twitterBearerToken}` } });
+      const data = await r.json();
+      const tweets = Array.isArray(data && data.data) ? data.data : [];
+      const hit = tweets.find((t) => onboardingPostMatches(t));
+      if (hit) {
+        const postUrl = `https://x.com/i/status/${hit.id}`;
+        await repo.saveOnboardingPostVerification(u.id, { url: postUrl });
+        return { status: "verified", url: postUrl };
+      }
+      await repo.saveOnboardingPostVerification(u.id, { url: null });
+      return { status: "not_found" };
+    } catch (err) {
+      console.error("[dwell] onboarding post verify:", err.message);
+      return { status: "error", error: err.message };
+    }
+  }
+  // Derive the admin-facing verification status from stored fields (no network).
+  function onboardingPostStatus(u) {
+    if (u.onboarding_post_verified_at) return "verified";
+    if (!u.twitter_id) return "no_x_account";
+    if (u.onboarding_post_checked_at) return "not_found";
+    return "unchecked";
+  }
+  function payoutRequestView(r) {
+    return {
+      payoutId: r.id, userId: r.user_id, email: r.email,
+      twitterId: r.twitter_id || null,
+      grossUsd: (r.gross_cents || 0) / 100,
+      feeUsd: (r.fee_cents || 0) / 100,
+      netUsd: (r.net_cents || 0) / 100,
+      requestedAt: r.created_at,
+      stripeReady: !!(r.stripe_account_id && r.payouts_enabled),
+      postedAt: r.onboarding_posted_at,
+      postStatus: onboardingPostStatus(r),
+      postUrl: r.onboarding_post_url || null,
+      postCheckedAt: r.onboarding_post_checked_at,
+    };
+  }
+
+  route("GET", "/v1/admin/payouts/requests", async (req, res, body, rawBody, query) => {
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    const rows = await repo.listPayoutRequests();
+    json(res, 200, { requests: rows.map(payoutRequestView) });
+  });
+
+  // Re-run the X verification for one user and return the fresh status. Admin
+  // clicks this from the payout review before approving.
+  route("POST", "/v1/admin/payouts/verify-post", async (req, res, body) => {
+    if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
+    const u = await repo.userForAdmin(body?.userId);
+    if (!u) return json(res, 404, { error: "user not found" });
+    const result = await verifyOnboardingPost(u);
+    json(res, 200, result);
+  });
+
+  route("POST", "/v1/admin/payouts/requests/approve", async (req, res, body) => {
+    if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
+    const claimed = await repo.claimPayoutRequest(body?.payoutId);
+    if (!claimed) return json(res, 409, { error: "request not found or already handled" });
+    if (!claimed.stripeAccountId || !claimed.payoutsEnabled) {
+      await repo.releasePayoutClaim(claimed.id); // leave it queued, funds still held
+      return json(res, 409, { error: "user has no active Stripe payouts account" });
+    }
+    try {
+      const transfer = await stripe.createTransfer({
+        amount: claimed.netCents, currency: "usd", destination: claimed.stripeAccountId,
+        transfer_group: `payout_${claimed.userId}_${claimed.id}`,
+      });
+      await repo.finalizePayout(claimed.id, { transferId: transfer.id });
+    } catch (err) {
+      console.error("[dwell] payout approve transfer failed:", err.message);
+      await repo.finalizePayout(claimed.id, { failed: true, userId: claimed.userId, grossCents: claimed.grossCents, feeCents: claimed.feeCents });
+      return json(res, 502, { error: "transfer failed — the request was reversed and the balance restored" });
+    }
+    json(res, 200, { ok: true, netUsd: claimed.netCents / 100 });
+  });
+
+  route("POST", "/v1/admin/payouts/requests/reject", async (req, res, body) => {
+    if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
+    const rejected = await repo.rejectPayoutRequest(body?.payoutId);
+    if (!rejected) return json(res, 409, { error: "request not found or already handled" });
+    json(res, 200, { ok: true, restoredUsd: rejected.grossCents / 100 });
   });
 
   // ---------- server plumbing ----------

@@ -109,12 +109,14 @@
   bar.className = "bb-bar";
   bar.setAttribute("role", "complementary");
   bar.innerHTML =
-    '<span class="bb-chip">R</span>' +
-    '<span class="bb-name">Ramp</span>' +
-    '<span class="bb-line">save time and money</span>';
+    '<span class="bb-chip">🐂</span>' +
+    '<span class="bb-name">$ansem</span>' +
+    '<span class="bb-change up">(+235%)</span>' +
+    '<span class="bb-line">the black bull</span>';
   const elChip = bar.querySelector(".bb-chip");
   const elName = bar.querySelector(".bb-name");
   const elLine = bar.querySelector(".bb-line");
+  const elChange = bar.querySelector(".bb-change");
 
   // The ad currently on screen. We surface ONE ad at a time — the top of the
   // returned inventory (the auction winner) — and never rotate within a page;
@@ -246,14 +248,33 @@
   function render() {
     const ad = currentAd();
     if (ad) {
-      elChip.textContent = ad.chip;
-      elChip.style.background = ad.color;
-      elChip.style.color = ad.ink;
+      // A demo token carries a bundled logo (resolved to a chrome-extension://
+      // URL); real served ads don't, so fall back to the letter/emoji chip.
+      const chipImg = self.BB_chipImg ? self.BB_chipImg(ad) : null;
+      if (chipImg) {
+        elChip.textContent = "";
+        elChip.innerHTML = '<img alt="" src="' + chipImg + '">';
+        elChip.style.background = ad.color || "";
+      } else {
+        elChip.innerHTML = "";
+        elChip.textContent = ad.chip;
+        elChip.style.background = ad.color;
+        elChip.style.color = ad.ink;
+      }
       // logo · brand · message — brand is its own bold element. Hide it if an
       // ad somehow arrives without one so we don't render an empty gap.
       elName.textContent = ad.brand || "";
       elName.style.display = ad.brand ? "" : "none";
       elLine.textContent = ad.line;
+      // Recent-change % badge — green up / red down; hidden when the ad carries
+      // no change data (real campaigns until live market data is wired).
+      if (elChange) {
+        const badge = self.BB_changeBadge ? self.BB_changeBadge(ad) : null;
+        elChange.textContent = badge ? badge.text : "";
+        elChange.style.display = badge ? "" : "none";
+        elChange.classList.toggle("up", !!badge && badge.dir === "up");
+        elChange.classList.toggle("down", !!badge && badge.dir === "down");
+      }
     }
     // Head-only ad: no sub-tag pill. Keep the bb-test class so test-mode ads
     // stay visually distinguishable (and the live tests can assert on it).

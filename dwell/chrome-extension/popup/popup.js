@@ -263,12 +263,19 @@ function boardHtml(ads) {
   if (!ads.length) return `<li class="board-empty">No live ads right now — check back soon.</li>`;
   return ads
     .slice(0, 5)
-    .map(
-      (a, i) =>
+    .map((a, i) => {
+      const badge = self.BB_changeBadge ? self.BB_changeBadge(a) : null;
+      const chg = badge ? ` <span class="chg ${badge.dir}">${esc(badge.text)}</span>` : "";
+      const img = self.BB_chipImg ? self.BB_chipImg(a) : null;
+      const chip = img
+        ? `<span class="chip" style="background:${esc(a.color)}"><img alt="" src="${esc(img)}"></span>`
+        : `<span class="chip" style="background:${esc(a.color)};color:${esc(a.ink)}">${esc(a.chip)}</span>`;
+      return (
         `<li><span class="rk">${i + 1}</span>` +
-        `<span class="chip" style="background:${esc(a.color)};color:${esc(a.ink)}">${esc(a.chip)}</span>` +
-        `<span class="ln"><b>${esc(a.brand)}</b> — ${esc(a.line)}</span></li>`
-    )
+        chip +
+        `<span class="ln"><b>${esc(a.brand)}</b>${chg} — ${esc(a.line)}</span></li>`
+      );
+    })
     .join("");
 }
 function renderBoard() {

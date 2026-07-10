@@ -34,10 +34,22 @@ a { color: inherit; text-decoration: none; }
 .tick-logo {
   display: inline-grid; place-items: center; width: 18px; height: 18px;
   border-radius: 4px; font-family: var(--sans); font-weight: 800; font-size: 11px;
-  line-height: 1; flex: none;
+  line-height: 1; flex: none; overflow: hidden;
 }
+.tick-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .tick-brand { color: var(--green); font-weight: 700; letter-spacing: .03em; }
 .tick-text { color: #aab1bd; }
+
+/* Recent-change % badge — the crypto-ticker figure next to a token/ad. Green
+   when up, red when down, reusing the semantic status tokens. Used on the
+   ticker, the "With DWELL" hero demo, the terminal demo, and the ad preview. */
+.change-badge { font-family: var(--mono); font-weight: 700; font-size: .92em; white-space: nowrap; flex: none; }
+/* Bright variants — every surface this renders on (ticker, hero demo card,
+   terminal, ad preview) is dark, so the white-canvas --ok-fg/--err-fg would be
+   too dim. These match the crypto-ticker green/red from the reference. */
+.change-badge.up { color: #35d07f; }
+.change-badge.down { color: #ff5c5c; }
+.tick .change-badge { font-size: 12px; }
 
 /* NAV — segmented-control pill. The menu is a single rounded "segment" tray
    (.nav-btns) holding flat link segments (.navbtn) plus the coral Install CTA
@@ -181,7 +193,8 @@ a { color: inherit; text-decoration: none; }
 .brandchip {
   display: inline-grid; place-items: center; width: 22px; height: 22px;
   background: var(--ov-chip-bg); color: var(--ov-chip-ink); font-weight: 800; font-size: 13px; border-radius: 5px;
-  font-family: var(--sans); flex: none;
+  font-family: var(--sans); flex: none; overflow: hidden;
+  background-size: cover; background-position: center;
 }
 /* Named "brand-line" (not "ad-text") so ad blockers don't hide the sponsored
    line in our own before/after demo. white-space:nowrap keeps it to ONE line at
@@ -329,6 +342,42 @@ a { color: inherit; text-decoration: none; }
 }
 .wl-adv::after { content: " →"; white-space: pre; }
 .wl-adv:hover { border-color: var(--accent); background: var(--bg-cream); transform: translateY(-2px); }
+/* The hero CTA is a <button> now (it toggles the boost fold, not a jump link).
+   Default (closed) keeps the soft white .wl-adv style with a ↓ (the card opens
+   downward); while the fold is open it flips to the highlighted accent state
+   with ↑ — the close-it-back-up control. */
+button.wl-adv { cursor: pointer; }
+#boost-toggle::after { content: " ↓"; }
+#boost-toggle.open {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+  box-shadow: 0 12px 28px -14px rgba(var(--accent-rgb), .7);
+}
+#boost-toggle.open:hover { background: var(--accent-d); border-color: var(--accent-d); }
+#boost-toggle.open::after { content: " ↑"; }
+
+/* ── BOOST FOLD — the advertiser card unfolding out of the hero button.
+   grid-template-rows 0fr→1fr animates the height; the inner scale/translate
+   (transform-origin at the button) makes the card spread + grow out of it.
+   The negative open margin swallows the hero's 48px bottom padding so the
+   card sits nearly flush under the button. ── */
+.boost-fold {
+  display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows .65s cubic-bezier(.22, 1, .36, 1),
+              margin-top .65s cubic-bezier(.22, 1, .36, 1);
+}
+.boost-fold-inner { overflow: hidden; min-height: 0; }
+.boost-fold-inner > .advertisers {
+  margin-top: 0;
+  transform-origin: top center;
+  transform: scale(.82) translateY(-32px);
+  opacity: 0;
+  transition: transform .65s cubic-bezier(.22, 1, .36, 1), opacity .45s ease;
+}
+.boost-fold.open { grid-template-rows: 1fr; margin-top: -42px; }
+.boost-fold.open .advertisers { transform: none; opacity: 1; }
+/* Unfolding out of the "Boost your token" button already says what this is —
+   drop the card's own blue "Boost your Token" eyebrow in that mount. */
+.boost-fold .eyebrow { display: none; }
 .wl-note { margin: 12px 0 0; font: 500 13px/1.5 var(--sans); color: var(--gray-2); }
 .wl-note:empty { margin: 0; }
 .wl-note--err { color: var(--err-fg); }
@@ -685,6 +734,35 @@ a { color: inherit; text-decoration: none; }
   text-transform: uppercase; color: var(--blue); font-weight: 700; margin-bottom: 12px;
 }
 .adv-card h2 { font-size: 34px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; margin: 0 0 16px; }
+
+/* ── IMPRESSIONS ODOMETER — the live "N eyeballs" total in the card headline.
+   Mechanical-counter cells: dark chips, white mono digits, the last cell in
+   accent red (flip-clock style); each cell's reel rolls UPWARD to the next
+   digit (transform set by script.js). ── */
+.imp-odometer--live {
+  display: inline-flex; align-items: center; gap: 2px;
+  vertical-align: middle; margin: 0 1px; transform: translateY(-.16em);
+}
+.imp-digit {
+  position: relative; overflow: hidden;
+  width: .78em; height: 1em; /* reel steps are exactly 1em (JS translates in em) */
+  background: var(--ink); color: #fff; border-radius: .14em;
+  font-family: var(--mono); font-weight: 700; font-size: .74em; /* cells cap at the cap-height of the headline — never taller than the text */
+  box-shadow: inset 0 -1.5em 0.6em -1.4em rgba(0,0,0,.55), inset 0 1.5em 0.6em -1.4em rgba(255,255,255,.14);
+}
+/* Hairline across the middle — the flip-counter split. */
+.imp-digit::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px;
+  background: rgba(255,255,255,.22); pointer-events: none;
+}
+.imp-digit--accent { background: var(--accent); }
+.imp-reel {
+  display: flex; flex-direction: column; align-items: center;
+  transition: transform .9s cubic-bezier(.33, 1, .35, 1);
+  will-change: transform;
+}
+.imp-reel span { display: block; height: 1em; line-height: 1.02em; width: 100%; text-align: center; }
+.imp-comma { font-family: var(--mono); font-weight: 700; color: var(--ink); font-size: .74em; }
 .adv-intro { font-size: 16px; color: var(--gray); margin: 0 0 32px; line-height: 1.6; max-width: 820px; }
 .adv-intro strong { color: var(--ink); }
 
@@ -704,6 +782,34 @@ a { color: inherit; text-decoration: none; }
 }
 .adform input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(var(--accent-rgb),.12); }
 .adform input::placeholder { color: #b6bcc6; }
+
+/* Performance-window segmented control. Fixed windows plus Auto (rightmost),
+   which shows whichever window has the biggest change; the ? on Auto explains it. */
+.tsgroup { display: flex; flex-wrap: wrap; gap: 6px; }
+.tsbtn {
+  position: relative; font-family: var(--sans); font-size: 14px; font-weight: 600;
+  color: var(--ink); background: #fcfcfd; border: 1px solid var(--line);
+  border-radius: 9px; padding: 9px 13px; cursor: pointer; transition: background .12s, border-color .12s, color .12s;
+}
+.tsbtn:hover { border-color: var(--gray); }
+.tsbtn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(var(--accent-rgb),.12); }
+.tsbtn.is-active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tsbtn-auto { margin-left: auto; } /* Auto sits at the far right of the group */
+/* The little "?" helper pinned to the Auto button's top-right corner. */
+.tshelp {
+  position: absolute; top: -7px; right: -7px; width: 16px; height: 16px;
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--ink); color: #fff; font-size: 10px; font-weight: 800; line-height: 1;
+  cursor: help;
+}
+.tshelp::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); right: -4px;
+  width: 210px; background: #1b1e25; color: #fff; font-size: 12px; font-weight: 500;
+  line-height: 1.45; text-align: left; padding: 9px 11px; border-radius: 9px;
+  box-shadow: 0 8px 24px -10px rgba(0,0,0,.5); opacity: 0; pointer-events: none;
+  transform: translateY(3px); transition: opacity .14s, transform .14s; z-index: 6;
+}
+.tshelp:hover::after, .tshelp:focus::after { opacity: 1; transform: translateY(0); }
 /* Ad color: native swatch picker sitting beside the #hex text field. */
 .colorfield { display: flex; align-items: stretch; gap: 10px; }
 .colorfield #adcolor { flex: 1; min-width: 0; }
@@ -862,26 +968,46 @@ a { color: inherit; text-decoration: none; }
 .stripe-btn:active { transform: translateY(1px); }
 .stripe-btn-label { line-height: 1; }
 
-/* Payment-method toggle (dwell/docs/08) — a two-segment slider. A thumb slides
+/* Payment-method toggle (dwell/docs/08) — a segmented slider. A thumb slides
    behind the active tab; each tab reveals its .paypane. Hidden until crypto
-   checkout is enabled (script.js). Theme tokens only. */
+   checkout is enabled (script.js). Theme tokens only. Two or three segments —
+   the thumb width and translate step both derive from the segment count, so
+   script.js just sets transform: translateX(index * 100%). */
+.paytabs[hidden] { display: none; } /* display:grid below would otherwise beat the hidden attribute */
 .paytabs {
   position: relative; display: grid; grid-template-columns: 1fr 1fr;
   padding: 4px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface-inset);
 }
+.paytabs.paytabs-3 { grid-template-columns: 1fr 1fr 1fr; }
 .paytabs-thumb {
   position: absolute; top: 4px; left: 4px; bottom: 4px; width: calc(50% - 4px);
   background: var(--card-dark); border: 1px solid var(--border-strong); border-radius: 9px;
   transition: transform .2s ease; z-index: 0;
 }
-.paytabs.crypto .paytabs-thumb { transform: translateX(100%); }
+.paytabs-3 .paytabs-thumb { width: calc(33.333% - 2.67px); }
+/* legacy two-segment fallback: the .crypto class slides the thumb right */
+.paytabs:not(.paytabs-3).crypto .paytabs-thumb { transform: translateX(100%); }
 .paytab {
-  position: relative; z-index: 1; background: none; border: none; cursor: pointer;
-  padding: 10px 8px; font-family: var(--sans); font-size: var(--type-body-size);
-  font-weight: 600; color: var(--gray); transition: color .15s;
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px; background: none; border: none; cursor: pointer;
+  padding: 10px 6px; font-family: var(--sans); font-size: var(--type-body-size);
+  font-weight: 600; color: var(--gray); transition: color .15s; white-space: nowrap;
 }
 .paytab.active { color: var(--ink); }
+/* "+10%" boost marker on the $DWELL tab — a small green (functional-success)
+   chip inline right after the label. The tab's own flex centering (gap +
+   justify-content: center) keeps the label+badge group centered as a unit. */
+.paytab-badge {
+  margin-left: 4px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .02em;
+  line-height: 1; padding: 2px 4px; border-radius: 5px;
+  color: var(--ok-fg); background: var(--ok-bg); border: 1px solid var(--ok-line);
+}
+@media (max-width: 560px) {
+  .paytab { flex-direction: column; gap: 3px; font-size: 12px; padding: 8px 4px; }
+  .paytab-badge { margin-left: 0; font-size: 9px; padding: 2px 4px; }
+}
 
 /* USDC checkout (dwell/docs/08) — hidden until $DWELL mints (script.js flag).
    Quiet secondary treatment under the Stripe button: ink-on-white with the
@@ -895,6 +1021,15 @@ a { color: inherit; text-decoration: none; }
 .usdc-btn:hover { border-color: var(--gray); }
 .usdc-btn:active { transform: translateY(1px); }
 .usdc-btn strong { font-weight: 700; }
+/* "+10% impressions" pill on the $DWELL pay button — green (functional-success) */
+.usdc-btn-boost {
+  font-family: var(--mono); font-size: 11px; font-weight: 700; line-height: 1;
+  padding: 4px 7px; border-radius: 6px;
+  color: var(--ok-fg); background: var(--ok-bg); border: 1px solid var(--ok-line);
+}
+/* the $DWELL boost row in the panel reads in the same green (the doubled class
+   outranks the generic `.usdc-row strong` ink color regardless of source order) */
+.usdc-row.usdc-row-boost strong { color: var(--ok-fg); }
 .usdc-panel {
   margin-top: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface-inset); display: flex; flex-direction: column; gap: 8px;
@@ -1513,5 +1648,43 @@ a { color: inherit; text-decoration: none; }
 
 /* "Want to advertise?" spans the full waitlist row (input + button width). */
 .wl-adv-row .wl-adv { width: 100%; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   3D FLOAT LAYER — the "floating block" physics from the Roster card handoff,
+   reduced to a plain 3D tilt with a grey drop shadow (no rainbow). A wrapper
+   (.r3d, generated in float3d.js) gives each target perspective; the target
+   becomes the tilting .r3d-card, which leans toward the cursor on a
+   critically-damped spring, pops on hover, and casts a grey shadow that
+   deepens and shifts as it lifts — so it reads as a solid block rising off the
+   page. A soft white gloss (.r3d-sheen) tracks the pointer across it. Driven
+   by one rAF loop in float3d.js. Honors prefers-reduced-motion (falls back to
+   a simple CSS hover lift, no tilt/gloss). */
+.r3d { position: relative; perspective: 1000px; }
+.r3d-card {
+  position: relative; z-index: 1;
+  transform-style: preserve-3d; will-change: transform, box-shadow;
+  /* The rAF loop writes transform + box-shadow every frame — a CSS transition
+     here would fight it and lag. */
+  transition: none;
+}
+.r3d-sheen {
+  position: absolute; inset: 0; z-index: 5; border-radius: inherit;
+  pointer-events: none; opacity: 0; mix-blend-mode: screen;
+  background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, .4), rgba(255, 255, 255, 0) 60%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .r3d-card { transition: transform .25s ease, box-shadow .25s ease; }
+  .r3d:hover .r3d-card {
+    transform: translateY(-4px);
+    box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .38);
+  }
+  .r3d-sheen { display: none; }
+}
+
+/* Safety net: a floating block's hover tilt/scale must never extend the
+   document width. overflow-x:clip keeps vertical overflow visible — same trick
+   as .demo above. */
+.downloads, .advertisers { overflow-x: clip; }
 
 /* deploy-trigger: 2026-07-07 rebrand cutover — safe to remove */

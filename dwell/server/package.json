@@ -8,7 +8,8 @@
     "start": "node --env-file-if-exists=.env src/index.js",
     "migrate": "node --env-file-if-exists=.env src/migrate.js",
     "seed": "node --env-file-if-exists=.env src/seed.js",
-    "test": "node test/run.js",
+    "test": "node test/util.test.js && node test/run.js",
+    "test:unit": "node test/util.test.js",
     "test:mail": "node test/mailer.test.js",
     "payouts": "node -e \"require('./src/boot').boot().then(({deps}) => require('./src/payouts').runPayouts(deps)).then(r => {console.log(r); process.exit(0)})\""
   },

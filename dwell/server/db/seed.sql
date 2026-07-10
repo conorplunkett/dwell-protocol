@@ -13,7 +13,7 @@ on conflict (id) do nothing;
 insert into campaigns (
   id, advertiser_id, brand, ad_line, url, category, color,
   price_per_block_cents, blocks, impressions_total, impressions_remaining,
-  show_on_leaderboard, status, paid_at, activated_at
+  show_on_leaderboard, change_timescale, changes, status, paid_at, activated_at
 ) values (
   '00000000-0000-0000-0000-0000000000c1',
   '00000000-0000-0000-0000-0000000000a1',
@@ -23,7 +23,9 @@ insert into campaigns (
   'other',
   '#d97757',
   500, 10, 10000, 10000,
-  true, 'active', now(), now()
+  -- 'auto' renders the biggest window; this map's biggest is 1d (+235%).
+  true, 'auto', '{"5m":4.2,"15m":12,"1h":38,"4h":96,"1d":235}'::jsonb,
+  'active', now(), now()
 ) on conflict (id) do nothing;
 
 -- Fund the seeded campaign on the ledger (price_per_block_cents * blocks, in

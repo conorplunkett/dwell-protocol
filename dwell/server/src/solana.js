@@ -189,6 +189,23 @@ function systemTransferInstruction({ from, to, lamports, reference }) {
   };
 }
 
+// SPL Token Transfer (ix 3): the fee/tranche legs on the $DWELL rail. Unlike
+// TransferChecked it carries no mint/decimals, so it works for the DWELL mint
+// without knowing its decimals. The reference key rides as an extra read-only
+// account (Solana Pay). Accounts: source, destination, owner(signer), [ref].
+function tokenTransferInstruction({ source, destination, owner, amount, reference }) {
+  return {
+    programId: TOKEN_PROGRAM,
+    accounts: [
+      { pubkey: source, isSigner: false, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: true, isWritable: false },
+      ...(reference ? [{ pubkey: reference, isSigner: false, isWritable: false }] : []),
+    ],
+    data: Buffer.concat([Buffer.from([3]), u64le(amount)]).toString("base64"),
+  };
+}
+
 // Memo carrying the order id — human-readable join handle in explorers.
 function memoInstruction(text) {
   return { programId: MEMO_PROGRAM, accounts: [], data: Buffer.from(text, "utf8").toString("base64") };
@@ -209,18 +226,19 @@ function createSolana({ config, fetchImpl }) {
     return body.result;
   }
 
-  // The payer's USDC token account with the largest balance — the source of
-  // both legs. RPC lookup instead of ATA derivation keeps this module free of
-  // PDA/curve math (and honors payers whose USDC sits in a non-ATA account).
-  async function findUsdcAccount(owner) {
+  // The payer's token account (for `mint`) with the largest balance — the
+  // source of the pay legs. RPC lookup instead of ATA derivation keeps this
+  // module free of PDA/curve math (and honors non-ATA holdings).
+  async function findTokenAccount(owner, mint) {
     const result = await rpc("getTokenAccountsByOwner", [
-      owner, { mint: config.usdcMint }, { encoding: "jsonParsed" },
+      owner, { mint }, { encoding: "jsonParsed" },
     ]);
     const accounts = (result?.value || [])
       .map((a) => ({ pubkey: a.pubkey, amount: BigInt(a.account?.data?.parsed?.info?.tokenAmount?.amount || "0") }))
       .sort((a, b) => (a.amount > b.amount ? -1 : 1));
     return accounts[0] || null;
   }
+  const findUsdcAccount = (owner) => findTokenAccount(owner, config.usdcMint);
 
   async function jupiterQuote({ inputMint, outputMint, amount }) {
     const q = new URLSearchParams({
@@ -240,7 +258,8 @@ function createSolana({ config, fetchImpl }) {
   }
 
   // The swap leg's quote for an order: USDC pays the tranche in micro-USDC;
-  // SOL pays it in lamports (priced first via priceOrderInSol).
+  // SOL pays it in lamports (priced first via priceOrderInSol). The $DWELL rail
+  // has no swap leg, so it never calls this.
   function tranchQuoteParams(order) {
     return order.pay_currency === "sol"
       ? { inputMint: WSOL_MINT, outputMint: config.dwellMint, amount: BigInt(order.pay_total_units) - BigInt(order.pay_fee_units) }
@@ -255,6 +274,16 @@ function createSolana({ config, fetchImpl }) {
     const total = BigInt(pricing.outAmount);
     const fee = (total * BigInt(feeBps)) / 10000n;
     return { totalLamports: total, feeLamports: fee, trancheLamports: total - fee };
+  }
+
+  // How many raw $DWELL units the order's USD price is worth right now, via a
+  // USDC -> DWELL quote. The $DWELL rail sends this directly (no swap): 10% to
+  // the treasury, 90% to the distributor. Re-priced on every build like SOL.
+  async function priceOrderInDwell(priceMicroUsdc, feeBps) {
+    const pricing = await jupiterQuote({ inputMint: config.usdcMint, outputMint: config.dwellMint, amount: priceMicroUsdc });
+    const total = BigInt(pricing.outAmount);
+    const fee = (total * BigInt(feeBps)) / 10000n;
+    return { totalDwell: total, feeDwell: fee, trancheDwell: total - fee, quote: pricing };
   }
 
   async function jupiterSwapInstructions({ quoteResponse, userPublicKey, wrapSol = false }) {
@@ -288,6 +317,33 @@ function createSolana({ config, fetchImpl }) {
   // USDC pays the fee as an SPL transfer; SOL as a native lamport transfer.
   async function buildOrderTransaction({ order, payer, quoteResponse }) {
     if (!isPubkey(payer)) throw Object.assign(new Error("payer must be a Solana pubkey"), { code: "BAD_ACCOUNT" });
+
+    // $DWELL rail: no swap. Two plain SPL transfers of the payer's own $DWELL —
+    // 10% to the treasury, 90% to the distributor — + memo. min_dwell_out is
+    // the exact 90% leg (a direct transfer, no slippage).
+    if (order.pay_currency === "dwell") {
+      const dwellAccount = await findTokenAccount(payer, config.dwellMint);
+      if (!dwellAccount) throw Object.assign(new Error("no $DWELL account for this wallet"), { code: "NO_FUNDS" });
+      const need = BigInt(order.pay_total_units);
+      if (dwellAccount.amount < need) {
+        throw Object.assign(new Error(`insufficient $DWELL: need ${need}, have ${dwellAccount.amount}`), { code: "NO_FUNDS" });
+      }
+      const { value } = await rpc("getLatestBlockhash", [{ commitment: "finalized" }]).then((r) => ({ value: r.value || r }));
+      const tranche = need - BigInt(order.pay_fee_units);
+      const instructions = [
+        tokenTransferInstruction({
+          source: dwellAccount.pubkey, destination: config.treasuryDwellAta, owner: payer,
+          amount: order.pay_fee_units, reference: order.reference_pubkey,
+        }),
+        tokenTransferInstruction({
+          source: dwellAccount.pubkey, destination: config.distributorDwellAta, owner: payer,
+          amount: tranche.toString(),
+        }),
+        memoInstruction(`dwell-usdc-order:${order.id}`),
+      ];
+      return serializeUnsignedTransaction({ feePayer: payer, recentBlockhash: value.blockhash, instructions });
+    }
+
     const isSol = order.pay_currency === "sol";
     let feeInstruction;
     if (isSol) {
@@ -378,6 +434,10 @@ function createSolana({ config, fetchImpl }) {
       if (idx < 0) return { ok: false, reason: "fee_short" };
       feePaid = BigInt(tx.meta?.postBalances?.[idx] ?? 0) - BigInt(tx.meta?.preBalances?.[idx] ?? 0);
       if (feePaid < BigInt(order.pay_fee_units)) return { ok: false, reason: "fee_short" };
+    } else if (order.pay_currency === "dwell") {
+      // $DWELL rail: the fee leg is $DWELL to the treasury's DWELL account.
+      feePaid = delta(config.treasuryDwellAta, config.dwellMint);
+      if (feePaid === null || feePaid < BigInt(order.pay_fee_units)) return { ok: false, reason: "fee_short" };
     } else {
       feePaid = delta(config.treasuryUsdcAta, config.usdcMint);
       if (feePaid === null || feePaid < BigInt(order.fee_micro_usdc)) return { ok: false, reason: "fee_short" };
@@ -396,6 +456,7 @@ function createSolana({ config, fetchImpl }) {
     jupiterQuote,
     tranchQuoteParams,
     priceOrderInSol,
+    priceOrderInDwell,
     buildOrderTransaction,
     findReferenceSignatures,
     verifyOrderTransaction,
@@ -410,6 +471,7 @@ module.exports = {
   compactU16,
   serializeUnsignedTransaction,
   transferCheckedInstruction,
+  tokenTransferInstruction,
   systemTransferInstruction,
   memoInstruction,
   TOKEN_PROGRAM,

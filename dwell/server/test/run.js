@@ -54,6 +54,19 @@ const fakeMailer = {
   sendWaitlistConfirmationEmail: async (to) => { mailbox.push({ to, kind: "waitlist" }); },
 };
 
+// ---------- stub the X (Twitter) API used by onboarding-post verification ----------
+// The app calls the global fetch for api.twitter.com; the api() helper's calls to
+// the local server pass straight through to the real fetch. twitterTweets is the
+// controllable "timeline" a verification read sees.
+let twitterTweets = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, opts) => {
+  if (/api\.twitter\.com\/2\/users\/.+\/tweets/.test(String(url))) {
+    return { ok: true, status: 200, json: async () => ({ data: twitterTweets }) };
+  }
+  return realFetch(url, opts);
+};
+
 (async () => {
   if (!process.env.DATABASE_URL) {
     console.error("DATABASE_URL required — e.g. docker compose up -d db");
@@ -78,6 +91,7 @@ const fakeMailer = {
     emailTokenTtlMs: 1800000, emailCooldownMs: 0, emailIpDailyCap: 0, webSessionTtlMs: 2592000000, clickTokenTtlMs: 120000, maxBodyBytes: 65536,
     impressionTokenTtlMs: 120000, impressionMinDwellMs: 0, // dwell off for the main suite; a dedicated test exercises it
     logRequests: false, giftFulfillmentEmail: "hello@dwellprotocol.com",
+    twitterBearerToken: "test-bearer",
   };
   const repo = createRepo(poolNs);
   const stripe = createStripe("sk_test_fake", { fetchImpl: fakeFetch });
@@ -661,7 +675,7 @@ const fakeMailer = {
     assert.strictEqual(r.body.balanceUsd, 20.79);
   });
 
-  await check("web payout: session onboarding, gross debit, net transfer, 10% fee row, history", async () => {
+  await check("web payout: request queues (held, no transfer); admin approves → net transfer + 10% fee; history", async () => {
     // $99 balance (1000 imps), linked + logged in
     const { auth, email } = await linkedSession("payout-web@example.com", 1000);
 
@@ -685,40 +699,140 @@ const fakeMailer = {
     const payload = JSON.stringify({ id: "evt_acct_web", type: "account.updated", data: { object: { id: accountId, charges_enabled: true, payouts_enabled: true } } });
     await api("POST", "/v1/webhooks/stripe", payload, { "stripe-signature": signWebhookPayload(payload, WEBHOOK_SECRET) });
 
-    // two simultaneous requests: exactly one pays (the other is stopped by the
+    const transfersBefore = stripeCalls.filter((c) => c.path === "/v1/transfers").length;
+
+    // two simultaneous requests: exactly one queues (the other is stopped by the
     // per-user throttle or the in-transaction balance recheck)
     const [a, b] = await Promise.all([
       api("POST", "/v1/web/payouts/request", {}, auth),
       api("POST", "/v1/web/payouts/request", {}, auth),
     ]);
     const ok = [a, b].filter((r) => r.status === 200);
-    assert.strictEqual(ok.length, 1, "exactly one payout settles");
+    assert.strictEqual(ok.length, 1, "exactly one request queues");
     assert.ok([409, 429].includes([a, b].find((r) => r.status !== 200).status));
 
-    // $99 gross → $9.90 fee → $89.10 transferred; balance fully drained
-    const paid = ok[0].body;
-    assert.strictEqual(paid.grossUsd, 99);
-    assert.strictEqual(paid.feeUsd, 9.9);
-    assert.strictEqual(paid.netUsd, 89.1);
-    assert.strictEqual(paid.balanceUsd, 0);
-    const transfer = [...stripeCalls].reverse().find((c) => c.path === "/v1/transfers");
-    assert.strictEqual(transfer.params.amount, "8910", "Stripe receives the net");
+    // the request is queued — funds held ($99 gross → $89.10 net), NOTHING transferred
+    const reqd = ok[0].body;
+    assert.strictEqual(reqd.requested, true, "queued, not paid");
+    assert.strictEqual(reqd.grossUsd, 99);
+    assert.strictEqual(reqd.feeUsd, 9.9);
+    assert.strictEqual(reqd.netUsd, 89.1);
+    assert.strictEqual(reqd.balanceUsd, 0, "funds are held immediately");
+    assert.strictEqual(stripeCalls.filter((c) => c.path === "/v1/transfers").length, transfersBefore,
+      "queuing a request never transfers — money is manual");
 
-    // fee row platform-side; payouts history shows the net as 'paid'
+    // the user sees it as 'requested' in their history
+    const hist1 = await api("GET", "/v1/web/payouts", undefined, auth);
+    assert.strictEqual(hist1.body.payouts[0].status, "requested");
+    assert.strictEqual(hist1.body.payouts[0].amountUsd, 89.1);
+    assert.strictEqual(hist1.body.balanceUsd, 0);
+
+    // admin review: the request is listed with gross/fee. This user signed in by
+    // email (no X account), so the onboarding-post check reads "no_x_account".
+    const list = await api("GET", "/v1/admin/payouts/requests?adminKey=test-admin");
+    assert.strictEqual(list.status, 200);
+    const mine = list.body.requests.find((r) => r.email === email);
+    assert.ok(mine, "the request shows up for admin review");
+    assert.strictEqual(mine.grossUsd, 99);
+    assert.strictEqual(mine.netUsd, 89.1);
+    assert.strictEqual(mine.postStatus, "no_x_account", "email-only user can't be X-verified");
+    assert.strictEqual(mine.stripeReady, true);
+
+    // a bad admin key can't approve
+    assert.strictEqual((await api("POST", "/v1/admin/payouts/requests/approve", { payoutId: mine.payoutId, adminKey: "nope" })).status, 401);
+
+    // admin approves → the net transfer fires now, and only now
+    const appr = await api("POST", "/v1/admin/payouts/requests/approve", { payoutId: mine.payoutId, adminKey: "test-admin" });
+    assert.strictEqual(appr.status, 200);
+    assert.strictEqual(appr.body.netUsd, 89.1);
+    const transfer = [...stripeCalls].reverse().find((c) => c.path === "/v1/transfers");
+    assert.strictEqual(transfer.params.amount, "8910", "Stripe receives the net on approval");
+
+    // fee row platform-side; payouts history flips to 'paid'
     const feeRow = await poolNs.query(
       "select amount_millicents from ledger where entry_type = 'platform_fee' and meta->>'source' = 'payout_fee' and meta->>'userId' is not null and meta->>'payoutId' is not null");
     assert.strictEqual(feeRow.rows.length, 1);
     assert.strictEqual(Number(feeRow.rows[0].amount_millicents), 990 * 1000);
     const hist = await api("GET", "/v1/web/payouts", undefined, auth);
-    assert.strictEqual(hist.body.payouts[0].amountUsd, 89.1);
     assert.strictEqual(hist.body.payouts[0].status, "paid");
+    assert.strictEqual(hist.body.payouts[0].amountUsd, 89.1);
     assert.strictEqual(hist.body.balanceUsd, 0);
 
+    // the approved request is no longer in the review queue, and double-approve 409s
+    const list2 = await api("GET", "/v1/admin/payouts/requests?adminKey=test-admin");
+    assert.ok(!list2.body.requests.find((r) => r.payoutId === mine.payoutId), "approved request leaves the queue");
+    assert.strictEqual((await api("POST", "/v1/admin/payouts/requests/approve", { payoutId: mine.payoutId, adminKey: "test-admin" })).status, 409);
+
     // drained: another request is refused for being under the threshold
-    // (wait out the 1/min per-user throttle by resetting it via a fresh app? no —
-    // 429 vs 403 both prove no second payment; accept either)
     const again = await api("POST", "/v1/web/payouts/request", {}, auth);
-    assert.ok([403, 429].includes(again.status), "no second payment from an empty balance");
+    assert.ok([403, 429].includes(again.status), "no second request from an empty balance");
+  });
+
+  await check("payout reject returns the held balance; the request leaves the queue", async () => {
+    const { auth, email } = await linkedSession("payout-reject@example.com", 1000);
+    await api("POST", "/v1/web/connect/onboard", {}, auth); // create the Stripe account
+    const accountId = (await poolNs.query("select stripe_account_id from users where email = $1", [email])).rows[0].stripe_account_id;
+    // enable payouts
+    const pl = JSON.stringify({ id: "evt_acct_rej", type: "account.updated", data: { object: { id: accountId, charges_enabled: true, payouts_enabled: true } } });
+    await api("POST", "/v1/webhooks/stripe", pl, { "stripe-signature": signWebhookPayload(pl, WEBHOOK_SECRET) });
+
+    const req = await api("POST", "/v1/web/payouts/request", {}, auth);
+    assert.strictEqual(req.status, 200);
+    assert.strictEqual(req.body.balanceUsd, 0, "held on request");
+
+    const list = await api("GET", "/v1/admin/payouts/requests?adminKey=test-admin");
+    const mine = list.body.requests.find((r) => r.email === email);
+    const transfersBefore = stripeCalls.filter((c) => c.path === "/v1/transfers").length;
+
+    const rej = await api("POST", "/v1/admin/payouts/requests/reject", { payoutId: mine.payoutId, adminKey: "test-admin" });
+    assert.strictEqual(rej.status, 200);
+    assert.strictEqual(rej.body.restoredUsd, 99);
+
+    // no transfer, balance restored to the full $99, request gone from the queue
+    assert.strictEqual(stripeCalls.filter((c) => c.path === "/v1/transfers").length, transfersBefore, "reject never transfers");
+    const bal = await api("GET", "/v1/web/payouts", undefined, auth);
+    assert.strictEqual(bal.body.balanceUsd, 99, "rejecting returns the held balance");
+    assert.strictEqual(bal.body.payouts[0].status, "rejected");
+    const list2 = await api("GET", "/v1/admin/payouts/requests?adminKey=test-admin");
+    assert.ok(!list2.body.requests.find((r) => r.payoutId === mine.payoutId), "rejected request leaves the queue");
+    // double-reject 409s
+    assert.strictEqual((await api("POST", "/v1/admin/payouts/requests/reject", { payoutId: mine.payoutId, adminKey: "test-admin" })).status, 409);
+  });
+
+  await check("onboarding-post verification: X timeline check flips no_x_account → verified, surfaced to admin only", async () => {
+    // an X-authed earner with a payable balance
+    const { sessionToken } = await repo.upsertUserByOAuth({ twitterId: "x_payout_9", emailVerified: false }, config.webSessionTtlMs);
+    const uid = (await poolNs.query("select id from users where twitter_id = 'x_payout_9'")).rows[0].id;
+    await poolNs.query("insert into ledger (entry_type, amount_millicents, user_id) values ('admin_credit', 9900000, $1)", [uid]); // $99
+    await poolNs.query("update users set onboarding_posted_at = now(), stripe_account_id = 'acct_x9', payouts_enabled = true where id = $1", [uid]);
+    const auth = { Authorization: `Bearer ${sessionToken}` };
+
+    const req = await api("POST", "/v1/web/payouts/request", {}, auth);
+    assert.strictEqual(req.status, 200, "X user can request a payout");
+
+    // before checking, the timeline has no matching post → verify reports not_found
+    twitterTweets = [{ id: "1", text: "gm" }];
+    const uidBody = { userId: uid, adminKey: "test-admin" };
+    let v = await api("POST", "/v1/admin/payouts/verify-post", uidBody);
+    assert.strictEqual(v.status, 200);
+    assert.strictEqual(v.body.status, "not_found");
+
+    // the earner posts the prebuilt note → the next check finds it and verifies
+    twitterTweets = [{ id: "42", text: "earning with @dwellprotocol — get paid at https://dwellprotocol.com" }];
+    v = await api("POST", "/v1/admin/payouts/verify-post", uidBody);
+    assert.strictEqual(v.body.status, "verified");
+    assert.ok(v.body.url.includes("42"));
+
+    // the admin review now shows verified + the post URL; the earner UI never does
+    const list = await api("GET", "/v1/admin/payouts/requests?adminKey=test-admin");
+    const mine = list.body.requests.find((r) => r.userId === uid);
+    assert.strictEqual(mine.postStatus, "verified");
+    assert.ok(mine.postUrl && mine.postUrl.includes("42"));
+    // the earner's own /v1/web/me carries no verification fields
+    const me = await api("GET", "/v1/web/me", undefined, auth);
+    assert.ok(!("postStatus" in me.body) && !("onboardingPostUrl" in me.body), "verification never leaks to the earner");
+
+    twitterTweets = [];
   });
 
   await check("magic-link sends are rate-limited per email (anti-bomb / anti-enumeration)", async () => {
@@ -1702,19 +1816,25 @@ const fakeMailer = {
   // A third app with the launch gate open (DWELL_MINT set) over the same
   // database, with Solana RPC + Jupiter faked at the fetch layer. The chain
   // object is the test's "blockchain": checks mutate it, then poll.
-  const { createSolana, base58Encode, WSOL_MINT, SYSTEM_PROGRAM } = require("../src/solana");
+  const { createSolana, base58Encode, WSOL_MINT, SYSTEM_PROGRAM, TOKEN_PROGRAM } = require("../src/solana");
   const pk = () => base58Encode(crypto.randomBytes(32));
-  const DWELL_MINT = pk(), USDC_MINT = pk(), TREASURY_ATA = pk(), TREASURY_SOL = pk(), DIST_ATA = pk(), PAYER = pk(), PAYER_USDC = pk();
+  const DWELL_MINT = pk(), USDC_MINT = pk(), TREASURY_ATA = pk(), TREASURY_SOL = pk(), TREASURY_DWELL = pk(), DIST_ATA = pk(), PAYER = pk(), PAYER_USDC = pk(), PAYER_DWELL = pk();
   const BLOCKHASH = base58Encode(crypto.randomBytes(32));
 
   const chain = {
     payerUsdc: "100000000000",     // $100k — plenty
     payerSol: "2000000000",        // 2 SOL — plenty
+    payerDwell: "999999999999999", // plenty of $DWELL
     signatures: [],                // what getSignaturesForAddress returns
     tx: null,                      // what getTransaction returns
     quoteOut: "45000000000",       // Jupiter outAmount for the $90 tranche
     quoteMin: "44550000000",       // otherAmountThreshold (slippage floor)
     solPriceLamports: "500000000", // USDC->wSOL pricing: $100 ≈ 0.5 SOL ($200/SOL)
+    // USDC->DWELL rate: 500 raw DWELL per micro-USDC. Keeps the USDC-rail tranche
+    // (90,000,000 micro -> 45,000,000,000) consistent with the assertions above,
+    // and makes the $DWELL-rail full-price quote ($100 -> 50,000,000,000) derive
+    // cleanly (fee 5e9 / tranche 45e9).
+    dwellPerMicroUsdc: 500n,
   };
   const paidTx = ({ reference, fee, dwellOut }) => ({
     slot: 1234, blockTime: 1700000000,
@@ -1739,16 +1859,19 @@ const fakeMailer = {
     const reply = (body) => ({ ok: true, status: 200, json: async () => body });
     if (u.startsWith("http://jup.test/quote")) {
       const q = new URL(u).searchParams;
-      // USDC -> wSOL is the SOL rail's pricing quote; everything else is the
-      // tranche swap into DWELL.
-      const pricingSol = q.get("outputMint") === WSOL_MINT;
-      return reply({
-        inputMint: q.get("inputMint"), outputMint: q.get("outputMint"),
-        inAmount: q.get("amount"),
-        outAmount: pricingSol ? chain.solPriceLamports : chain.quoteOut,
-        otherAmountThreshold: pricingSol ? chain.solPriceLamports : chain.quoteMin,
-        swapMode: "ExactIn",
-      });
+      const inMint = q.get("inputMint"), outMint = q.get("outputMint"), amt = BigInt(q.get("amount"));
+      let outAmount, threshold;
+      if (outMint === WSOL_MINT) {
+        outAmount = chain.solPriceLamports; threshold = chain.solPriceLamports; // USDC->wSOL pricing (SOL rail)
+      } else if (inMint === WSOL_MINT) {
+        outAmount = chain.quoteOut; threshold = chain.quoteMin;                  // wSOL->DWELL tranche swap (SOL rail)
+      } else {
+        // USDC->DWELL: the USDC-rail tranche swap AND the $DWELL-rail full-price
+        // pricing, both proportional at the fixed rate.
+        outAmount = (amt * chain.dwellPerMicroUsdc).toString();
+        threshold = (amt * (chain.dwellPerMicroUsdc - 5n)).toString();          // ~1% below
+      }
+      return reply({ inputMint: inMint, outputMint: outMint, inAmount: q.get("amount"), outAmount, otherAmountThreshold: threshold, swapMode: "ExactIn" });
     }
     if (u.startsWith("http://jup.test/swap-instructions")) {
       const req = JSON.parse(opts.body);
@@ -1772,7 +1895,11 @@ const fakeMailer = {
     const { method, params } = JSON.parse(opts.body);
     const rpcReply = (result) => reply({ jsonrpc: "2.0", id: 1, result });
     if (method === "getTokenAccountsByOwner") {
-      return rpcReply({ value: [{ pubkey: PAYER_USDC, account: { data: { parsed: { info: { tokenAmount: { amount: chain.payerUsdc } } } } } }] });
+      const mint = params[1]?.mint;
+      const acct = mint === DWELL_MINT
+        ? { pubkey: PAYER_DWELL, amount: chain.payerDwell }
+        : { pubkey: PAYER_USDC, amount: chain.payerUsdc };
+      return rpcReply({ value: [{ pubkey: acct.pubkey, account: { data: { parsed: { info: { tokenAmount: { amount: acct.amount } } } } } }] });
     }
     if (method === "getLatestBlockhash") return rpcReply({ value: { blockhash: BLOCKHASH, lastValidBlockHeight: 1 } });
     if (method === "getBalance") return rpcReply({ value: Number(chain.payerSol) });
@@ -1784,7 +1911,8 @@ const fakeMailer = {
   const cfgUsdc = {
     ...cfgToken, tokenMode: "live",
     dwellMint: DWELL_MINT, usdcMint: USDC_MINT,
-    treasuryUsdcAta: TREASURY_ATA, treasurySolAccount: TREASURY_SOL, distributorDwellAta: DIST_ATA,
+    treasuryUsdcAta: TREASURY_ATA, treasurySolAccount: TREASURY_SOL, treasuryDwellAta: TREASURY_DWELL, distributorDwellAta: DIST_ATA,
+    dwellDecimals: 6, dwellPayBoostBps: 1000,
     solanaRpcUrl: "http://solana.test", jupiterBaseUrl: "http://jup.test",
     maxSlippageBps: 100, usdcOrderTtlMinutes: 30, brandName: "DWELL",
   };
@@ -1996,6 +2124,87 @@ const fakeMailer = {
     assert.strictEqual(after.body.status, "failed");
     assert.strictEqual(after.body.failReason, "fee_short");
     assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit, undefined, "no funding on a short fee");
+    chain.signatures = []; chain.tx = null;
+  });
+
+  // A landed $DWELL payment: two $DWELL token deltas — treasury (fee) + distributor
+  // (tranche), no swap.
+  const paidDwellTx = ({ reference, feeDwell, trancheDwell }) => ({
+    slot: 1236, blockTime: 1700000200,
+    transaction: { message: { accountKeys: [
+      { pubkey: PAYER }, { pubkey: TREASURY_DWELL }, { pubkey: DIST_ATA }, { pubkey: reference },
+    ] } },
+    meta: {
+      err: null,
+      preTokenBalances: [
+        { accountIndex: 1, mint: DWELL_MINT, uiTokenAmount: { amount: "0" } },
+        { accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: "0" } },
+      ],
+      postTokenBalances: [
+        { accountIndex: 1, mint: DWELL_MINT, uiTokenAmount: { amount: feeDwell } },
+        { accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: trancheDwell } },
+      ],
+    },
+  });
+
+  await check("$dwell rail: pay directly in $DWELL (no swap), +10% impressions, two token transfers", async () => {
+    // Gate: without a treasury $DWELL account, $DWELL orders are refused.
+    cfgUsdc.treasuryDwellAta = "";
+    assert.strictEqual((await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" })).status, 400);
+    cfgUsdc.treasuryDwellAta = TREASURY_DWELL;
+
+    chain.signatures = []; chain.tx = null;
+    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.payCurrency, "dwell");
+    assert.strictEqual(r.body.priceUsdc, 100, "pricing stays USD");
+    assert.strictEqual(r.body.feeUsdc, 10);
+    assert.strictEqual(r.body.boostBps, 1000, "+10% boost surfaced");
+    // $100 @ $15 CPM = 6,666 base impressions → +10% = 7,332.
+    assert.strictEqual(r.body.boostImpressions, 7332 - 6666, "boost impressions = 10% of base");
+    assert.strictEqual(r.body.estPayTotalDwell, 50000, "50,000,000,000 raw ÷ 10^6 decimals");
+
+    const built = await apiU("POST", `/v1/ads/usdc/orders/${r.body.orderId}/transaction`, { account: PAYER });
+    assert.strictEqual(built.status, 200);
+    assert.ok(/\$DWELL/.test(built.body.message) && /\+10% impressions/.test(built.body.message), "wallet message names $DWELL + boost");
+    const tx = Buffer.from(built.body.transaction, "base64");
+    assert.strictEqual(tx[0], 1, "one signer — the advertiser");
+    const msg = tx.subarray(65);
+    const has = (b58) => msg.includes(require("../src/solana").base58Decode(b58));
+    assert.ok(has(TREASURY_DWELL), "fee leg targets the treasury's $DWELL account");
+    assert.ok(has(DIST_ATA), "90% leg targets the distributor");
+    assert.ok(!has(WSOL_MINT), "no wSOL — there is no swap on this rail");
+
+    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(ord.payFeeUnits, "5000000000", "10% of 50,000,000,000 DWELL");
+    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
+    chain.signatures = [sig];
+    chain.tx = paidDwellTx({ reference: ord.reference, feeDwell: "5000000000", trancheDwell: "45000000000" });
+    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(after.body.status, "confirmed");
+    assert.strictEqual(after.body.campaignStatus, "pending_review");
+
+    const led = await campLedger(r.body.campaignId);
+    assert.strictEqual(led.campaign_credit.sum, 10_000_000, "$100 in millicents (boost is reach, not pool)");
+    assert.strictEqual(led.reserve_allocation.sum, 9_000_000, "90% earmark on the actual spend");
+    const pools = await apiU("GET", "/v1/token/pools");
+    const pool_ = pools.body.pools.find((p) => p.campaignId === r.body.campaignId);
+    assert.strictEqual(pool_.dwellOutWei, "45000000000", "the 90% $DWELL sent to the distributor");
+    // locked rate = dwellOut × viewerShare ÷ boosted impressions (7,332)
+    assert.strictEqual(pool_.lockedRateWei, String((45000000000n * 6000n) / 10000n / 7332n));
+    chain.signatures = []; chain.tx = null;
+  });
+
+  await check("$dwell rail: a landed transaction that shorts the $DWELL fee fails the order", async () => {
+    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
+    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
+    chain.signatures = [sig];
+    chain.tx = paidDwellTx({ reference: ord.reference, feeDwell: "4000000000", trancheDwell: "45000000000" }); // 4e9 < 5e9
+    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(after.body.status, "failed");
+    assert.strictEqual(after.body.failReason, "fee_short");
+    assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit, undefined, "no funding on a short $DWELL fee");
     chain.signatures = []; chain.tx = null;
   });
 
