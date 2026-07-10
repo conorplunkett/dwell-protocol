@@ -215,7 +215,8 @@
 .pill .ptxt { font-size: 11.5px; color: var(--ov-line); line-height: 1.35; min-width: 0; }
 .pill.ad .ptxt { color: var(--ov-text); }
 .pill .ptag { font-family: var(--mono); font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ov-tag-text); background: var(--ov-tag-bg); padding: 2px 5px; border-radius: 4px; flex: none; }
-.pill .pchip { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; font-size: 9px; font-weight: 800; flex: none; }
+.pill .pchip { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; font-size: 9px; font-weight: 800; flex: none; overflow: hidden; }
+.pill .pchip img { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* Recent-change % badge — bright green up / red down on the dark overlay pill. */
 .pill .pchg { font-weight: 800; font-variant-numeric: tabular-nums; }
 .pill .pchg.up { color: #35d07f; }

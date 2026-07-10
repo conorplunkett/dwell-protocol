@@ -290,7 +290,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // destination (see Ad.destinationURLOrFallback).
             overlay.setCard(SponsorCard(campaignID: ad.id, sponsorName: ad.brand,
                                         message: ad.line, destinationURL: ad.destinationURLOrFallback,
-                                        change: ad.change))
+                                        change: ad.change,
+                                        logoName: OverlayPanelController.tokenLogoName(for: ad.brand)))
         }
         engine.rearm()
         servedImpressionToken = nil // fresh display → serve a new token when it next shows
