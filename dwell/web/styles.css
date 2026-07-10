@@ -1042,6 +1042,11 @@ button.wl-adv { cursor: pointer; }
   margin-top: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface-inset); display: flex; flex-direction: column; gap: 8px;
 }
+/* The order panel starts hidden and only appears after the advertiser clicks
+   Pay (script.js unhides it). Without this, display:flex above beats the
+   `hidden` attribute and the panel — with its "Waiting for your wallet's
+   signature…" line — shows on load, before any purchase. */
+.usdc-panel[hidden] { display: none; }
 .usdc-row {
   display: flex; justify-content: space-between; align-items: baseline;
   font-size: var(--type-body-size); color: var(--gray);

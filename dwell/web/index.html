@@ -484,11 +484,13 @@
             <button type="button" class="paytab" id="paytab-card" role="tab" aria-selected="false" data-pane="pay-card">Credit card</button>
           </div>
 
-          <!-- Crypto pane (dwell/docs/08) — default. Fully wired to
-               /v1/ads/usdc/*. One atomic Solana transaction signed from the
-               advertiser's own wallet: 10% protocol fee to the treasury + 90%
-               market-bought into $DWELL for the rewards pool. -->
-          <div class="paypane" id="pay-crypto">
+          <!-- Crypto pane (dwell/docs/08). Fully wired to /v1/ads/usdc/*. One
+               atomic Solana transaction signed from the advertiser's own wallet.
+               HIDDEN by default — script.js reveals the slider and selects this
+               pane only when USDC_CHECKOUT is on. With the flag off the card
+               pane below shows on its own, so the working (Stripe) checkout is
+               never hidden behind a gated crypto button. -->
+          <div class="paypane" id="pay-crypto" hidden>
             <button class="usdc-btn" id="usdc-btn" type="button">
               <span class="usdc-btn-label">Pay with</span> <strong>USDC or SOL on Solana</strong>
             </button>
@@ -500,7 +502,7 @@
               <a class="usdc-paylink" id="usdc-paylink" href="#" rel="noopener">Open in your Solana wallet</a>
               <button type="button" class="usdc-copy" id="usdc-copy">Copy payment link</button>
               <button type="button" class="usdc-copy" id="usdc-switch">Pay with SOL instead</button>
-              <p class="usdc-status" id="usdc-status" role="status">Waiting for your wallet's signature…</p>
+              <p class="usdc-status" id="usdc-status" role="status"></p>
             </div>
           </div>
 
@@ -521,12 +523,14 @@
               <div class="usdc-row"><span>≈ pay in $DWELL</span><strong id="dwell-amount">—</strong></div>
               <a class="usdc-paylink" id="dwell-paylink" href="#" rel="noopener">Open in your Solana wallet</a>
               <button type="button" class="usdc-copy" id="dwell-copy">Copy payment link</button>
-              <p class="usdc-status" id="dwell-status" role="status">Waiting for your wallet's signature…</p>
+              <p class="usdc-status" id="dwell-status" role="status"></p>
             </div>
           </div>
 
-          <!-- Card pane -->
-          <div class="paypane" id="pay-card" hidden>
+          <!-- Card pane — the default-visible checkout. With USDC_CHECKOUT off
+               (production today) this shows alone: no slider, just Stripe. When
+               the flag is on, script.js reveals the slider and switches panes. -->
+          <div class="paypane" id="pay-card">
             <button class="stripe-btn" type="submit">
               <span class="stripe-btn-label">Pay with</span>
               <svg class="stripe-logo" viewBox="54 36 360.02 149.84" role="img" aria-label="Stripe" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
