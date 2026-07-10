@@ -1,9 +1,12 @@
 # Open forgery surface: `/v1/events` self-reported impressions
 
-> **Status: OPEN as of 3:30 PM, July 3 2026.**
+> **Status: KILLSWITCH READY as of July 10 2026.**
 > The server-authoritative impression-token path is live and the official clients
-> use it, but the legacy `/v1/events` credit path is still enabled, and that is
-> where the hole is. This file tracks why it's open and exactly what closes it.
+> use it. The legacy `/v1/events` credit path still credits by default during the
+> client transition, but the killswitch that closes the hole is now implemented:
+> set **`LEGACY_EVENTS_CREDIT=0`** (Node server and the `dwell-api` edge
+> function) and a forged batch credits nothing. This file tracks the remaining
+> step: watching adoption and flipping the flag.
 
 ## Where the hole comes from
 
@@ -64,11 +67,14 @@ These bound the blast radius; they do not close the hole.
    hole: once `ingestBatch` stops issuing `impression_credit`, a forged batch
    credits nothing and the token path is the only way to earn.
 
-   ⚠️ **Not yet implemented.** There is no config killswitch for step 3 today —
-   it needs a small change: gate the crediting in `ingestBatch`
-   (`server/src/repo.js` and `supabase/functions/dwell-api/index.ts`) behind a flag
-   such as `LEGACY_EVENTS_CREDIT` (default on), so the flip is a single env var
-   once adoption is high. Add that flag before you need to flip it.
+   ✅ **Implemented.** Crediting in `ingestBatch` (`server/src/repo.js` and
+   `supabase/functions/dwell-api/index.ts`) is gated behind
+   **`LEGACY_EVENTS_CREDIT`** (default on). Set `LEGACY_EVENTS_CREDIT=0` and
+   batches are still acknowledged (idempotency, fraud-cap accounting, adoption
+   telemetry — old clients don't error) but mint no credit and spend no
+   campaign budget; the response carries `legacyCreditDisabled: true`. Covered
+   by the server test "LEGACY_EVENTS_CREDIT=0 closes the forgery surface".
+   The flip is now a single env var — do it once adoption (step 2) is high.
 
 ## Scope note
 

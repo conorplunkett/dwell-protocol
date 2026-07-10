@@ -50,6 +50,10 @@ function loadConfig() {
     grossCpmCents: parseInt(env("GROSS_CPM_CENTS", "1200"), 10),
     dailyImpressionCap: parseInt(env("DAILY_IMPRESSION_CAP", "5000"), 10),
     ipDailyImpressionCap: parseInt(env("IP_DAILY_IMPRESSION_CAP", "5000"), 10), // per source IP per UTC day; 0 disables
+    // Killswitch for the legacy self-reported /v1/events credit path (the open
+    // forgery surface — see FORGERY-SURFACE.md). Set LEGACY_EVENTS_CREDIT=0
+    // once token-path adoption is high; forged batches then credit nothing.
+    legacyEventsCredit: env("LEGACY_EVENTS_CREDIT") !== "0",
     dailyClickCap: parseInt(env("DAILY_CLICK_CAP", "100"), 10),
     leadDailyCap: parseInt(env("LEAD_IP_DAILY_CAP", "100"), 10), // bare-email waitlist captures per source IP per UTC day; 0 disables
     payoutThresholdCents: parseInt(env("PAYOUT_THRESHOLD_CENTS", "1000"), 10),
@@ -1203,7 +1207,10 @@ function createRepo(pool: any) {
       );
       return !!rows[0];
     },
-    async ingestBatch({ deviceId, batchKey, events, source, revenueShare, dailyCap, ipHash, ipDailyCap, tokenSplit }: any) {
+    // `credit: false` is the FORGERY-SURFACE.md killswitch: the batch is still
+    // recorded (idempotency, fraud-cap accounting, adoption telemetry) but no
+    // campaign budget is spent and no ledger credit is issued.
+    async ingestBatch({ deviceId, batchKey, events, source, revenueShare, dailyCap, ipHash, ipDailyCap, tokenSplit, credit = true }: any) {
       return tx(async (c: any) => {
         const claimedImpressions = events.reduce((n: number, e: any) => n + (e.impressions || 0), 0);
         const claimedClicks = events.reduce((n: number, e: any) => n + (e.clicks || 0), 0);
@@ -1237,6 +1244,7 @@ function createRepo(pool: any) {
             throw err;
           }
         }
+        if (!credit) return { duplicate: false, creditedMillicents: 0, legacyCreditDisabled: true };
         let credited = 0n;
         for (const ev of events) {
           const imp = Math.max(0, ev.impressions | 0);
@@ -3392,7 +3400,7 @@ route("POST", "/v1/events", async (ctx: any) => {
       source: ["chrome", "claude_code", "desktop"].includes(body.source) ? body.source : null,
       revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
       ipHash: hashIp(ctx), ipDailyCap: config.ipDailyImpressionCap,
-      tokenSplit,
+      tokenSplit, credit: config.legacyEventsCredit,
     });
     return json(200, { ok: true, ...result });
   } catch (err: any) {

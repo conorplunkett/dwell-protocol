@@ -12,8 +12,9 @@ exact same ledger code that runs in production — so what you see locally is th
 real earning math, just funded by play money.
 
 > Production readiness (secrets, OAuth/Stripe consoles) is tracked separately in
-> [`LAUNCH.md`](LAUNCH.md). DEVNET is for **testing the product**, not for
-> shipping it.
+> [`docs/10-going-live.md`](docs/10-going-live.md) and
+> [`docs/06-launch-checklist.md`](docs/06-launch-checklist.md). DEVNET is for
+> **testing the product**, not for shipping it.
 
 ## TL;DR — watch your balance go up in 2 terminals
 
@@ -87,4 +88,6 @@ go up.
 - ⚠️ **Claude-credit redemption** emails a fulfillment inbox and is fulfilled
   **manually** — locally the email just prints to the console.
 
-See [`LAUNCH.md`](LAUNCH.md) for the full production cutover checklist.
+See [`docs/10-going-live.md`](docs/10-going-live.md) for the production cutover
+runbook and [`docs/06-launch-checklist.md`](docs/06-launch-checklist.md) for the
+full launch checklist.
