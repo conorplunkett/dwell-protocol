@@ -264,6 +264,40 @@ function makeChrome(stateRef, sentRef) {
     assert.strictEqual(T.isActive(), true, "did not resume when the tab became visible");
   });
 
+  await check("empty inventory falls back to the house ad, which never bills", () => {
+    // No live inventory ⇒ the bar shows the $empty house ad instead of going
+    // blank. It's filler: ticking it must fire NO impression and NO view.
+    page.clear()
+      .add("button", { "data-testid": "stop-button" })
+      .add("div", { "data-message-author-role": "assistant" });
+    T.setState({ enabled: true, testMode: false, ads: [], houseAd: sandbox.BB_DEFAULT_AD });
+    T.evaluate();
+    const ad = T.currentAd();
+    assert.ok(ad && ad.house === true, "empty auction did not fall back to the house ad");
+    assert.strictEqual(ad.brand, "$empty", "house ad brand");
+    assert.strictEqual(ad.line, "promote your token now", "house ad line");
+    sent.length = 0;
+    for (let i = 0; i < 5; i++) T.tick();
+    assert.ok(!sent.some((m) => m.type === "BB_IMPRESSION"), "house ad billed an impression");
+    assert.ok(!sent.some((m) => m.type === "BB_VIEW"), "house ad counted a view");
+  });
+
+  await check("clicking the house ad opens the advertise page but reports no click", () => {
+    T.setState({ enabled: true, testMode: false, ads: [], houseAd: sandbox.BB_DEFAULT_AD });
+    opened.length = 0;
+    sent.length = 0;
+    T.bar._click();
+    assert.deepStrictEqual(opened, ["https://dwellprotocol.com/#advertisers"], "house ad did not open the advertise page");
+    assert.ok(!sent.some((m) => m.type === "BB_CLICK"), "house ad reported a click");
+  });
+
+  await check("live inventory takes precedence over the house ad", () => {
+    T.setState({ enabled: true, testMode: false, ads: [{ id: "c1", chip: "A", line: "Acme" }], houseAd: sandbox.BB_DEFAULT_AD });
+    const ad = T.currentAd();
+    assert.strictEqual(ad.id, "c1", "house ad shown while real inventory exists");
+    assert.ok(!ad.house, "house ad shadowed a real campaign");
+  });
+
   // ---------- background.js earnings vs mock ----------
   const bg = {};
   bg.self = bg;
