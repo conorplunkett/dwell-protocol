@@ -143,13 +143,6 @@ html.auth-pending #portal-loading { display: flex; }
   color: var(--ink);
   margin: 0 0 22px;
 }
-.portal-lead {
-  font-size: 17px;
-  color: var(--gray);
-  line-height: 1.6;
-  max-width: 440px;
-  margin: 0;
-}
 .portal-footer {
   display: flex;
   justify-content: space-between;
@@ -998,7 +991,6 @@ html.auth-pending #portal-loading { display: flex; }
   .portal-left { padding: 0 24px 28px; min-height: auto; }
   .portal-hero { padding: 24px 0 28px; }
   .portal-h1 { font-size: 30px; }
-  .portal-lead { font-size: 15px; }
   .portal-footer { display: none; }
   .portal-right { padding: 28px 16px 40px; align-items: flex-start; }
   .portal-nav { padding-top: 20px; }
