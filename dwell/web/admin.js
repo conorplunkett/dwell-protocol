@@ -554,6 +554,7 @@ function postStatusCell(r, reload) {
     : r.postStatus === "not_found" ? "failed"
     : "pending"; // no_x_account / unchecked read as neutral-warning
   const parts = [badge2(cls, POST_STATUS_LABEL[r.postStatus] || r.postStatus)];
+  if (r.twitterUsername) parts.push(h("a", { href: safeHref("https://x.com/" + r.twitterUsername), target: "_blank", rel: "noopener", class: "mono" }, "@" + r.twitterUsername));
   if (r.postUrl) parts.push(h("a", { href: safeHref(r.postUrl), target: "_blank", rel: "noopener", class: "mono" }, "view"));
   // Re-check only makes sense when we know the user's X id.
   if (r.twitterId) parts.push(h("button", { class: "btn btn-ghost btn-sm", onclick: async () => {

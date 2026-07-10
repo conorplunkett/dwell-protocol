@@ -937,10 +937,11 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     if (!Number.isFinite(ts) || Date.now() - ts >= 10 * 60 * 1000) return null;
     return { ref: parts[2] || "", nonce: parts[1] || "" };
   }
-  // X (Twitter) OAuth 2.0 mandates PKCE even for confidential clients. We stay
-  // stateless like the rest of the OAuth flow by deriving the verifier from the
-  // signed state's nonce with a server secret — it never leaves the server (only
-  // its S256 hash, the challenge, travels through the browser), and the callback
+  // X's OAuth 2.0 Authorization Code flow mandates PKCE (docs.x.com →
+  // authentication → oauth-2-0 → authorization-code). We stay stateless like the
+  // rest of the OAuth flow by deriving the code_verifier from the signed state's
+  // nonce with a server secret — the verifier never leaves the server (only its
+  // S256 hash, the challenge, travels through the browser), and the callback
   // recomputes it from the returned state.
   function pkceVerifier(nonce) {
     return crypto.createHmac("sha256", config.adminKey || "fallback").update(`pkce:${nonce}`).digest("hex");
@@ -1087,10 +1088,14 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     }
   });
 
-  // ---------- X (Twitter) OAuth 2.0 (PKCE) ----------
-  // X returns no email, so these accounts are keyed on the numeric X user id
-  // alone. The confidential client authenticates the token exchange with HTTP
-  // Basic (client_id:client_secret).
+  // ---------- X (Twitter) sign-in — OAuth 2.0 Authorization Code + PKCE ----------
+  // Endpoints per docs.x.com: authorize at x.com/i/oauth2/authorize, token at
+  // api.x.com/2/oauth2/token, identity via GET /2/users/me (which needs the
+  // tweet.read + users.read scopes). X returns no email, so accounts are keyed
+  // on the numeric X user id; the handle is kept for display only. The
+  // confidential client authenticates the token exchange with HTTP Basic
+  // (client_id:client_secret), and the code_verifier is re-derived from the
+  // signed state (see pkceVerifier above).
   route("GET", "/v1/auth/twitter", async (req, res, body, rawBody, query) => {
     if (!config.twitterClientId) return redirect(res, `${config.siteUrl}/portal.html?login=no-twitter`);
     const state = makeOAuthState(query.get("ref"));
@@ -1099,12 +1104,12 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       response_type: "code",
       client_id: config.twitterClientId,
       redirect_uri: `${config.apiBaseUrl}/v1/auth/twitter/callback`,
-      scope: "tweet.read users.read offline.access",
+      scope: "tweet.read users.read",
       state,
       code_challenge: pkceChallenge(pkceVerifier(st.nonce)),
       code_challenge_method: "S256",
     });
-    redirect(res, `https://twitter.com/i/oauth2/authorize?${params}`);
+    redirect(res, `https://x.com/i/oauth2/authorize?${params}`);
   });
 
   route("GET", "/v1/auth/twitter/callback", async (req, res, body, rawBody, query) => {
@@ -1117,7 +1122,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     }
     try {
       const basic = Buffer.from(`${config.twitterClientId}:${config.twitterClientSecret}`).toString("base64");
-      const tokRes = await fetch("https://api.twitter.com/2/oauth2/token", {
+      const tokRes = await fetch("https://api.x.com/2/oauth2/token", {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -1132,14 +1137,17 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
         }).toString(),
       });
       const tokens = await tokRes.json();
-      if (!tokens.access_token) throw new Error("no access_token from X");
-      const uiRes = await fetch("https://api.twitter.com/2/users/me", {
+      if (!tokens.access_token) {
+        throw new Error(`no access_token from X (${tokRes.status}: ${JSON.stringify(tokens).slice(0, 200)})`);
+      }
+      const uiRes = await fetch("https://api.x.com/2/users/me", {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       const tu = await uiRes.json();
       if (!tu?.data?.id) throw new Error("no user id from X");
       const { sessionToken } = await repo.upsertUserByOAuth(
-        { twitterId: String(tu.data.id), referralCode: oauthState.ref, emailVerified: false },
+        { twitterId: String(tu.data.id), twitterUsername: tu.data.username || null,
+          referralCode: oauthState.ref, emailVerified: false },
         config.webSessionTtlMs
       );
       redirect(res, `${config.siteUrl}/portal.html#session=${sessionToken}`);
@@ -2010,6 +2018,7 @@ async function act(kind,id){
     return {
       payoutId: r.id, userId: r.user_id, email: r.email,
       twitterId: r.twitter_id || null,
+      twitterUsername: r.twitter_username || null,
       grossUsd: (r.gross_cents || 0) / 100,
       feeUsd: (r.fee_cents || 0) / 100,
       netUsd: (r.net_cents || 0) / 100,
