@@ -140,6 +140,12 @@ function loadConfig() {
     stripeProductImage: env("STRIPE_PRODUCT_IMAGE", "https://dwellprotocol.com/og.png"),
   };
 }
+// Base58 tables live up here because the treasury-signer boot check below
+// base58-decodes TREASURY_SIGNER_SECRET at module scope — as consts they must
+// initialize before that runs (the hoisted function declarations alone don't).
+const B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const B58_MAP = Object.fromEntries([...B58_ALPHABET].map((c, i) => [c, BigInt(i)]));
+
 const config = loadConfig();
 // Token-mode split sanity (dwell/docs/04 §C): the pool must cover both shares.
 if (config.viewerShareBps + config.referrerShareBps > 10000) {
@@ -3545,8 +3551,7 @@ const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const USDC_DECIMALS = 6;
 // Headroom the payer keeps for tx fees + wSOL rent when paying in SOL (~0.01 SOL).
 const SOL_GAS_HEADROOM_LAMPORTS = 10_000_000n;
-const B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-const B58_MAP = Object.fromEntries([...B58_ALPHABET].map((c, i) => [c, BigInt(i)]));
+// B58_ALPHABET / B58_MAP are declared above loadConfig() — see the note there.
 function base58Decode(s: string) {
   if (typeof s !== "string" || !s.length) throw new Error("bad base58");
   let n = 0n;
