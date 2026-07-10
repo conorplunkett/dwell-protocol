@@ -1,35 +1,33 @@
-// --- 3D float layer: cursor tilt + grey shadow + soft gloss -----------------
-// Adapted from the "floating card" interaction in the Roster Candidate/Company
+// --- 3D float layer: cursor tilt + grey shadow -----------------------------
+// Adapted from the "floating card" physics in the Roster Candidate/Company
 // card design handoff (prototype ids 3a/3b), reduced to a plain 3D block: each
 // target leans toward the cursor with a critically-damped spring, pops on
 // hover, and casts a grey drop shadow that deepens and shifts as it lifts — so
-// it reads as a solid block rising off the page. A soft white gloss tracks the
-// pointer. No rainbow.
+// it reads as a solid block rising off the page. No rainbow, no gloss overlay.
 //
-// Each target is wrapped at runtime in a .r3d perspective container, becomes
-// the tilting .r3d-card, and gets a .r3d-sheen (gloss) injected. One
-// requestAnimationFrame loop lerps every channel toward its target. Honors
-// prefers-reduced-motion: the CSS falls back to a simple hover lift, no tilt.
+// Each target is wrapped at runtime in a .r3d perspective container and becomes
+// the tilting .r3d-card. One requestAnimationFrame loop lerps every channel
+// toward its target. Honors prefers-reduced-motion: the CSS falls back to a
+// simple hover lift, no tilt.
 //
 // The Claude mascot is a special case — it isn't a block, so it gets no
-// wrapper/shadow/gloss; it just tilts and drifts with the cursor over the hero
-// demo, so it moves along with the blocks it perches on.
+// wrapper/shadow; it just tilts and drifts with the cursor over the hero demo,
+// so it moves along with the blocks it perches on.
 (function float3d() {
   // Which lander surfaces float. `display` sets the generated wrapper's box so
-  // the host layout is preserved; `tilt` scales the lean (the big advertiser
-  // card swings at quarter strength so it doesn't feel like it's flipping).
+  // the host layout is preserved; `tilt` scales the lean. The advertiser
+  // section / boost fold is intentionally NOT here — it stays a flat sheet.
   var TARGETS = [
     { sel: ".nav .logo", display: "inline-block", tilt: 1 },     // Dwell mark, top-left
-    { sel: ".nav .navbtn-cta", display: "inline-block", tilt: 1 }, // Advertise button
+    { sel: ".nav .navbtn-cta", display: "inline-block", tilt: 1 }, // top-right CTA
     { sel: ".demo .demo-card", display: "block", tilt: 1 },      // stock spinner + with-dwell blocks
-    { sel: ".hero-adv .wl-adv", display: "inline-block", tilt: 1 }, // "Want to be seen by AI native users?"
+    { sel: ".hero-adv .wl-adv", display: "inline-block", tilt: 1 }, // "Boost your token" button
     { sel: ".surfaces .win", display: "block", tilt: 1 },        // screenshots
     { sel: ".downloads .dl-btn", display: "block", tilt: 1 },    // install buttons
-    { sel: ".advertisers .adv-card", display: "block", tilt: 0.25 }, // ad purchase card — quarter tilt
   ];
 
   var MAX = 11; // max tilt in degrees
-  var kRot = 0.13, kScale = 0.14, kGlow = 0.09, kPt = 0.2; // spring stiffness per channel
+  var kRot = 0.13, kScale = 0.14; // spring stiffness per channel
 
   function wrap(el, display) {
     if (el.closest(".r3d")) return null; // already floating
@@ -38,14 +36,9 @@
     w.style.display = display;
     if (display === "block") w.style.width = "100%"; // fill the host cell like the target did
     el.parentNode.insertBefore(w, el);
-
-    var sheen = document.createElement("span");
-    sheen.className = "r3d-sheen";
-
-    w.appendChild(el);        // the card itself
+    w.appendChild(el);
     el.classList.add("r3d-card");
-    el.appendChild(sheen);    // gloss, clipped to the card's rounded rect
-    return { wrap: w, card: el, sheen: sheen };
+    return { wrap: w, card: el };
   }
 
   function boot() {
@@ -72,10 +65,9 @@
 
     var states = wraps.map(function (m) {
       return {
-        wrap: m.wrap, card: m.card, sheen: m.sheen, tilt: m.tilt,
+        card: m.card, wrap: m.wrap, tilt: m.tilt,
         rx: 0, ry: 0, s: 1, g: 0, lift: 0,
         trx: 0, try_: 0, ts: 1, tg: 0, tlift: 0,
-        mx: 50, my: 50, tmx: 50, tmy: 50,
       };
     });
 
@@ -87,12 +79,10 @@
         var py = Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1);
         st.try_ = (px - 0.5) * 2 * MAX * st.tilt;   // rotateY follows horizontal
         st.trx = -(py - 0.5) * 2 * MAX * st.tilt;   // rotateX follows vertical
-        st.tmx = px * 100;
-        st.tmy = py * 100;
       });
       st.wrap.addEventListener("pointerenter", function () { st.tg = 1; st.ts = 1.045; st.tlift = 1; });
       st.wrap.addEventListener("pointerleave", function () {
-        st.tg = 0; st.ts = 1; st.tlift = 0; st.trx = 0; st.try_ = 0; st.tmx = 50; st.tmy = 50;
+        st.tg = 0; st.ts = 1; st.tlift = 0; st.trx = 0; st.try_ = 0;
       });
     });
 
@@ -120,10 +110,8 @@
         st.rx += (st.trx - st.rx) * kRot;
         st.ry += (st.try_ - st.ry) * kRot;
         st.s += (st.ts - st.s) * kScale;
-        st.g += (st.tg - st.g) * kGlow;
+        st.g += (st.tg - st.g) * 0.09;
         st.lift += (st.tlift - st.lift) * kScale;
-        st.mx += (st.tmx - st.mx) * kPt;
-        st.my += (st.tmy - st.my) * kPt;
         st.card.style.transform =
           "translateY(" + (-6 * st.lift).toFixed(2) + "px) rotateX(" +
           st.rx.toFixed(2) + "deg) rotateY(" + st.ry.toFixed(2) + "deg) scale(" +
@@ -135,15 +123,12 @@
         var alpha = (0.26 + st.g * 0.16).toFixed(3);
         st.card.style.boxShadow =
           ox + "px " + oy + "px " + blur + "px -20px rgba(17,19,25," + alpha + ")";
-        st.sheen.style.opacity = (st.g * 0.7).toFixed(3);
-        st.sheen.style.setProperty("--mx", st.mx.toFixed(1) + "%");
-        st.sheen.style.setProperty("--my", st.my.toFixed(1) + "%");
       });
 
       if (mst) {
         mst.rx += (mst.trx - mst.rx) * kRot;
         mst.ry += (mst.try_ - mst.ry) * kRot;
-        mst.dx += (mst.tdx - mst.dx) * kPt;
+        mst.dx += (mst.tdx - mst.dx) * 0.2;
         mst.lift += (mst.tlift - mst.lift) * kScale;
         mascot.style.transform =
           "perspective(500px) translateX(" + mst.dx.toFixed(2) + "px) translateY(" +

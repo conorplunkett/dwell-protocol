@@ -33,6 +33,12 @@ const fakeFetch = async (url, opts) => {
   const body =
     p === "/v1/checkout/sessions" ? { id, url: `https://checkout.stripe.com/c/pay/${id}` }
     : p === "/v1/account_links" ? { url: "https://connect.stripe.com/setup/e/test" }
+    : p === "/v1/charges" ? { data: [{
+        id: "ch_test_1", amount: 2500, currency: "usd", status: "succeeded", refunded: false,
+        payment_method_details: { card: { brand: "visa", last4: "4242" } },
+        billing_details: { email: "card-buyer@example.com" }, receipt_url: "https://pay.stripe.com/receipts/test",
+        metadata: { campaign_id: "cmp_test" }, created: 1_700_000_000,
+      }] }
     : { id };
   return { ok: true, status: 200, json: async () => body };
 };
@@ -59,10 +65,39 @@ const fakeMailer = {
 // the local server pass straight through to the real fetch. twitterTweets is the
 // controllable "timeline" a verification read sees.
 let twitterTweets = [];
+// A faithful fake of X's OAuth 2.0 token + identity endpoints so the sign-in
+// test exercises the real handshake end to end. The token endpoint ENFORCES
+// PKCE: it only issues a token when S256(code_verifier) equals the
+// code_challenge the test captured from the authorize redirect, and it demands
+// the confidential client's Basic auth — exactly what X validates in production.
+const xOAuth2 = { expectedChallenge: null, calls: [], issuedToken: null };
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts) => {
-  if (/api\.twitter\.com\/2\/users\/.+\/tweets/.test(String(url))) {
+  const u = String(url);
+  if (/api\.twitter\.com\/2\/users\/.+\/tweets/.test(u)) {
     return { ok: true, status: 200, json: async () => ({ data: twitterTweets }) };
+  }
+  if (u === "https://api.x.com/2/oauth2/token") {
+    const params = Object.fromEntries(new URLSearchParams(opts?.body || ""));
+    const call = { auth: opts?.headers?.Authorization || "", params };
+    xOAuth2.calls.push(call);
+    const expectedBasic = "Basic " + Buffer.from("test-x-client:test-x-secret").toString("base64");
+    const hash = crypto.createHash("sha256").update(params.code_verifier || "").digest("base64url");
+    if (call.auth !== expectedBasic) return { ok: false, status: 401, json: async () => ({ error: "unauthorized_client" }) };
+    if (params.grant_type !== "authorization_code" || params.code !== "AUTHCODE9") {
+      return { ok: false, status: 400, json: async () => ({ error: "invalid_request" }) };
+    }
+    if (!xOAuth2.expectedChallenge || hash !== xOAuth2.expectedChallenge) {
+      return { ok: false, status: 400, json: async () => ({ error: "invalid_grant", error_description: "pkce verification failed" }) };
+    }
+    xOAuth2.issuedToken = "xat_" + crypto.randomBytes(8).toString("hex");
+    return { ok: true, status: 200, json: async () => ({ access_token: xOAuth2.issuedToken, token_type: "bearer" }) };
+  }
+  if (u === "https://api.x.com/2/users/me") {
+    if ((opts?.headers?.Authorization || "") !== `Bearer ${xOAuth2.issuedToken}`) {
+      return { ok: false, status: 401, json: async () => ({ title: "Unauthorized" }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ data: { id: "999777", username: "dwelltester" } }) };
   }
   return realFetch(url, opts);
 };
@@ -92,6 +127,7 @@ globalThis.fetch = async (url, opts) => {
     impressionTokenTtlMs: 120000, impressionMinDwellMs: 0, // dwell off for the main suite; a dedicated test exercises it
     logRequests: false, giftFulfillmentEmail: "hello@dwellprotocol.com",
     twitterBearerToken: "test-bearer",
+    twitterClientId: "test-x-client", twitterClientSecret: "test-x-secret",
   };
   const repo = createRepo(poolNs);
   const stripe = createStripe("sk_test_fake", { fetchImpl: fakeFetch });
@@ -833,6 +869,82 @@ globalThis.fetch = async (url, opts) => {
     assert.ok(!("postStatus" in me.body) && !("onboardingPostUrl" in me.body), "verification never leaks to the earner");
 
     twitterTweets = [];
+  });
+
+  await check("X sign-in (OAuth 2.0 + PKCE): authorize redirect → token exchange verifies S256 → session", async () => {
+    xOAuth2.calls.length = 0;
+    xOAuth2.expectedChallenge = null;
+    xOAuth2.issuedToken = null;
+
+    // Kick-off: /v1/auth/twitter 302s to X's authorize page with a signed state
+    // and an S256 PKCE challenge (endpoints per docs.x.com).
+    const start = await api("GET", "/v1/auth/twitter?ref=CREW1");
+    assert.strictEqual(start.status, 302);
+    const authUrl = new URL(start.headers.get("location"));
+    assert.strictEqual(authUrl.origin + authUrl.pathname, "https://x.com/i/oauth2/authorize");
+    assert.strictEqual(authUrl.searchParams.get("response_type"), "code");
+    assert.strictEqual(authUrl.searchParams.get("client_id"), "test-x-client");
+    assert.strictEqual(authUrl.searchParams.get("code_challenge_method"), "S256");
+    assert.strictEqual(authUrl.searchParams.get("scope"), "tweet.read users.read");
+    assert.ok(authUrl.searchParams.get("redirect_uri").endsWith("/v1/auth/twitter/callback"));
+    const state = authUrl.searchParams.get("state");
+    const challenge = authUrl.searchParams.get("code_challenge");
+    assert.ok(state && challenge, "state + PKCE challenge present");
+
+    // Arm the fake X token endpoint with the challenge from the redirect: it
+    // refuses to mint a token unless S256(code_verifier) matches — so this test
+    // fails if the callback ever derives a different verifier than the kickoff.
+    xOAuth2.expectedChallenge = challenge;
+
+    // Callback: X sends the code + our state back; the server exchanges them
+    // (Basic auth + code_verifier), reads /2/users/me, and opens a session.
+    const cb = await api("GET", `/v1/auth/twitter/callback?code=AUTHCODE9&state=${encodeURIComponent(state)}`);
+    assert.strictEqual(cb.status, 302);
+    const loc = cb.headers.get("location");
+    const session = (loc.match(/#session=([^&]+)/) || [])[1];
+    assert.ok(session, `a web session is issued on success (got ${loc})`);
+    assert.strictEqual(xOAuth2.calls.length, 1, "exactly one token exchange");
+    assert.strictEqual(xOAuth2.calls[0].params.redirect_uri, `${base}/v1/auth/twitter/callback`,
+      "token exchange repeats the exact redirect_uri");
+
+    // the account is keyed on the numeric X id, handle captured, no email
+    const u = (await poolNs.query("select twitter_id, twitter_username, email from users where twitter_id = '999777'")).rows[0];
+    assert.ok(u, "account keyed on the X user id");
+    assert.strictEqual(u.twitter_username, "dwelltester");
+    assert.strictEqual(u.email, null, "X login carries no email");
+    // the session actually works against an authed endpoint
+    assert.strictEqual((await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${session}` })).status, 200);
+
+    // user pressed cancel on X (error param, no code) → cancelled, not an error
+    const denied = await api("GET", "/v1/auth/twitter/callback?error=access_denied");
+    assert.ok(denied.headers.get("location").includes("login=cancelled"));
+    // a forged/foreign state never reaches the token exchange
+    const before = xOAuth2.calls.length;
+    const bad = await api("GET", "/v1/auth/twitter/callback?code=AUTHCODE9&state=1.deadbeef.X.forged");
+    assert.ok(bad.headers.get("location").includes("login=error"));
+    assert.strictEqual(xOAuth2.calls.length, before, "bad state is rejected before any token call");
+
+    // a failed token exchange (X rejects the client) bounces AND leaves a
+    // durable diag_errors row carrying X's payload — the redirect swallows the
+    // error from the user, so this row is how operators diagnose sign-in.
+    const kick = await api("GET", "/v1/auth/twitter");
+    const kickUrl = new URL(kick.headers.get("location"));
+    xOAuth2.expectedChallenge = null; // fake X now refuses the exchange
+    const failed = await api("GET", `/v1/auth/twitter/callback?code=AUTHCODE9&state=${encodeURIComponent(kickUrl.searchParams.get("state"))}`);
+    assert.ok(failed.headers.get("location").includes("login=error"));
+    const diag = await poolNs.query(
+      "select message from diag_errors where path = '/v1/auth/twitter/callback' order by created_at desc limit 1");
+    assert.ok(diag.rows[0], "failed exchange writes a diag_errors row");
+    assert.ok(/no access_token from X/.test(diag.rows[0].message), "the row carries X's rejection");
+
+    // returning sign-in: same X id reuses the one account (no duplicate)
+    const again = await api("GET", "/v1/auth/twitter");
+    const url2 = new URL(again.headers.get("location"));
+    xOAuth2.expectedChallenge = url2.searchParams.get("code_challenge");
+    await api("GET", `/v1/auth/twitter/callback?code=AUTHCODE9&state=${encodeURIComponent(url2.searchParams.get("state"))}`);
+    assert.strictEqual(
+      (await poolNs.query("select count(*)::int n from users where twitter_id = '999777'")).rows[0].n, 1,
+      "re-login reuses the same X account");
   });
 
   await check("magic-link sends are rate-limited per email (anti-bomb / anti-enumeration)", async () => {
@@ -1812,13 +1924,15 @@ globalThis.fetch = async (url, opts) => {
     assert.strictEqual((await apiT("POST", "/v1/admin/epochs/publish-root", { adminKey: "wrong" })).status, 401);
   });
 
-  // ---------- USDC advertiser checkout (dwell/docs/08) ----------
-  // A third app with the launch gate open (DWELL_MINT set) over the same
-  // database, with Solana RPC + Jupiter faked at the fetch layer. The chain
-  // object is the test's "blockchain": checks mutate it, then poll.
+  // ---------- Crypto advertiser checkout (dwell/docs/08, tokenomics v2) ----------
+  // A third app over the same database with the crypto rails configured; the
+  // Solana RPC + Jupiter (spot PRICING only) are faked at the fetch layer. The
+  // chain object is the test's "blockchain": checks mutate it, then poll.
+  // v2: plain transfers, no swap, and no $DWELL involvement on USDC/SOL —
+  // the rails work with no token in existence.
   const { createSolana, base58Encode, WSOL_MINT, SYSTEM_PROGRAM, TOKEN_PROGRAM } = require("../src/solana");
   const pk = () => base58Encode(crypto.randomBytes(32));
-  const DWELL_MINT = pk(), USDC_MINT = pk(), TREASURY_ATA = pk(), TREASURY_SOL = pk(), TREASURY_DWELL = pk(), DIST_ATA = pk(), PAYER = pk(), PAYER_USDC = pk(), PAYER_DWELL = pk();
+  const DWELL_MINT = pk(), USDC_MINT = pk(), TREASURY_ATA = pk(), REVENUE_ATA = pk(), TREASURY_SOL = pk(), REVENUE_SOL = pk(), TREASURY_DWELL = pk(), PAYER = pk(), PAYER_USDC = pk(), PAYER_DWELL = pk();
   const BLOCKHASH = base58Encode(crypto.randomBytes(32));
 
   const chain = {
@@ -1827,30 +1941,50 @@ globalThis.fetch = async (url, opts) => {
     payerDwell: "999999999999999", // plenty of $DWELL
     signatures: [],                // what getSignaturesForAddress returns
     tx: null,                      // what getTransaction returns
-    quoteOut: "45000000000",       // Jupiter outAmount for the $90 tranche
-    quoteMin: "44550000000",       // otherAmountThreshold (slippage floor)
-    solPriceLamports: "500000000", // USDC->wSOL pricing: $100 ≈ 0.5 SOL ($200/SOL)
-    // USDC->DWELL rate: 500 raw DWELL per micro-USDC. Keeps the USDC-rail tranche
-    // (90,000,000 micro -> 45,000,000,000) consistent with the assertions above,
-    // and makes the $DWELL-rail full-price quote ($100 -> 50,000,000,000) derive
-    // cleanly (fee 5e9 / tranche 45e9).
-    dwellPerMicroUsdc: 500n,
+    solPriceLamports: "500000000", // USDC->wSOL spot: $100 ≈ 0.5 SOL ($200/SOL)
+    dwellPerMicroUsdc: 500n,       // USDC->DWELL spot: $100 -> 50,000,000,000 raw
   };
-  const paidTx = ({ reference, fee, dwellOut }) => ({
+
+  // Landed v2 payments: two USDC token deltas (fee -> treasury, revenue ->
+  // revenue account), two native deltas (sol), or one treasury delta (dwell).
+  const paidUsdcTx = ({ reference, fee, revenue }) => ({
     slot: 1234, blockTime: 1700000000,
     transaction: { message: { accountKeys: [
-      { pubkey: PAYER }, { pubkey: TREASURY_ATA }, { pubkey: DIST_ATA }, { pubkey: reference },
+      { pubkey: PAYER }, { pubkey: TREASURY_ATA }, { pubkey: REVENUE_ATA }, { pubkey: reference },
     ] } },
     meta: {
       err: null,
       preTokenBalances: [
         { accountIndex: 1, mint: USDC_MINT, uiTokenAmount: { amount: "0" } },
-        { accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: "0" } },
+        { accountIndex: 2, mint: USDC_MINT, uiTokenAmount: { amount: "0" } },
       ],
       postTokenBalances: [
         { accountIndex: 1, mint: USDC_MINT, uiTokenAmount: { amount: fee } },
-        { accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: dwellOut } },
+        { accountIndex: 2, mint: USDC_MINT, uiTokenAmount: { amount: revenue } },
       ],
+    },
+  });
+  const paidSolTx = ({ reference, feeLamports, revenueLamports }) => ({
+    slot: 1235, blockTime: 1700000100,
+    transaction: { message: { accountKeys: [
+      { pubkey: PAYER }, { pubkey: TREASURY_SOL }, { pubkey: REVENUE_SOL }, { pubkey: reference },
+    ] } },
+    meta: {
+      err: null,
+      preBalances: [2000000000, 0, 0, 0],
+      postBalances: [2000000000 - Number(feeLamports) - Number(revenueLamports), Number(feeLamports), Number(revenueLamports), 0],
+      preTokenBalances: [], postTokenBalances: [],
+    },
+  });
+  const paidDwellTx = ({ reference, amount }) => ({
+    slot: 1236, blockTime: 1700000200,
+    transaction: { message: { accountKeys: [
+      { pubkey: PAYER }, { pubkey: TREASURY_DWELL }, { pubkey: reference },
+    ] } },
+    meta: {
+      err: null,
+      preTokenBalances: [{ accountIndex: 1, mint: DWELL_MINT, uiTokenAmount: { amount: "0" } }],
+      postTokenBalances: [{ accountIndex: 1, mint: DWELL_MINT, uiTokenAmount: { amount } }],
     },
   });
 
@@ -1858,38 +1992,15 @@ globalThis.fetch = async (url, opts) => {
     const u = String(url);
     const reply = (body) => ({ ok: true, status: 200, json: async () => body });
     if (u.startsWith("http://jup.test/quote")) {
+      // Spot PRICING quotes only — USDC->wSOL for the SOL rail, USDC->DWELL
+      // for the $DWELL rail. The USDC rail never quotes anything.
       const q = new URL(u).searchParams;
       const inMint = q.get("inputMint"), outMint = q.get("outputMint"), amt = BigInt(q.get("amount"));
-      let outAmount, threshold;
-      if (outMint === WSOL_MINT) {
-        outAmount = chain.solPriceLamports; threshold = chain.solPriceLamports; // USDC->wSOL pricing (SOL rail)
-      } else if (inMint === WSOL_MINT) {
-        outAmount = chain.quoteOut; threshold = chain.quoteMin;                  // wSOL->DWELL tranche swap (SOL rail)
-      } else {
-        // USDC->DWELL: the USDC-rail tranche swap AND the $DWELL-rail full-price
-        // pricing, both proportional at the fixed rate.
-        outAmount = (amt * chain.dwellPerMicroUsdc).toString();
-        threshold = (amt * (chain.dwellPerMicroUsdc - 5n)).toString();          // ~1% below
-      }
-      return reply({ inputMint: inMint, outputMint: outMint, inAmount: q.get("amount"), outAmount, otherAmountThreshold: threshold, swapMode: "ExactIn" });
+      const outAmount = outMint === WSOL_MINT ? chain.solPriceLamports : (amt * chain.dwellPerMicroUsdc).toString();
+      return reply({ inputMint: inMint, outputMint: outMint, inAmount: q.get("amount"), outAmount, otherAmountThreshold: outAmount, swapMode: "ExactIn" });
     }
     if (u.startsWith("http://jup.test/swap-instructions")) {
-      const req = JSON.parse(opts.body);
-      return reply({
-        computeBudgetInstructions: [],
-        setupInstructions: [],
-        swapInstruction: {
-          programId: base58Encode(Buffer.alloc(32, 7)), // stand-in router program
-          accounts: [
-            { pubkey: req.userPublicKey, isSigner: true, isWritable: true },
-            { pubkey: PAYER_USDC, isSigner: false, isWritable: true },
-            { pubkey: req.destinationTokenAccount, isSigner: false, isWritable: true },
-          ],
-          data: Buffer.from("swap").toString("base64"),
-        },
-        cleanupInstruction: null,
-        addressLookupTableAddresses: [],
-      });
+      throw new Error("v2 must never call swap-instructions — nothing is swapped");
     }
     // Solana JSON-RPC
     const { method, params } = JSON.parse(opts.body);
@@ -1909,9 +2020,11 @@ globalThis.fetch = async (url, opts) => {
   };
 
   const cfgUsdc = {
-    ...cfgToken, tokenMode: "live",
-    dwellMint: DWELL_MINT, usdcMint: USDC_MINT,
-    treasuryUsdcAta: TREASURY_ATA, treasurySolAccount: TREASURY_SOL, treasuryDwellAta: TREASURY_DWELL, distributorDwellAta: DIST_ATA,
+    ...cfgToken,
+    usdcMint: USDC_MINT, dwellMint: DWELL_MINT,
+    treasuryUsdcAta: TREASURY_ATA, revenueUsdcAta: REVENUE_ATA,
+    treasurySolAccount: TREASURY_SOL, revenueSolAccount: REVENUE_SOL,
+    treasuryDwellAta: TREASURY_DWELL,
     dwellDecimals: 6, dwellPayBoostBps: 1000,
     solanaRpcUrl: "http://solana.test", jupiterBaseUrl: "http://jup.test",
     maxSlippageBps: 100, usdcOrderTtlMinutes: 30, brandName: "DWELL",
@@ -1935,115 +2048,175 @@ globalThis.fetch = async (url, opts) => {
     return { status: res.status, body: parsed, headers: res.headers, text };
   };
   const usdcAd = {
-    email: "crypto-ads@example.com", adLine: "Jupiter — the swap that routes everything",
+    adLine: "Jupiter — the swap that routes everything",
     url: "https://jup.ag", budget: 100, cpm: 15, showOnLeaderboard: true,
   };
+  const poolRows = async (campaignId) => Number(
+    (await poolNs.query("select count(*)::int as n from token_campaign_pools where campaign_id = $1", [campaignId])).rows[0].n
+  );
 
-  await check("usdc checkout: gated off everywhere the mint isn't configured", async () => {
-    assert.strictEqual((await api("POST", "/v1/checkout" /* legacy app sanity */, {})).status, 400);
+  await check("crypto v2: USDC/SOL rails need no token; $DWELL rail waits for launch", async () => {
     assert.strictEqual((await api("POST", "/v1/ads/usdc/orders", usdcAd)).status, 404, "legacy deployment: no surface");
-    assert.strictEqual((await apiT("POST", "/v1/ads/usdc/orders", usdcAd)).status, 404, "points app without DWELL_MINT: no surface");
-    assert.strictEqual((await apiT("GET", "/v1/ads/usdc/orders/x")).status, 404);
+    assert.strictEqual((await apiT("POST", "/v1/ads/usdc/orders", usdcAd)).status, 404, "no treasury/revenue accounts: no surface");
+    // The v2 point: with NO mint in existence, USDC and SOL orders still price.
+    cfgUsdc.dwellMint = "";
+    assert.strictEqual((await apiU("POST", "/v1/ads/usdc/orders", usdcAd)).status, 200, "USDC works with no token");
+    assert.strictEqual((await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" })).status, 200, "SOL works with no token");
+    const dwell = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
+    assert.strictEqual(dwell.status, 400);
+    assert.ok(/after token launch/.test(dwell.body.error), "the $DWELL rail names its gate");
+    cfgUsdc.dwellMint = DWELL_MINT;
   });
 
   let orderU;
-  await check("usdc checkout: order prices the exact 90/10 split and quotes the swap", async () => {
-    const bad = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, email: "nope" });
-    assert.strictEqual(bad.status, 400);
-    const tiny = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, budget: 1 });
-    assert.strictEqual(tiny.status, 400, "budget floor enforced");
-
-    const r = await apiU("POST", "/v1/ads/usdc/orders", usdcAd);
+  await check("crypto v2: USDC order — exact 90/10, no quote, email optional", async () => {
+    const mailboxBefore = mailbox.length;
+    const r = await apiU("POST", "/v1/ads/usdc/orders", usdcAd); // note: no email
     assert.strictEqual(r.status, 200);
     orderU = r.body;
     assert.strictEqual(orderU.priceUsdc, 100, "$100 gross");
-    assert.strictEqual(orderU.feeUsdc, 10, "the protocol's 10%, same cut as the card path");
-    assert.strictEqual(orderU.trancheUsdc, 90, "90% is the DWELL buy");
-    assert.strictEqual(orderU.estDwellOut, "45000000000");
-    assert.strictEqual(orderU.minDwellOut, "44550000000", "slippage floor rides the order");
-    assert.ok(orderU.solanaPayUrl.startsWith("solana:"), "Solana Pay transaction-request link");
-    assert.ok(orderU.orderId && orderU.campaignId && orderU.expiresAt);
-  });
+    assert.strictEqual(orderU.feeUsdc, 10, "the protocol's 10% fee leg");
+    assert.strictEqual(orderU.trancheUsdc, 90, "the 90% rewards-pool leg");
+    assert.strictEqual(orderU.estDwellOut, undefined, "v2: nothing is bought");
+    assert.ok(orderU.solanaPayUrl.startsWith("solana:"));
 
-  await check("usdc checkout: build returns one atomic unsigned legacy transaction", async () => {
-    const meta = await apiU("GET", `/v1/ads/usdc/orders/${orderU.orderId}/transaction`);
-    assert.strictEqual(meta.status, 200);
-    assert.strictEqual(meta.body.label, "DWELL ad campaign");
-
-    const noAcct = await apiU("POST", `/v1/ads/usdc/orders/${orderU.orderId}/transaction`, { account: "not-a-key" });
-    assert.strictEqual(noAcct.status, 400);
-
-    const r = await apiU("POST", `/v1/ads/usdc/orders/${orderU.orderId}/transaction`, { account: PAYER });
-    assert.strictEqual(r.status, 200);
-    assert.ok(/protocol fee/.test(r.body.message), "wallet-facing message states the mechanics");
-    const tx = Buffer.from(r.body.transaction, "base64");
-    assert.strictEqual(tx[0], 1, "exactly one required signature — the advertiser");
-    assert.ok(tx.subarray(1, 65).every((b) => b === 0), "signature slot unsigned — the backend never signs");
-    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${orderU.orderId}`);
-    const msg = tx.subarray(65);
+    const built = await apiU("POST", `/v1/ads/usdc/orders/${orderU.orderId}/transaction`, { account: PAYER });
+    assert.strictEqual(built.status, 200);
+    assert.ok(/to the rewards pool/.test(built.body.message) && !/DWELL buy/.test(built.body.message), "wallet message: plain transfers, no buy");
+    const txb = Buffer.from(built.body.transaction, "base64");
+    assert.strictEqual(txb[0], 1, "one signer — the advertiser");
+    assert.ok(txb.subarray(1, 65).every((b) => b === 0), "unsigned — the backend never signs");
+    const msg = txb.subarray(65);
     const has = (b58) => msg.includes(require("../src/solana").base58Decode(b58));
-    assert.ok(has(PAYER), "payer is fee payer");
-    assert.ok(has(TREASURY_ATA), "fee leg targets the treasury vault");
-    assert.ok(has(DIST_ATA), "swap output targets the distributor vault");
-    assert.ok(has(ord.reference), "Solana Pay reference key rides the transaction");
-    assert.ok(msg.includes(Buffer.from(`dwell-usdc-order:${orderU.orderId}`)), "order-id memo");
-  });
+    assert.ok(has(TREASURY_ATA), "fee leg -> treasury USDC account");
+    assert.ok(has(REVENUE_ATA), "revenue leg -> revenue USDC account");
+    assert.ok(has(TOKEN_PROGRAM) && !has(SYSTEM_PROGRAM), "two SPL transfers, no native legs");
+    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${orderU.orderId}`);
+    assert.ok(has(ord.reference), "Solana Pay reference rides the tx");
 
-  await check("usdc checkout: unpaid order stays awaiting; verified payment funds the campaign", async () => {
-    let r = await apiU("GET", `/v1/ads/usdc/orders/${orderU.orderId}`);
-    assert.strictEqual(r.body.status, "awaiting_signature", "nothing on-chain yet");
-
-    // The advertiser signs; the transaction lands with the right amounts.
+    // The advertiser signs; the transaction lands with both legs exact.
     const sig = "sig_" + crypto.randomBytes(8).toString("hex");
     chain.signatures = [sig];
-    chain.tx = paidTx({ reference: r.body.reference, fee: "10000000", dwellOut: "45000000000" });
+    chain.tx = paidUsdcTx({ reference: ord.reference, fee: "10000000", revenue: "90000000" });
+    const after = await apiU("GET", `/v1/ads/usdc/orders/${orderU.orderId}`);
+    assert.strictEqual(after.body.status, "confirmed");
+    assert.strictEqual(after.body.campaignStatus, "pending_review", "paid -> human review, same as card");
 
-    r = await apiU("GET", `/v1/ads/usdc/orders/${orderU.orderId}`);
-    assert.strictEqual(r.body.status, "confirmed");
-    assert.strictEqual(r.body.txSignature, sig);
-    assert.strictEqual(r.body.campaignStatus, "pending_review", "paid -> human review, same as the card path");
-    assert.strictEqual(mailbox.at(-1).to, "crypto-ads@example.com", "advertiser receipt sent");
-
-    // Ledger closure: campaign_credit = the exact $100; reserve_allocation = the 90% tranche.
+    // Funded on the dollar ledger exactly like a card payment; no token rows.
     const led = await campLedger(orderU.campaignId);
     assert.strictEqual(led.campaign_credit.sum, 10_000_000, "$100 in millicents");
-    assert.strictEqual(led.reserve_allocation.sum, 9_000_000, "the 90% earmark");
-
-    // Locked rate (docs/01): dwellOut × 60% ÷ impressions; $100 @ $15 CPM = 6,666 impressions.
-    const pools = await apiU("GET", "/v1/token/pools");
-    const pool_ = pools.body.pools.find((p) => p.campaignId === orderU.campaignId);
-    assert.ok(pool_, "token_campaign_pools row written");
-    assert.strictEqual(pool_.usdcInMicro, 90_000_000, "the swap leg in micro-USDC");
-    assert.strictEqual(pool_.dwellOutWei, "45000000000");
-    assert.strictEqual(pool_.toDistributorWei, "45000000000", "all bought DWELL to the distributor; treasury settles via the shortfall leaf");
-    assert.strictEqual(pool_.lockedRateWei, String((45000000000n * 6000n) / 10000n / 6666n));
-    assert.strictEqual(pool_.txHash, sig);
+    assert.strictEqual(led.reserve_allocation.sum, 9_000_000, "the 90% rewards-pool earmark");
+    assert.strictEqual(await poolRows(orderU.campaignId), 0, "v2 writes no token_campaign_pools row");
+    assert.strictEqual(mailbox.length, mailboxBefore, "no receipt to a synthetic wallet address");
 
     // Idempotent: polling again changes nothing.
-    const again = await apiU("GET", `/v1/ads/usdc/orders/${orderU.orderId}`);
-    assert.strictEqual(again.body.status, "confirmed");
+    await apiU("GET", `/v1/ads/usdc/orders/${orderU.orderId}`);
     assert.strictEqual((await campLedger(orderU.campaignId)).campaign_credit.n, 1, "one funding entry, ever");
-
-    // A confirmed order can't be rebuilt.
-    assert.strictEqual((await apiU("POST", `/v1/ads/usdc/orders/${orderU.orderId}/transaction`, { account: PAYER })).status, 409);
+    chain.signatures = []; chain.tx = null;
   });
 
-  await check("usdc checkout: a landed transaction that shorts the fee fails the order", async () => {
+  await check("crypto v2: real email gets a receipt; a short leg fails the order", async () => {
+    // With a real email the receipt goes out on confirmation.
+    const r1 = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, email: "crypto-ads@example.com" });
+    const ord1 = (await apiU("GET", `/v1/ads/usdc/orders/${r1.body.orderId}`)).body;
+    const sig1 = "sig_" + crypto.randomBytes(8).toString("hex");
+    chain.signatures = [sig1];
+    chain.tx = paidUsdcTx({ reference: ord1.reference, fee: "10000000", revenue: "90000000" });
+    await apiU("GET", `/v1/ads/usdc/orders/${r1.body.orderId}`);
+    assert.strictEqual(mailbox.at(-1).to, "crypto-ads@example.com", "receipt sent to the real address");
     chain.signatures = []; chain.tx = null;
-    const r = await apiU("POST", "/v1/ads/usdc/orders", usdcAd);
+
+    // Fee leg short -> fee_short; no funding.
+    const r2 = await apiU("POST", "/v1/ads/usdc/orders", usdcAd);
+    const ord2 = (await apiU("GET", `/v1/ads/usdc/orders/${r2.body.orderId}`)).body;
+    chain.signatures = ["sig_" + crypto.randomBytes(8).toString("hex")];
+    chain.tx = paidUsdcTx({ reference: ord2.reference, fee: "9000000", revenue: "90000000" });
+    const f2 = await apiU("GET", `/v1/ads/usdc/orders/${r2.body.orderId}`);
+    assert.strictEqual(f2.body.status, "failed");
+    assert.strictEqual(f2.body.failReason, "fee_short");
+    chain.signatures = []; chain.tx = null;
+
+    // Revenue leg short -> revenue_short; no funding.
+    const r3 = await apiU("POST", "/v1/ads/usdc/orders", usdcAd);
+    const ord3 = (await apiU("GET", `/v1/ads/usdc/orders/${r3.body.orderId}`)).body;
+    chain.signatures = ["sig_" + crypto.randomBytes(8).toString("hex")];
+    chain.tx = paidUsdcTx({ reference: ord3.reference, fee: "10000000", revenue: "80000000" });
+    const f3 = await apiU("GET", `/v1/ads/usdc/orders/${r3.body.orderId}`);
+    assert.strictEqual(f3.body.status, "failed");
+    assert.strictEqual(f3.body.failReason, "revenue_short");
+    assert.strictEqual((await campLedger(r3.body.campaignId)).campaign_credit, undefined, "no funding on a short leg");
+    chain.signatures = []; chain.tx = null;
+  });
+
+  await check("crypto v2: SOL rail — two native transfers priced by spot quote", async () => {
+    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.priceUsdc, 100, "pricing stays USD");
+    assert.strictEqual(r.body.estPayTotalSol, 0.5, "$100 ≈ 0.5 SOL at the spot quote");
+
+    const built = await apiU("POST", `/v1/ads/usdc/orders/${r.body.orderId}/transaction`, { account: PAYER });
+    assert.strictEqual(built.status, 200);
+    assert.ok(/≈ 0\.5000 SOL/.test(built.body.message));
+    const msg = Buffer.from(built.body.transaction, "base64").subarray(65);
+    const has = (b58) => msg.includes(require("../src/solana").base58Decode(b58));
+    assert.ok(has(SYSTEM_PROGRAM) && has(TREASURY_SOL) && has(REVENUE_SOL), "two native legs to treasury + revenue");
+
+    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(ord.payFeeUnits, "50000000", "10% of 0.5 SOL in lamports");
     const sig = "sig_" + crypto.randomBytes(8).toString("hex");
     chain.signatures = [sig];
-    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
-    // (first poll saw an empty chain in the race above — set the bad tx now)
-    chain.tx = paidTx({ reference: ord.reference, fee: "9000000", dwellOut: "45000000000" }); // $9 < $10
+    chain.tx = paidSolTx({ reference: ord.reference, feeLamports: "50000000", revenueLamports: "450000000" });
     const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
-    assert.strictEqual(after.body.status, "failed");
-    assert.strictEqual(after.body.failReason, "fee_short");
-    assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit, undefined, "no funding on a bad payment");
+    assert.strictEqual(after.body.status, "confirmed");
+    assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit.sum, 10_000_000, "$100 in millicents");
+    chain.signatures = []; chain.tx = null;
+
+    // Short revenue leg on SOL -> revenue_short.
+    const r2 = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" });
+    const ord2 = (await apiU("GET", `/v1/ads/usdc/orders/${r2.body.orderId}`)).body;
+    chain.signatures = ["sig_" + crypto.randomBytes(8).toString("hex")];
+    chain.tx = paidSolTx({ reference: ord2.reference, feeLamports: "50000000", revenueLamports: "400000000" });
+    assert.strictEqual((await apiU("GET", `/v1/ads/usdc/orders/${r2.body.orderId}`)).body.failReason, "revenue_short");
     chain.signatures = []; chain.tx = null;
   });
 
-  await check("usdc checkout: orders expire; expired orders can't build", async () => {
+  await check("crypto v2: $DWELL rail — one transfer to the treasury, held; +10% impressions", async () => {
+    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.estPayTotalDwell, 50000, "$100 -> 50,000 $DWELL at the spot quote");
+    assert.strictEqual(r.body.boostBps, 1000, "+10% boost surfaced");
+    assert.strictEqual(r.body.boostImpressions, 7332 - 6666, "boost = 10% extra reach");
+
+    const built = await apiU("POST", `/v1/ads/usdc/orders/${r.body.orderId}/transaction`, { account: PAYER });
+    assert.strictEqual(built.status, 200);
+    assert.ok(/paid in \$DWELL/.test(built.body.message) && /company treasury/.test(built.body.message));
+    const msg = Buffer.from(built.body.transaction, "base64").subarray(65);
+    const has = (b58) => msg.includes(require("../src/solana").base58Decode(b58));
+    assert.ok(has(TREASURY_DWELL) && has(PAYER_DWELL), "the full payment goes to the treasury");
+    assert.ok(!has(REVENUE_ATA) && !has(TREASURY_ATA), "no other legs");
+
+    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(ord.payTotalUnits, "50000000000");
+    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
+    chain.signatures = [sig];
+    chain.tx = paidDwellTx({ reference: ord.reference, amount: "50000000000" });
+    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    assert.strictEqual(after.body.status, "confirmed");
+    const led = await campLedger(r.body.campaignId);
+    assert.strictEqual(led.campaign_credit.sum, 10_000_000, "funded at the USD price (boost is reach, not pool)");
+    assert.strictEqual(led.reserve_allocation.sum, 9_000_000, "rewards pool earmarked in dollars");
+    chain.signatures = []; chain.tx = null;
+
+    // Underpaid -> payment_short.
+    const r2 = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
+    const ord2 = (await apiU("GET", `/v1/ads/usdc/orders/${r2.body.orderId}`)).body;
+    chain.signatures = ["sig_" + crypto.randomBytes(8).toString("hex")];
+    chain.tx = paidDwellTx({ reference: ord2.reference, amount: "49000000000" });
+    assert.strictEqual((await apiU("GET", `/v1/ads/usdc/orders/${r2.body.orderId}`)).body.failReason, "payment_short");
+    chain.signatures = []; chain.tx = null;
+  });
+
+  await check("crypto v2: orders expire; expired orders can't build", async () => {
     const r = await apiU("POST", "/v1/ads/usdc/orders", usdcAd);
     await poolNs.query("update usdc_orders set expires_at = now() - interval '1 minute' where id = $1", [r.body.orderId]);
     const got = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
@@ -2051,161 +2224,36 @@ globalThis.fetch = async (url, opts) => {
     assert.strictEqual((await apiU("POST", `/v1/ads/usdc/orders/${r.body.orderId}/transaction`, { account: PAYER })).status, 410);
   });
 
-  // A landed SOL payment: native lamport deltas on the treasury (fee leg) +
-  // the DWELL token delta on the distributor (swap leg).
-  const paidSolTx = ({ reference, feeLamports, dwellOut }) => ({
-    slot: 1235, blockTime: 1700000100,
-    transaction: { message: { accountKeys: [
-      { pubkey: PAYER }, { pubkey: TREASURY_SOL }, { pubkey: DIST_ATA }, { pubkey: reference },
-    ] } },
-    meta: {
-      err: null,
-      preBalances: [2000000000, 0, 0, 0],
-      postBalances: [2000000000 - Number(feeLamports), Number(feeLamports), 0, 0],
-      preTokenBalances: [{ accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: "0" } }],
-      postTokenBalances: [{ accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: dwellOut } }],
-    },
-  });
+  await check("admin transactions: crypto orders from the DB + card charges from Stripe", async () => {
+    // Bad key is rejected.
+    assert.strictEqual((await apiU("GET", "/v1/admin/transactions?adminKey=nope")).status, 401);
 
-  await check("sol rail: USD-priced order pays a native fee leg in one atomic transaction", async () => {
-    // Gate: without a treasury SOL account, SOL orders are refused (configs are
-    // read at request time, so flip the knob in place).
-    cfgUsdc.treasurySolAccount = "";
-    assert.strictEqual((await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" })).status, 400);
-    cfgUsdc.treasurySolAccount = TREASURY_SOL;
+    // With no real Stripe key, the crypto side still lists (many orders exist from
+    // the checks above) and the card side stays empty without calling out.
+    delete cfgUsdc.stripeSecretKey;
+    const off = await apiU("GET", "/v1/admin/transactions?adminKey=test-admin");
+    assert.strictEqual(off.status, 200);
+    assert.ok(off.body.crypto.length > 0, "crypto orders come from the usdc_orders table");
+    assert.strictEqual(off.body.stripeLive, false);
+    assert.deepStrictEqual(off.body.card, [], "no Stripe call when the key is the dev fallback / unset");
+    const o = off.body.crypto[0];
+    assert.ok(["usdc", "sol", "dwell"].includes(o.rail), "each order carries its pay rail");
+    assert.ok(["awaiting_signature", "confirmed", "expired", "failed"].includes(o.status));
 
-    chain.signatures = []; chain.tx = null;
-    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" });
-    assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.body.payCurrency, "sol");
-    assert.strictEqual(r.body.priceUsdc, 100, "pricing stays USD on every rail");
-    assert.strictEqual(r.body.feeUsdc, 10, "same 10% cut");
-    assert.strictEqual(r.body.estPayTotalSol, 0.5, "$100 ≈ 0.5 SOL at the pricing quote");
+    // A confirmed order surfaces its on-chain signature; anonymous checkouts read null, not the synthetic @wallet.invalid.
+    const confirmed = off.body.crypto.find((x) => x.status === "confirmed");
+    assert.ok(confirmed && confirmed.txSignature, "a confirmed order exposes its tx signature");
+    assert.ok(off.body.crypto.some((x) => x.advertiserEmail === null), "wallet.invalid placeholders are hidden");
 
-    const built = await apiU("POST", `/v1/ads/usdc/orders/${r.body.orderId}/transaction`, { account: PAYER });
-    assert.strictEqual(built.status, 200);
-    assert.ok(/≈ 0\.5000 SOL/.test(built.body.message), "wallet message shows the SOL estimate");
-    const tx = Buffer.from(built.body.transaction, "base64");
-    assert.strictEqual(tx[0], 1, "still exactly one signer — the advertiser");
-    const msg = tx.subarray(65);
-    const has = (b58) => msg.includes(require("../src/solana").base58Decode(b58));
-    assert.ok(has(SYSTEM_PROGRAM), "native transfer instruction present");
-    assert.ok(has(TREASURY_SOL), "fee leg targets the treasury's SOL account");
-    assert.ok(has(DIST_ATA), "swap output still targets the distributor vault");
-
-    // The advertiser signs; the transaction lands with the right amounts.
-    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
-    assert.strictEqual(ord.payFeeUnits, "50000000", "10% of 0.5 SOL in lamports");
-    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
-    chain.signatures = [sig];
-    chain.tx = paidSolTx({ reference: ord.reference, feeLamports: "50000000", dwellOut: "45000000000" });
-    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
-    assert.strictEqual(after.body.status, "confirmed");
-    assert.strictEqual(after.body.campaignStatus, "pending_review");
-
-    // Ledger + pool identical to the USDC rail: USD-exact funding, locked rate.
-    const led = await campLedger(r.body.campaignId);
-    assert.strictEqual(led.campaign_credit.sum, 10_000_000, "$100 in millicents");
-    assert.strictEqual(led.reserve_allocation.sum, 9_000_000, "the 90% earmark");
-    const pools = await apiU("GET", "/v1/token/pools");
-    const pool_ = pools.body.pools.find((p) => p.campaignId === r.body.campaignId);
-    assert.strictEqual(pool_.usdcInMicro, 90_000_000, "swap leg recorded at its USD value");
-    assert.strictEqual(pool_.dwellOutWei, "45000000000");
-    chain.signatures = []; chain.tx = null;
-  });
-
-  await check("sol rail: a landed transaction that shorts the native fee fails the order", async () => {
-    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" });
-    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
-    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
-    chain.signatures = [sig];
-    chain.tx = paidSolTx({ reference: ord.reference, feeLamports: "40000000", dwellOut: "45000000000" }); // 0.04 < 0.05 SOL
-    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
-    assert.strictEqual(after.body.status, "failed");
-    assert.strictEqual(after.body.failReason, "fee_short");
-    assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit, undefined, "no funding on a short fee");
-    chain.signatures = []; chain.tx = null;
-  });
-
-  // A landed $DWELL payment: two $DWELL token deltas — treasury (fee) + distributor
-  // (tranche), no swap.
-  const paidDwellTx = ({ reference, feeDwell, trancheDwell }) => ({
-    slot: 1236, blockTime: 1700000200,
-    transaction: { message: { accountKeys: [
-      { pubkey: PAYER }, { pubkey: TREASURY_DWELL }, { pubkey: DIST_ATA }, { pubkey: reference },
-    ] } },
-    meta: {
-      err: null,
-      preTokenBalances: [
-        { accountIndex: 1, mint: DWELL_MINT, uiTokenAmount: { amount: "0" } },
-        { accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: "0" } },
-      ],
-      postTokenBalances: [
-        { accountIndex: 1, mint: DWELL_MINT, uiTokenAmount: { amount: feeDwell } },
-        { accountIndex: 2, mint: DWELL_MINT, uiTokenAmount: { amount: trancheDwell } },
-      ],
-    },
-  });
-
-  await check("$dwell rail: pay directly in $DWELL (no swap), +10% impressions, two token transfers", async () => {
-    // Gate: without a treasury $DWELL account, $DWELL orders are refused.
-    cfgUsdc.treasuryDwellAta = "";
-    assert.strictEqual((await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" })).status, 400);
-    cfgUsdc.treasuryDwellAta = TREASURY_DWELL;
-
-    chain.signatures = []; chain.tx = null;
-    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
-    assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.body.payCurrency, "dwell");
-    assert.strictEqual(r.body.priceUsdc, 100, "pricing stays USD");
-    assert.strictEqual(r.body.feeUsdc, 10);
-    assert.strictEqual(r.body.boostBps, 1000, "+10% boost surfaced");
-    // $100 @ $15 CPM = 6,666 base impressions → +10% = 7,332.
-    assert.strictEqual(r.body.boostImpressions, 7332 - 6666, "boost impressions = 10% of base");
-    assert.strictEqual(r.body.estPayTotalDwell, 50000, "50,000,000,000 raw ÷ 10^6 decimals");
-
-    const built = await apiU("POST", `/v1/ads/usdc/orders/${r.body.orderId}/transaction`, { account: PAYER });
-    assert.strictEqual(built.status, 200);
-    assert.ok(/\$DWELL/.test(built.body.message) && /\+10% impressions/.test(built.body.message), "wallet message names $DWELL + boost");
-    const tx = Buffer.from(built.body.transaction, "base64");
-    assert.strictEqual(tx[0], 1, "one signer — the advertiser");
-    const msg = tx.subarray(65);
-    const has = (b58) => msg.includes(require("../src/solana").base58Decode(b58));
-    assert.ok(has(TREASURY_DWELL), "fee leg targets the treasury's $DWELL account");
-    assert.ok(has(DIST_ATA), "90% leg targets the distributor");
-    assert.ok(!has(WSOL_MINT), "no wSOL — there is no swap on this rail");
-
-    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
-    assert.strictEqual(ord.payFeeUnits, "5000000000", "10% of 50,000,000,000 DWELL");
-    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
-    chain.signatures = [sig];
-    chain.tx = paidDwellTx({ reference: ord.reference, feeDwell: "5000000000", trancheDwell: "45000000000" });
-    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
-    assert.strictEqual(after.body.status, "confirmed");
-    assert.strictEqual(after.body.campaignStatus, "pending_review");
-
-    const led = await campLedger(r.body.campaignId);
-    assert.strictEqual(led.campaign_credit.sum, 10_000_000, "$100 in millicents (boost is reach, not pool)");
-    assert.strictEqual(led.reserve_allocation.sum, 9_000_000, "90% earmark on the actual spend");
-    const pools = await apiU("GET", "/v1/token/pools");
-    const pool_ = pools.body.pools.find((p) => p.campaignId === r.body.campaignId);
-    assert.strictEqual(pool_.dwellOutWei, "45000000000", "the 90% $DWELL sent to the distributor");
-    // locked rate = dwellOut × viewerShare ÷ boosted impressions (7,332)
-    assert.strictEqual(pool_.lockedRateWei, String((45000000000n * 6000n) / 10000n / 7332n));
-    chain.signatures = []; chain.tx = null;
-  });
-
-  await check("$dwell rail: a landed transaction that shorts the $DWELL fee fails the order", async () => {
-    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
-    const { body: ord } = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
-    const sig = "sig_" + crypto.randomBytes(8).toString("hex");
-    chain.signatures = [sig];
-    chain.tx = paidDwellTx({ reference: ord.reference, feeDwell: "4000000000", trancheDwell: "45000000000" }); // 4e9 < 5e9
-    const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
-    assert.strictEqual(after.body.status, "failed");
-    assert.strictEqual(after.body.failReason, "fee_short");
-    assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit, undefined, "no funding on a short $DWELL fee");
-    chain.signatures = []; chain.tx = null;
+    // With a live-looking key, the card side is pulled from Stripe.
+    cfgUsdc.stripeSecretKey = "sk_test_fake";
+    const on = await apiU("GET", "/v1/admin/transactions?adminKey=test-admin");
+    assert.strictEqual(on.body.stripeLive, true);
+    assert.strictEqual(on.body.card.length, 1, "one charge pulled from Stripe");
+    assert.strictEqual(on.body.card[0].amountUsd, 25, "amount is cents ÷ 100");
+    assert.strictEqual(on.body.card[0].brand, "visa");
+    assert.strictEqual(on.body.card[0].last4, "4242");
+    assert.strictEqual(on.body.card[0].email, "card-buyer@example.com");
   });
 
   sU.close();

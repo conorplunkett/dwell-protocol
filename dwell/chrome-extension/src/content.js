@@ -84,6 +84,10 @@
 
   let ads = [];
   let mockAd = (typeof self !== "undefined" && self.BB_MOCK_AD) || null;
+  // House/default ad — filler shown only when the auction is empty. Never billed.
+  let houseAd = (typeof self !== "undefined" && self.BB_DEFAULT_AD) || null;
+  // Admin killswitch for the house ad (mirrors /v1/config → houseAdEnabled).
+  let houseEnabled = true;
   let enabled = true;
   let testMode = false;
   let active = false;
@@ -123,7 +127,11 @@
   // cycling through several ads in one session read as spammy.
   function currentAd() {
     if (testMode) return mockAd || (ads.length ? ads[0] : null);
-    return ads.length ? ads[0] : null;
+    if (ads.length) return ads[0];
+    // No live inventory: fall back to the house ad so the bar promotes DWELL
+    // instead of going blank — unless the admin turned it off. It's filler:
+    // tick() never bills it (see below).
+    return houseEnabled ? houseAd : null;
   }
 
   bar.addEventListener("click", () => {
@@ -134,7 +142,8 @@
     // window.open MUST run synchronously inside the click gesture — awaiting
     // the service-worker round-trip first drops the user-activation and popup
     // blockers silently eat the navigation. The click report rides along async.
-    send({ type: "BB_CLICK", mock: !!ad.mock, campaignId: ad.id });
+    // The house/default ad reports nothing — it just opens the advertise page.
+    if (!ad.house) send({ type: "BB_CLICK", mock: !!ad.mock, campaignId: ad.id });
     // Only ever open an https destination. The backend validates the URL at
     // advertiser checkout, but the content script must not trust that: an
     // unexpected scheme (javascript:, data:, a custom app scheme) from a bad ad
@@ -334,6 +343,10 @@
     render();
     // one impression every 2s of serving — only while actually visible
     if (!bar.classList.contains("bb-show")) return;
+    // The house/default ad is filler shown only when the auction is empty — it
+    // must never count an impression or view, since no advertiser paid for it.
+    const shown = currentAd();
+    if (shown && shown.house) return;
     const now = Date.now();
     if (now - lastImpressionAt >= 2000) {
       // The FIRST qualifying view of a session is one ad the user actually saw.
@@ -381,6 +394,7 @@
     // Honour both the user toggle and the server killswitch (state.serving).
     enabled = state ? state.enabled !== false && state.serving !== false : true;
     testMode = state ? !!state.testMode : false;
+    houseEnabled = state ? state.houseAdEnabled !== false : true;
     // Only ever show what the service worker vouches for (live, funded
     // inventory). No local fallback to the bundled demo list: an ad that no
     // campaign paid for must never render or count as earned.
@@ -403,6 +417,8 @@
       testMode = !!s.testMode;
       if (Array.isArray(s.ads)) ads = s.ads;
       if (s.mockAd) mockAd = s.mockAd;
+      if (s.houseAd) houseAd = s.houseAd;
+      if (typeof s.houseAdEnabled === "boolean") houseEnabled = s.houseAdEnabled;
     },
     _stopTimers: () => {
       clearInterval(pollTimer);

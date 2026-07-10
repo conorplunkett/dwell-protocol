@@ -3,7 +3,7 @@
 // service worker (via importScripts). These brands never paid anything, so
 // they are NEVER served as real ads and never earn: real serving uses only
 // the live inventory from /v1/ads (funded campaigns), and when the auction
-// is empty no ad shows at all.
+// is empty the bar shows the non-billable house ad (BB_DEFAULT_AD) instead.
 (function (g) {
   // Recent-change % badge helpers, shared by content.js + popup.js. `timescale:
   // "auto"` renders whichever window is biggest; a concrete key renders that one.
@@ -72,5 +72,23 @@
     url: "https://dwellprotocol.com/?test=1",
     cat: "test",
     mock: true
+  };
+
+  // The house / default ad. Shown ONLY when the live auction is empty (no funded
+  // inventory) so the bar promotes DWELL itself instead of going blank. It is
+  // filler, not a campaign: it NEVER counts an impression or view and NEVER earns
+  // (no advertiser paid for it), and clicking it opens the "advertise on DWELL"
+  // page rather than a sponsor URL. `house: true` is the flag the content script
+  // keys off to suppress billing for it.
+  g.BB_DEFAULT_AD = {
+    brand: "$empty",
+    chip: "",            // empty label → renders as a blank black square
+    color: "#000000",
+    ink: "#fff",
+    line: "promote your token now",
+    url: "https://dwellprotocol.com/#advertisers",
+    cat: "house",
+    change: 999,         // renders as (+999%)
+    house: true
   };
 })(typeof self !== "undefined" ? self : window);

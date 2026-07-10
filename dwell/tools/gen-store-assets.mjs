@@ -22,7 +22,17 @@
 //   marquee-1400x560.png                 1400×560  Marquee promo tile
 //   promo-small-440x280.png              440×280   Small promo tile
 //
-// Chrome allows at most 5 screenshots per listing — pick your 5 from the seven
+// Plus the "-dwell" set — the same seven screenshots, guaranteed to show ONLY
+// the current token product (no pre-rebrand sponsor bar anywhere): the three
+// chat captures get the retired bar erased and the live token pill composited
+// in its place (see DWELL_SHOTS below); the other four are the same fresh
+// captures written under the -dwell name:
+//   screenshot-chatgpt-dwell-1280x800.png       screenshot-claude-dwell-1280x800.png
+//   screenshot-gemini-dwell-1280x800.png        screenshot-hero-dwell-1280x800.png
+//   screenshot-install-dwell-1280x800.png       screenshot-popup-credits-dwell-640x400.png
+//   screenshot-popup-market-dwell-640x400.png
+//
+// Chrome allows at most 5 screenshots per listing — pick your 5 from the
 // screenshot-* files above (sizes may be mixed: 1280×800 and/or 640×400).
 //
 // Run:  make store-assets   (or:  node tools/gen-store-assets.mjs)
@@ -71,7 +81,7 @@ const CREAM = (C.cream.replace("#", "").match(/../g) || []).map((h) => parseInt(
 
 const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">`;
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">`;
 
 // shared brand chrome (background + framed logo row) used by both promo tiles
 const brandBg = (frameInset, radius) => `
@@ -134,6 +144,73 @@ const smallHtml = () => `<!doctype html><html><head><meta charset="utf-8">${FONT
   <p class="sub"><b>Dwells</b> redeem for $DWELL, Claude credits, or cash.</p>
   <div class="pill"><span class="chip">L</span> <span class="name">Linear</span> <span class="line">· Plan your next sprint faster</span></div>
 </div></body></html>`;
+
+// ── the "-dwell" chat screenshots: same captures, current token pill ─────────
+// The three chat captures in screenshots/ still show the retired pre-rebrand
+// sponsor bar. Each -dwell variant erases that bar (a per-row horizontal lerp
+// between the background sampled just outside it — seamless on both the flat
+// light UIs and Gemini's vignetted dark one) and composites the CURRENT pill
+// at the same anchor, built from the extension's own stylesheet (inject.css)
+// and demo inventory (ads.js) so these shots can never drift from the shipped
+// bar. `pill` is the old bar's bbox in raw capture px, measured from the PNGs;
+// the captures are ~2× (old bar 75px tall vs the live bar's ~38 CSS px), hence
+// the half-size viewport at deviceScaleFactor 2 in the capture loop below.
+// Surface → token mapping mirrors the dwellad_v1 spot (Claude $troll,
+// ChatGPT $fwog, Gemini $ansem).
+const DWELL_SHOTS = [
+  { src: "ChatGPT Browser Thinking Cropped.png", out: "screenshot-chatgpt-dwell-1280x800.png", brand: "$fwog", pill: [73, 356, 730, 431] },
+  { src: "Claude Browser Thinking Small.png", out: "screenshot-claude-dwell-1280x800.png", brand: "$troll", pill: [136, 543, 793, 618] },
+  { src: "Gemini Browser Thinking.png", out: "screenshot-gemini-dwell-1280x800.png", brand: "$ansem", pill: [100, 426, 763, 501] },
+];
+
+const dwellShotHtml = (base, imgDataUri, pill, brand) => `<!doctype html><html><head><meta charset="utf-8">${FONTS}
+<link rel="stylesheet" href="${base}/chrome-extension/src/inject.css"><style>
+  *{margin:0;padding:0} canvas{display:block}
+  /* the injected bar is fixed + hidden by default; pin it over the erased spot
+     (left/top set inline once its rendered height is known) */
+  .bb-bar{position:absolute;display:flex;opacity:1;transform:none;bottom:auto}
+</style></head><body>
+<canvas id="cv"></canvas>
+<script src="${base}/chrome-extension/src/ads.js"></script>
+<script>
+(async () => {
+  const PILL = ${JSON.stringify(pill)}, PAD = 14; // erase the bar plus its soft shadow
+  const img = new Image(); img.src = ${JSON.stringify(imgDataUri)}; await img.decode();
+  const cv = document.getElementById("cv"), W = img.naturalWidth, H = img.naturalHeight;
+  cv.width = W; cv.height = H; cv.style.width = W / 2 + "px"; cv.style.height = H / 2 + "px";
+  const ctx = cv.getContext("2d"); ctx.drawImage(img, 0, 0);
+  const ex0 = PILL[0] - PAD, ey0 = PILL[1] - PAD, ex1 = PILL[2] + PAD, ey1 = Math.min(PILL[3] + PAD, H);
+  const w = ex1 - ex0, h = ey1 - ey0;
+  const L = ctx.getImageData(ex0 - 6, ey0, 1, h).data, R = ctx.getImageData(ex1 + 6, ey0, 1, h).data;
+  const fill = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const t = x / (w - 1), i = (y * w + x) * 4;
+    for (let c = 0; c < 3; c++) fill.data[i + c] = Math.round(L[y * 4 + c] * (1 - t) + R[y * 4 + c] * t);
+    fill.data[i + 3] = 255;
+  }
+  ctx.putImageData(fill, ex0, ey0);
+  // the current pill, exactly as content.js builds it, from the real demo
+  // inventory — chip image served statically (no chrome.runtime.getURL here)
+  const ad = BB_ADS.find((a) => a.brand === ${JSON.stringify(brand)});
+  const badge = BB_changeBadge(ad);
+  const bar = document.createElement("div");
+  bar.className = "bb-bar";
+  bar.innerHTML = '<span class="bb-chip"></span><span class="bb-name"></span><span class="bb-change"></span><span class="bb-line"></span>';
+  const chip = bar.querySelector(".bb-chip");
+  chip.innerHTML = '<img alt="" src="${base}/chrome-extension/' + ad.img + '">';
+  chip.style.background = ad.color || "";
+  bar.querySelector(".bb-name").textContent = ad.brand;
+  const change = bar.querySelector(".bb-change");
+  change.textContent = badge.text; change.classList.add(badge.dir);
+  bar.querySelector(".bb-line").textContent = ad.line;
+  document.body.appendChild(bar);
+  // center the new bar where the old one sat (raw px → /2 CSS px)
+  bar.style.left = PILL[0] / 2 + "px";
+  bar.style.top = (PILL[1] + PILL[3]) / 4 - bar.offsetHeight / 2 + "px";
+  await document.fonts.ready;
+  document.title = "bb-ready";
+})();
+</script></body></html>`;
 
 // ── throwaway static server so we can screenshot the live site ───────────────
 const MIME = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript",
@@ -232,11 +309,26 @@ try {
   await popup.screenshot({ path: popupAPath, clip: { x: 0, y: 0, width: pm.W, height: pm.aEnd + 14 } });
   await popup.screenshot({ path: popupBPath, clip: { x: 0, y: pm.bStart - 12, width: pm.W, height: (pm.bEnd + 16) - (pm.bStart - 12) } });
 
+  // ── -dwell chat shots: erase the retired bar, composite the live pill ──
+  const SS = join(ROOT, "screenshots");
+  const dwellPaths = {};
+  for (const shot of DWELL_SHOTS) {
+    const buf = readFileSync(join(SS, shot.src));
+    // PNG IHDR: width/height at byte offsets 16/20
+    const W = buf.readUInt32BE(16), H = buf.readUInt32BE(20);
+    const pg = await browser.newPage({ viewport: { width: W / 2, height: H / 2 }, deviceScaleFactor: 2 });
+    // data URI (not a server URL) so canvas getImageData isn't tainted from about:blank
+    await pg.setContent(dwellShotHtml(base, `data:image/png;base64,${buf.toString("base64")}`, shot.pill, shot.brand), { waitUntil: "networkidle" });
+    await pg.waitForFunction(() => document.title === "bb-ready", { timeout: 15000 });
+    await pg.waitForTimeout(300);
+    dwellPaths[shot.out] = join(tmp, shot.out);
+    await pg.screenshot({ path: dwellPaths[shot.out], clip: { x: 0, y: 0, width: W / 2, height: H / 2 } });
+  }
+
   // ── finalize each to exact size / 24-bit no-alpha via the Python fitter ──
   const fit = (src, name, w, h, mode, bg, fmt) =>
     execFileSync("python3", [PNG_FIT, src, join(OUT, name), String(w), String(h), mode, bg, fmt], { stdio: "inherit" });
 
-  const SS = join(ROOT, "screenshots");
   fit(ICON_SRC, "store-icon-128x128.png", 128, 128, "contain", "auto", "rgba");
   // chat-in-context screenshots (1280×800) — the ad while the AI thinks
   fit(join(SS, "ChatGPT Browser Thinking Cropped.png"), "screenshot-chatgpt-1280x800.png", 1280, 800, "contain", "auto", "rgb");
@@ -251,6 +343,14 @@ try {
   // promo tiles
   fit(marqueePath, "marquee-1400x560.png", 1400, 560, "contain", "white", "rgb");
   fit(smallPath, "promo-small-440x280.png", 440, 280, "contain", "white", "rgb");
+  // the -dwell set: chat shots with the live token pill composited in, plus the
+  // same fresh hero/install/popup captures under the -dwell name — a parallel
+  // seven that shows ONLY the current token product
+  for (const shot of DWELL_SHOTS) fit(dwellPaths[shot.out], shot.out, 1280, 800, "contain", "auto", "rgb");
+  fit(heroPath, "screenshot-hero-dwell-1280x800.png", 1280, 800, "cover", "auto", "rgb");
+  fit(installPath, "screenshot-install-dwell-1280x800.png", 1280, 800, "contain", "auto", "rgb");
+  fit(popupAPath, "screenshot-popup-credits-dwell-640x400.png", 640, 400, "contain", CREAM, "rgb");
+  fit(popupBPath, "screenshot-popup-market-dwell-640x400.png", 640, 400, "contain", CREAM, "rgb");
   console.log("\ngen-store-assets: store-assets/ regenerated.");
 } finally {
   await browser.close();

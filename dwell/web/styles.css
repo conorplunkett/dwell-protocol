@@ -355,6 +355,14 @@ button.wl-adv { cursor: pointer; }
 #boost-toggle.open:hover { background: var(--accent-d); border-color: var(--accent-d); }
 #boost-toggle.open::after { content: " ↑"; }
 
+/* Symmetric arrow flanking the label on BOTH ends, and match a quick-install
+   column's width (the npm install box). Both arrows flip to ↑ while open. */
+#boost-toggle { justify-content: space-between; gap: 14px; width: 364px; max-width: 100%; }
+#boost-toggle::before { content: "↓"; }
+#boost-toggle::after { content: "↓"; white-space: normal; }
+#boost-toggle.open::before,
+#boost-toggle.open::after { content: "↑"; }
+
 /* ── BOOST FOLD — the advertiser card unfolding out of the hero button.
    grid-template-rows 0fr→1fr animates the height; the inner scale/translate
    (transform-origin at the button) makes the card spread + grow out of it.
@@ -427,6 +435,78 @@ button.wl-adv { cursor: pointer; }
   margin: 36px 0 16px; font-family: var(--mono); font-weight: 700;
   font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
 }
+
+/* "Start earning $N USDC while you use AI" — the label reads as a sentence with
+   a physical LCD tally counter dropped inline. Larger + wrappable so the device
+   sits comfortably in the run of text. */
+.earn-line {
+  flex-wrap: wrap; gap: 10px 12px; font-size: 15px; margin: 44px 0 18px;
+}
+.earn-lead, .earn-trail { line-height: 1; }
+
+/* ── USDC LCD counter ──────────────────────────────────────────────────────
+   A physical seven-segment tally: dark bezel housing a green-on-black glass
+   screen. Sizing is driven by font-size on .usdc-counter — every segment
+   dimension below is in em, so one size knob scales the whole device. */
+.usdc-counter {
+  --seg-thick: .15em;         /* segment bar thickness */
+  --digit-w: .66em;           /* one digit cell width */
+  --digit-h: 1.12em;          /* one digit cell height */
+  display: inline-flex; flex-direction: column; align-items: stretch; gap: .22em;
+  font-size: 30px; padding: .2em .26em .16em;
+  border-radius: 7px;
+  background: linear-gradient(180deg, var(--lcd-bezel-a), var(--lcd-bezel-b));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    inset 0 -2px 5px rgba(0,0,0,.55),
+    0 4px 10px -3px rgba(0,0,0,.5);
+  transform: translateY(-.02em);
+}
+.usdc-counter-screen {
+  display: flex; align-items: center; gap: .12em;
+  padding: .16em .28em; border-radius: 4px;
+  background:
+    radial-gradient(120% 140% at 50% 0%, rgba(77,255,160,.08), transparent 60%),
+    var(--lcd-screen);
+  box-shadow: inset 0 0 .5em rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.6);
+}
+.usdc-sign {
+  font-family: var(--mono); font-weight: 700; font-size: .84em; line-height: 1;
+  color: var(--lcd-on); text-shadow: 0 0 .32em var(--lcd-glow);
+  transform: translateY(-.02em);
+}
+.usdc-digits { display: inline-flex; gap: .12em; }
+
+/* One seven-segment digit. Segments are absolutely-positioned bars toggled via
+   .on (script.js sets it per digit). Unlit bars stay faintly visible = ghosts. */
+.seg7 { position: relative; width: var(--digit-w); height: var(--digit-h); }
+.seg7 > i {
+  position: absolute; display: block; border-radius: 1px;
+  background: var(--lcd-off); transition: background .28s ease, box-shadow .28s ease;
+}
+.seg7 > i.on {
+  background: var(--lcd-on);
+  box-shadow: 0 0 .18em var(--lcd-glow), 0 0 .34em var(--lcd-glow);
+}
+/* Horizontal bars (a top, g middle, d bottom). */
+.seg7 .sa, .seg7 .sg, .seg7 .sd {
+  left: var(--seg-thick); right: var(--seg-thick); height: var(--seg-thick);
+}
+.seg7 .sa { top: 0; }
+.seg7 .sg { top: calc((var(--digit-h) - var(--seg-thick)) / 2); }
+.seg7 .sd { bottom: 0; }
+/* Vertical bars (f/b upper, e/c lower). */
+.seg7 .sf, .seg7 .sb, .seg7 .se, .seg7 .sc {
+  width: var(--seg-thick);
+  height: calc((var(--digit-h) - 3 * var(--seg-thick)) / 2 + var(--seg-thick));
+}
+.seg7 .sf { left: 0; top: calc(var(--seg-thick) / 2); }
+.seg7 .sb { right: 0; top: calc(var(--seg-thick) / 2); }
+.seg7 .se { left: 0; bottom: calc(var(--seg-thick) / 2); }
+.seg7 .sc { right: 0; bottom: calc(var(--seg-thick) / 2); }
+
+@media (max-width: 520px) { .usdc-counter { font-size: 25px; } }
+@media (prefers-reduced-motion: reduce) { .seg7 > i { transition: none; } }
 
 /* DOWNLOAD CTAs — three quick installs above the surfaces showcase. Chrome +
    Desktop are greyed "coming soon"; Terminal is a compact copy-paste. */
@@ -794,7 +874,7 @@ button.wl-adv { cursor: pointer; }
 .tsbtn:hover { border-color: var(--gray); }
 .tsbtn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(var(--accent-rgb),.12); }
 .tsbtn.is-active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.tsbtn-auto { margin-left: auto; } /* Auto sits at the far right of the group */
+.tsbtn-auto { margin-left: 0; } /* Auto sits right after 1d, not pinned to the row's far edge */
 /* The little "?" helper pinned to the Auto button's top-right corner. */
 .tshelp {
   position: absolute; top: -7px; right: -7px; width: 16px; height: 16px;
@@ -892,7 +972,7 @@ button.wl-adv { cursor: pointer; }
 .est-head { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray); }
 .est-sub { font-size: 13px; color: var(--gray-2); }
 /* The budget is the big editable number in this box. */
-.est-budget { display: flex; align-items: baseline; gap: 3px; margin: 2px 0; }
+.est-budget { display: flex; align-items: baseline; gap: 8px; margin: 2px 0; }
 .est-budget-prefix { font-size: 30px; font-weight: 800; letter-spacing: -.03em; color: var(--ink); }
 .est-budget input {
   font-size: 34px; font-weight: 800; letter-spacing: -.03em; color: var(--ink);
@@ -947,7 +1027,7 @@ button.wl-adv { cursor: pointer; }
 .adpreview-dots { display: inline-flex; gap: 5px; flex: none; }
 .adpreview-dots i {
   width: 5px; height: 5px; border-radius: 50%;
-  background: var(--prev-accent, var(--accent)); opacity: .18;
+  background: var(--gray-2); opacity: .18;
 }
 /* Cumulative "thinking" sequence: 1 dot → 2 dots → 3 dots → reset. */
 .adpreview-dots i:nth-child(1) { animation: adprev-d1 1.5s linear infinite; }
@@ -995,6 +1075,10 @@ button.wl-adv { cursor: pointer; }
   font-weight: 600; color: var(--gray); transition: color .15s; white-space: nowrap;
 }
 .paytab.active { color: var(--ink); }
+/* A not-yet-open rail: visible but inert, faded label, no pointer — the same
+   "flat, no hover feedback" treatment as the Chrome-extension download CTA
+   (.dl-btn.dl-soon) uses for not-shipped-yet actions. */
+.paytab:disabled { color: var(--gray-2); cursor: default; }
 /* "+10%" boost marker on the $DWELL tab — a small green (functional-success)
    chip inline right after the label. The tab's own flex centering (gap +
    justify-content: center) keeps the label+badge group centered as a unit. */
@@ -1003,6 +1087,20 @@ button.wl-adv { cursor: pointer; }
   font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .02em;
   line-height: 1; padding: 2px 4px; border-radius: 5px;
   color: var(--ok-fg); background: var(--ok-bg); border: 1px solid var(--ok-line);
+}
+/* Why the $DWELL tab is disabled surfaces on hover/focus only (data-tip on
+   the button itself), reusing the .tshelp dark-tooltip look instead of a
+   permanent tag. Hover styling still applies to disabled buttons even though
+   click/focus-by-tab is blocked by the `disabled` attribute. */
+.paytab[data-tip]::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%;
+  transform: translateX(-50%) translateY(3px); width: 170px; background: #1b1e25; color: #fff;
+  font-size: 12px; font-weight: 500; line-height: 1.4; text-align: center; padding: 8px 10px;
+  border-radius: 9px; box-shadow: 0 8px 24px -10px rgba(0,0,0,.5); opacity: 0; pointer-events: none;
+  transition: opacity .14s, transform .14s; z-index: 6;
+}
+.paytab[data-tip]:hover::after, .paytab[data-tip]:focus-visible::after {
+  opacity: 1; transform: translateX(-50%) translateY(0);
 }
 @media (max-width: 560px) {
   .paytab { flex-direction: column; gap: 3px; font-size: 12px; padding: 8px 4px; }
@@ -1034,6 +1132,11 @@ button.wl-adv { cursor: pointer; }
   margin-top: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface-inset); display: flex; flex-direction: column; gap: 8px;
 }
+/* The order panel starts hidden and only appears after the advertiser clicks
+   Pay (script.js unhides it). Without this, display:flex above beats the
+   `hidden` attribute and the panel — with its "Waiting for your wallet's
+   signature…" line — shows on load, before any purchase. */
+.usdc-panel[hidden] { display: none; }
 .usdc-row {
   display: flex; justify-content: space-between; align-items: baseline;
   font-size: var(--type-body-size); color: var(--gray);
@@ -1656,9 +1759,9 @@ button.wl-adv { cursor: pointer; }
    becomes the tilting .r3d-card, which leans toward the cursor on a
    critically-damped spring, pops on hover, and casts a grey shadow that
    deepens and shifts as it lifts — so it reads as a solid block rising off the
-   page. A soft white gloss (.r3d-sheen) tracks the pointer across it. Driven
-   by one rAF loop in float3d.js. Honors prefers-reduced-motion (falls back to
-   a simple CSS hover lift, no tilt/gloss). */
+   page. No rainbow, no gloss overlay. Driven by one rAF loop in float3d.js.
+   Honors prefers-reduced-motion (falls back to a simple CSS hover lift, no
+   tilt). */
 .r3d { position: relative; perspective: 1000px; }
 .r3d-card {
   position: relative; z-index: 1;
@@ -1667,19 +1770,12 @@ button.wl-adv { cursor: pointer; }
      here would fight it and lag. */
   transition: none;
 }
-.r3d-sheen {
-  position: absolute; inset: 0; z-index: 5; border-radius: inherit;
-  pointer-events: none; opacity: 0; mix-blend-mode: screen;
-  background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%),
-    rgba(255, 255, 255, .4), rgba(255, 255, 255, 0) 60%);
-}
 @media (prefers-reduced-motion: reduce) {
   .r3d-card { transition: transform .25s ease, box-shadow .25s ease; }
   .r3d:hover .r3d-card {
     transform: translateY(-4px);
     box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .38);
   }
-  .r3d-sheen { display: none; }
 }
 
 /* Safety net: a floating block's hover tilt/scale must never extend the

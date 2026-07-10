@@ -330,6 +330,18 @@ function createRepo(pool) {
   }
 
   return {
+    // ---------- diagnostics ----------
+    // Durable record of errors the request otherwise swallows (OAuth callbacks
+    // redirect on failure). Never throws — diagnostics must not break the caller.
+    async recordDiagError(method, path, err) {
+      try {
+        await pool.query(
+          "insert into diag_errors (method, path, message, stack) values ($1,$2,$3,$4)",
+          [method, path, String(err?.message || err), String(err?.stack || "")]
+        );
+      } catch (_e) { /* ignore */ }
+    },
+
     // ---------- devices ----------
     async registerDevice() {
       const secret = crypto.randomBytes(32).toString("hex");
@@ -1104,7 +1116,7 @@ function createRepo(pool) {
     // Find or create a user from a Google/Apple OAuth callback, then open a
     // web session. Looks up by provider ID first, then by email. Patches any
     // missing fields on an existing account.
-    async upsertUserByOAuth({ email, googleId, appleId, twitterId, referralCode, emailVerified }, sessionTtlMs) {
+    async upsertUserByOAuth({ email, googleId, appleId, twitterId, twitterUsername, referralCode, emailVerified }, sessionTtlMs) {
       return tx(async (c) => {
         // Only a provider-verified email may match or merge into an existing
         // account — otherwise an attacker who controls an OAuth identity with an
@@ -1140,13 +1152,15 @@ function createRepo(pool) {
           if (googleId && !found.google_id)   { sets.push(`google_id = $${vals.length + 1}`);  vals.push(googleId); }
           if (appleId && !found.apple_id)     { sets.push(`apple_id = $${vals.length + 1}`);   vals.push(appleId); }
           if (twitterId && !found.twitter_id) { sets.push(`twitter_id = $${vals.length + 1}`); vals.push(twitterId); }
+          // Keep the X handle fresh (it can change), but only when we have one.
+          if (twitterUsername)                { sets.push(`twitter_username = $${vals.length + 1}`); vals.push(twitterUsername); }
           await c.query(`update users set ${sets.join(", ")} where id = $1`, vals);
           userId = found.id;
         } else {
           const r = await c.query(
-            `insert into users (email, email_verified, google_id, apple_id, twitter_id)
-             values ($1, true, $2, $3, $4) returning id`,
-            [matchEmail || null, googleId || null, appleId || null, twitterId || null]
+            `insert into users (email, email_verified, google_id, apple_id, twitter_id, twitter_username)
+             values ($1, true, $2, $3, $4, $5) returning id`,
+            [matchEmail || null, googleId || null, appleId || null, twitterId || null, twitterUsername || null]
           );
           userId = r.rows[0].id;
           await applyCode(c, userId, referralCode); // first sign-in only; affiliate or referral
@@ -1197,7 +1211,7 @@ function createRepo(pool) {
     async userForSession(sessionToken) {
       if (!sessionToken) return null;
       const { rows } = await pool.query(
-        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled, u.wallet_address
+        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled, u.wallet_address, u.twitter_username
            from web_sessions s join users u on u.id = s.user_id
           where s.token = $1 and s.expires_at > now()`,
         [sessionToken]
@@ -1430,6 +1444,31 @@ function createRepo(pool) {
       return rows[0] || null;
     },
 
+    // Crypto orders for the admin transactions view: every rail, every status
+    // (awaiting_signature / confirmed / expired / failed), newest first, joined
+    // to the campaign + advertiser for context. Read-only.
+    async listCryptoOrders({ limit, status } = {}) {
+      const n = Math.max(1, Math.min(200, parseInt(limit, 10) || 100));
+      const params = [];
+      let where = "";
+      if (status) { params.push(status); where = `where o.status = $${params.length}`; }
+      params.push(n); const lim = `$${params.length}`;
+      const { rows } = await pool.query(
+        `select o.id, o.pay_currency, o.status, o.fail_reason,
+                o.price_micro_usdc, o.pay_total_units, o.pay_fee_units,
+                o.reference_pubkey, o.tx_signature, o.created_at, o.expires_at,
+                c.brand, c.ad_line, a.email as advertiser_email
+           from usdc_orders o
+           join campaigns c on c.id = o.campaign_id
+           left join advertisers a on a.id = c.advertiser_id
+           ${where}
+          order by o.created_at desc
+          limit ${lim}`,
+        params
+      );
+      return rows;
+    },
+
     // Each build re-quotes (a built transaction is only ~60s of blockhash
     // validity); the stored quote + slippage floor — and, on the SOL rail, the
     // re-priced lamport amounts — track the latest build so the verifier
@@ -1454,18 +1493,18 @@ function createRepo(pool) {
     },
 
     // The one state transition that funds a campaign from a verified on-chain
-    // payment. Mirrors markCampaignPaid's exactly-once shape (only an
-    // awaiting_signature order and a pending_payment campaign transition) and
-    // adds the token_campaign_pools row — the locked-rate source of truth:
-    //   locked rate = dwellOut × viewer share ÷ impressions bought.
-    // All bought DWELL goes to the distributor; the treasury's 30–40% leg
-    // settles via the Merkle root's treasury shortfall leaf (docs/04 §A).
-    async confirmUsdcOrder({ orderId, txSignature, dwellOut, tokenSplit, viewerShareBps }) {
+    // payment (tokenomics v2). Mirrors markCampaignPaid's exactly-once shape
+    // (only an awaiting_signature order and a pending_payment campaign
+    // transition) and funds the campaign on the dollar ledger exactly like a
+    // card payment: campaign_credit for the exact charge plus the rewards-pool
+    // earmark. No token machinery — viewers earn dollar-denominated dwells on
+    // every rail.
+    async confirmUsdcOrder({ orderId, txSignature, tokenSplit }) {
       return tx(async (c) => {
         const ord = await c.query(
           `update usdc_orders set status = 'confirmed', tx_signature = $2
             where id = $1 and status = 'awaiting_signature'
-            returning campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc`,
+            returning campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc, pay_currency`,
           [orderId, txSignature]
         );
         if (!ord.rows[0]) return false; // already confirmed/expired/failed — idempotent no-op
@@ -1493,7 +1532,7 @@ function createRepo(pool) {
           `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
            values ('campaign_credit', $1, $2, $3)`,
           [funded.toString(), o.campaign_id,
-           JSON.stringify({ impressions: rows[0].impressions_total, rail: "usdc", tx: txSignature })]
+           JSON.stringify({ impressions: rows[0].impressions_total, rail: o.pay_currency, tx: txSignature })]
         );
         if (tokenSplit) {
           const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
@@ -1501,19 +1540,9 @@ function createRepo(pool) {
             `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
              values ('reserve_allocation', $1, $2, $3)`,
             [tranche.toString(), o.campaign_id,
-             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: "usdc" })]
+             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: o.pay_currency })]
           );
         }
-
-        const impressions = BigInt(rows[0].impressions_total);
-        const lockedRate = (BigInt(dwellOut) * BigInt(viewerShareBps)) / 10000n / impressions;
-        await c.query(
-          `insert into token_campaign_pools
-             (campaign_id, usdc_in_micro, dwell_out_wei, to_distributor_wei,
-              to_treasury_wei, locked_rate_wei, tx_hash)
-           values ($1,$2,$3,$3,0,$4,$5)`,
-          [o.campaign_id, o.tranche_micro_usdc, String(dwellOut), lockedRate.toString(), txSignature]
-        );
 
         return {
           email: rows[0].email,
@@ -2128,7 +2157,7 @@ function createRepo(pool) {
         `select p.id, p.user_id, p.amount_cents as net_cents, p.created_at,
                 (l.meta->>'grossCents')::int as gross_cents,
                 (l.meta->>'feeCents')::int as fee_cents,
-                u.email, u.twitter_id, u.stripe_account_id, u.payouts_enabled,
+                u.email, u.twitter_id, u.twitter_username, u.stripe_account_id, u.payouts_enabled,
                 u.onboarding_posted_at, u.onboarding_post_verified_at,
                 u.onboarding_post_url, u.onboarding_post_checked_at
            from payouts p

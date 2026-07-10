@@ -135,6 +135,7 @@ const TABS = [
   { id: "daily", label: "Daily Metrics", render: renderDaily },
   { id: "ads", label: "Ads", render: renderAds },
   { id: "advertisers", label: "Advertisers", render: renderAdvertisers },
+  { id: "transactions", label: "Transactions", render: renderTransactions },
   { id: "redemptions", label: "Redemptions", render: renderRedemptions },
   { id: "income", label: "Income", render: renderIncome },
   { id: "users", label: "Users", render: renderUsers },
@@ -416,6 +417,66 @@ async function renderAdvertisers(view) {
     ])));
 }
 
+// Purchases across every rail: crypto orders from the DB (all statuses, on-chain
+// signature links) + card charges pulled live from Stripe. The two are fetched
+// together but rendered as separate tables — they don't share a schema.
+async function renderTransactions(view) {
+  const d = await api("/v1/admin/transactions?limit=100");
+  view.innerHTML = "";
+  const railBadge = (r) => h("span", { class: "badge " + (r || "") }, r === "dwell" ? "$DWELL" : (r || "—").toUpperCase());
+
+  // ── Crypto orders (USDC / SOL / $DWELL) ──
+  view.append(h("div", { class: "card" },
+    h("div", { class: "card-head" }, h("h2", {}, "Crypto orders"),
+      h("p", { class: "hint" }, d.crypto.length + " order" + (d.crypto.length === 1 ? "" : "s") +
+        " — USDC & SOL settle on-chain into your treasury/rewards wallets. Every attempt is logged: awaiting → confirmed / expired / failed.")),
+    table([
+      { label: "When" }, { label: "Rail" }, { label: "Advertiser" }, { label: "Ad" },
+      { label: "Amount", num: true }, { label: "Status" }, { label: "On-chain" },
+    ], d.crypto, (o) => [
+      dt(o.createdAt),
+      td(railBadge(o.rail)),
+      o.advertiserEmail ? h("span", { class: "mono" }, o.advertiserEmail) : h("span", { class: "muted" }, "anon"),
+      (o.brand ? o.brand + (o.adLine ? " — " : "") : "") + (o.adLine || (o.brand ? "" : "—")),
+      usd(o.priceUsd),
+      td(o.status === "failed" && o.failReason
+        ? h("span", { class: "badge failed", title: o.failReason }, "failed")
+        : badge(o.status)),
+      td(o.txSignature
+        ? h("a", { href: "https://solscan.io/tx/" + encodeURIComponent(o.txSignature), target: "_blank", rel: "noopener", class: "mono" }, short(o.txSignature, 8))
+        : h("span", { class: "muted" }, "—")),
+    ])));
+
+  // ── Card charges (pulled live from Stripe) ──
+  const cardCard = h("div", { class: "card" },
+    h("div", { class: "card-head" }, h("h2", {}, "Card charges"),
+      h("p", { class: "hint" }, d.stripeLive
+        ? d.card.length + " recent charge" + (d.card.length === 1 ? "" : "s") + " — pulled live from Stripe."
+        : "Set STRIPE_SECRET_KEY on the deployment to pull card charges here.")));
+  if (d.cardError) {
+    cardCard.append(h("div", { class: "empty" }, d.cardError));
+  } else if (!d.stripeLive) {
+    cardCard.append(h("div", { class: "empty" }, "Stripe isn’t configured on this deployment."));
+  } else {
+    cardCard.append(table([
+      { label: "When" }, { label: "Email" }, { label: "Card" },
+      { label: "Amount", num: true }, { label: "Status" }, { label: "Receipt" },
+    ], d.card, (ch) => [
+      dt(ch.createdAt),
+      ch.email ? h("span", { class: "mono" }, ch.email) : h("span", { class: "muted" }, "—"),
+      ch.brand ? ch.brand + " ••" + (ch.last4 || "") : "—",
+      usd(ch.amountUsd),
+      td(ch.refunded ? h("span", { class: "badge refunded" }, "refunded")
+        : ch.status === "succeeded" ? h("span", { class: "badge succeeded" }, "succeeded")
+        : badge(ch.status)),
+      td(ch.receiptUrl
+        ? h("a", { href: safeHref(ch.receiptUrl), target: "_blank", rel: "noopener" }, "view")
+        : h("span", { class: "muted" }, "—")),
+    ]));
+  }
+  view.append(cardCard);
+}
+
 async function renderRedemptions(view) {
   view.innerHTML = "";
   const filter = h("select", { id: "red-status" },
@@ -554,6 +615,7 @@ function postStatusCell(r, reload) {
     : r.postStatus === "not_found" ? "failed"
     : "pending"; // no_x_account / unchecked read as neutral-warning
   const parts = [badge2(cls, POST_STATUS_LABEL[r.postStatus] || r.postStatus)];
+  if (r.twitterUsername) parts.push(h("a", { href: safeHref("https://x.com/" + r.twitterUsername), target: "_blank", rel: "noopener", class: "mono" }, "@" + r.twitterUsername));
   if (r.postUrl) parts.push(h("a", { href: safeHref(r.postUrl), target: "_blank", rel: "noopener", class: "mono" }, "view"));
   // Re-check only makes sense when we know the user's X id.
   if (r.twitterId) parts.push(h("button", { class: "btn btn-ghost btn-sm", onclick: async () => {
@@ -843,7 +905,7 @@ function switchRow({ title, on, onLabel = "On", offLabel = "Off", desc, confirmO
 async function renderSettings(view) {
   // Everything the page needs in ONE parallel round-trip, then paint once.
   // (This was 7 sequential fetches — the whole tab felt laggy.)
-  const [d, ra, lb, ltc, an, cfg, errs, p] = await Promise.all([
+  const [d, ra, lb, ltc, an, cfg, errs, p, ha] = await Promise.all([
     api("/v1/admin/overview"),
     tryApi("/v1/admin/campaigns/receipts-auto"),
     tryApi("/v1/admin/leaderboard-visibility"),
@@ -852,6 +914,7 @@ async function renderSettings(view) {
     tryApi("/v1/admin/config"),
     tryApi("/v1/admin/errors"),
     tryApi("/v1/admin/pricing"),
+    tryApi("/v1/admin/house-ad"),
   ]);
   setServePill(d.serving);
   view.innerHTML = "";
@@ -900,6 +963,16 @@ async function renderSettings(view) {
       action: async (next) => {
         await api("/v1/admin/ad-notice", { method: "POST", body: { visible: next } });
         toast(next ? "Ad notice shown" : "Ad notice hidden");
+      },
+    }),
+    switchRow({
+      title: "House ad", on: !ha || ha.enabled !== false, offLabel: "Off", onLabel: "On",
+      desc: (on) => on
+        ? "When the auction is empty, clients show the non-billable “$empty — promote your token now” house ad. It never earns (no impression is logged)."
+        : "When the auction is empty, clients show nothing (every surface reads this from /v1/config).",
+      action: async (next) => {
+        await api("/v1/admin/house-ad", { method: "POST", body: { enabled: next } });
+        toast(next ? "House ad on" : "House ad off");
       },
     }),
     switchRow({

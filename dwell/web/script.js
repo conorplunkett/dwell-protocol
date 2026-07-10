@@ -642,27 +642,28 @@ if (adForm) {
   });
 }
 
-// --- Crypto checkout: USDC/SOL or $DWELL (dwell/docs/08) --------------------
-// Non-custodial pay-and-swap: the backend builds ONE atomic Solana transaction
-// the advertiser signs from their own wallet via a Solana Pay link. Two crypto
-// rails: USDC/SOL (10% fee to treasury, 90% market-bought into $DWELL for the
-// rewards pool) and $DWELL direct (no swap — 10% fee + 90% to the pool, and the
-// campaign gets +10% impressions). Fully wired but HIDDEN: the backend 404s the
-// whole surface until the $DWELL mint exists (DWELL_MINT env), so this flag
-// stays false until launch — flip it to reveal the slider.
-const USDC_CHECKOUT = false;
+// --- Crypto checkout: USDC/SOL now, $DWELL after launch (dwell/docs/08 v2) --
+// Non-custodial and swap-free (tokenomics v2 — no leg of any payment buys
+// $DWELL): the backend builds ONE atomic Solana transaction the advertiser
+// signs from their own wallet via a Solana Pay link — the protocol-fee leg to
+// the treasury + the rewards-pool leg to the revenue account. USDC/SOL are
+// LIVE (no token needed). The $DWELL rail (pay the USD price in $DWELL at a
+// spot quote, +10% impressions) opens at token launch — its tab sits disabled
+// with an "after token launch" tag until the backend accepts currency:"dwell".
+const CRYPTO_CHECKOUT = true;
 (() => {
   const tabs = document.getElementById("paytabs");
   if (!tabs || !adForm) return;
-  if (!USDC_CHECKOUT || !API_BASE) return; // stays hidden pre-launch (and in dev mode)
+  if (!CRYPTO_CHECKOUT || !API_BASE) return; // kill-switch (and dev mode)
 
   // Reveal the payment-method slider and wire the tabs. Order: USDC/SOL
-  // (default), $DWELL, Credit card. The thumb width comes from the segment
-  // count (CSS), so selecting tab i is just translateX(i * 100%).
+  // (default), $DWELL (disabled until launch), Credit card. The thumb width
+  // comes from the segment count (CSS): selecting tab i is translateX(i*100%).
   tabs.hidden = false;
   const thumb = document.getElementById("paytabs-thumb");
   const tabEls = [...tabs.querySelectorAll(".paytab")];
   const selectTab = (idx) => {
+    if (tabEls[idx]?.disabled) return; // the $DWELL rail until token launch
     if (thumb) thumb.style.transform = `translateX(${idx * 100}%)`;
     tabEls.forEach((t, i) => {
       const on = i === idx;
@@ -742,7 +743,11 @@ const USDC_CHECKOUT = false;
         });
         const data = await res.json();
         if (!res.ok) {
-          btn.textContent = data.error || "Something went wrong";
+          // A 404 means this deployment hasn't configured its crypto accounts
+          // yet — steer to the card rail instead of echoing "not found".
+          btn.textContent = res.status === 404
+            ? "Crypto checkout isn't live here yet — pay with card"
+            : (data.error || "Something went wrong");
           setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2600);
           return;
         }
@@ -785,26 +790,26 @@ const USDC_CHECKOUT = false;
         document.getElementById("usdc-sol-total").textContent = data.estPayTotalSol.toFixed(4) + " SOL";
       }
       return cur === "sol"
-        ? "Open the link in your Solana wallet and approve — one signature pays the fee in SOL and funds the rewards pool. The SOL amount re-prices when the wallet fetches the transaction."
-        : "Open the link in your Solana wallet and approve the transaction — one signature pays the fee and funds the rewards pool.";
+        ? "Open the link in your Solana wallet and approve — one signature pays the protocol fee and funds the rewards pool, in SOL. The SOL amount re-prices when the wallet fetches the transaction."
+        : "Open the link in your Solana wallet and approve — one signature pays the protocol fee and funds the rewards pool.";
     },
   });
 
-  // $DWELL pane — pay the budget directly in $DWELL (no swap), +10% impressions.
+  // $DWELL pane — post-launch: pay the USD price in $DWELL at a spot quote
+  // (the payment goes to the company treasury and is held; docs/01), with
+  // +10% impressions. Unreachable while its tab is disabled.
   wirePane({
     currency: "dwell",
     ids: { btn: "dwell-btn", panel: "dwell-panel", status: "dwell-status", paylink: "dwell-paylink", copy: "dwell-copy" },
     fill: (data) => {
       document.getElementById("dwell-price").textContent = usd(data.priceUsdc);
-      document.getElementById("dwell-fee").textContent = usd(data.feeUsdc);
-      document.getElementById("dwell-tranche").textContent = usd(data.trancheUsdc);
       const boostPct = Number.isFinite(data.boostBps) ? (data.boostBps / 100) : 10;
       document.getElementById("dwell-boost").textContent = "+" + boostPct + "% impressions";
       if (Number.isFinite(data.estPayTotalDwell)) {
         document.getElementById("dwell-amount").textContent =
           Number(data.estPayTotalDwell).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " $DWELL";
       }
-      return "Open the link in your Solana wallet and approve — one signature pays 10% to the treasury and 90% to the rewards pool. Your campaign runs with +" + boostPct + "% impressions.";
+      return "Open the link in your Solana wallet and approve — one signature pays the campaign price in $DWELL. Your campaign runs with +" + boostPct + "% impressions. The $DWELL amount re-prices when the wallet fetches the transaction.";
     },
   });
 })();
@@ -912,16 +917,19 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
 // Mechanical-counter style: one dark cell per digit (the last cell red, like a
 // flip counter), each cell a vertical reel of 0–9 that rolls UPWARD to the new
 // digit. There's no public network-total endpoint yet, so the figure is an
-// optimistic projection: a fixed base plus steady time-based growth (so it's
-// consistent across visits and always climbing), plus a gentle live tick.
+// optimistic projection: a real snapshot base (SUM(impressions) from
+// event_batches as of the date below) plus steady time-based growth at
+// roughly the network's recent daily pace, plus a gentle live tick so it's
+// always climbing. Re-snapshot IMP_BASE/IMP_EPOCH from the DB periodically —
+// they drift from the true total the longer this goes un-refreshed.
 (function impOdometer() {
   const el = document.getElementById("imp-counter");
   if (!el) return;
   const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const IMP_BASE = 21_437_615;                       // network total at the epoch
-  const IMP_EPOCH = Date.parse("2026-07-01T00:00:00Z");
-  const IMP_RATE = 2.7;                              // impressions/second, network-wide
+  const IMP_BASE = 4_164;                             // real SUM(impressions), event_batches, 2026-07-10
+  const IMP_EPOCH = Date.parse("2026-07-10T01:36:50Z"); // snapshot time for the base above
+  const IMP_RATE = 0.0037;                            // impressions/second — recent 7-day network average (~320/day)
   const projected = () => IMP_BASE + Math.floor(((Date.now() - IMP_EPOCH) / 1000) * IMP_RATE);
 
   let value = projected();
@@ -999,6 +1007,92 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
     value = Math.max(value + 1, projected());
     render();
   }, 1200);
+})();
+
+// --- USDC "up for grabs" LCD counter ("Start earning $N USDC…") -------------
+// A physical seven-segment tally in the section label. The figure is the live
+// USDC pool available to earners — i.e. the earner share of sold ad inventory
+// (advertiser sales minus the protocol take). There's no public inventory
+// endpoint yet, so it's hardcoded to a $1,285 base and climbs optimistically
+// during the visit (bursty +$50/$75/$125 jumps, occasional -$1 correction) so
+// it reads live. When the endpoint ships, replace `base` with the fetched
+// pool:  poolUsd = advertiserSalesUsd * (1 - PROTOCOL_TAKE).
+(function usdcCounter() {
+  const root = document.getElementById("usdc-counter");
+  const wrap = root && root.querySelector(".usdc-digits");
+  if (!wrap) return;
+  const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Which of the 7 bars light per digit (a top, b/c right, d bottom, e/f left, g mid).
+  const SEG = {
+    0: "abcdef", 1: "bc", 2: "abged", 3: "abgcd", 4: "fgbc",
+    5: "afgcd", 6: "afgecd", 7: "abc", 8: "abcdefg", 9: "abcdfg",
+  };
+  const NAMES = ["a", "b", "c", "d", "e", "f", "g"];
+
+  const USDC_BASE = 1285;   // hardcoded pool (≈ earner share of ad inventory)
+  let value = USDC_BASE;
+  let cells = [];           // [{ segs: {a:<i>,…} }] most-significant first
+
+  // Build one seven-segment digit and track its segment elements.
+  function makeDigit() {
+    const d = document.createElement("span");
+    d.className = "seg7";
+    const segs = {};
+    for (const n of NAMES) {
+      const i = document.createElement("i");
+      i.className = "s" + n;
+      d.appendChild(i);
+      segs[n] = i;
+    }
+    return { el: d, segs };
+  }
+
+  // Rebuild the strip to hold exactly `n` digits (grows as the pool grows).
+  function build(n) {
+    wrap.innerHTML = "";
+    cells = [];
+    for (let k = 0; k < n; k++) {
+      const c = makeDigit();
+      wrap.appendChild(c.el);
+      cells.push(c);
+    }
+  }
+
+  function render() {
+    const str = String(Math.floor(value)); // significant digits only, no leading zeros
+    if (str.length !== cells.length) build(str.length);
+    for (let k = 0; k < str.length; k++) {
+      const lit = SEG[Number(str[k])] || "";
+      const segs = cells[k].segs;
+      for (const n of NAMES) segs[n].classList.toggle("on", lit.includes(n));
+    }
+    root.setAttribute(
+      "aria-label",
+      "$" + Math.floor(value).toLocaleString("en-US") + " USDC available to earn"
+    );
+  }
+
+  render();
+  if (reduced) return; // hold at the base; no live climb
+  // Optimistic climb: jump up by $50/$75/$125 on an irregular 3/6/8s beat, so
+  // the device reads live and bursty rather than a steady metronome. Every so
+  // often it ticks back down by a token $1, like a real live tally correcting.
+  const UP_STEPS = [50, 75, 125];
+  const TICK_DELAYS = [3000, 6000, 8000];
+  const DOWNTICK_CHANCE = 0.15; // ~1 in ~7 ticks nudges down instead of up
+  (function scheduleTick() {
+    const delay = TICK_DELAYS[Math.floor(Math.random() * TICK_DELAYS.length)];
+    setTimeout(() => {
+      if (Math.random() < DOWNTICK_CHANCE) {
+        value = Math.max(USDC_BASE, value - 1);
+      } else {
+        value += UP_STEPS[Math.floor(Math.random() * UP_STEPS.length)];
+      }
+      render();
+      scheduleTick();
+    }, delay);
+  })();
 })();
 
 // --- Boost fold: the hero "Boost your token" button folds the advertiser card

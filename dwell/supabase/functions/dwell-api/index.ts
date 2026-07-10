@@ -76,6 +76,8 @@ function loadConfig() {
     appleTeamId: env("APPLE_TEAM_ID"),
     appleKeyId: env("APPLE_KEY_ID"),
     applePrivateKey: env("APPLE_PRIVATE_KEY").replace(/\\n/g, "\n"),
+    // X sign-in uses OAuth 2.0 Authorization Code + PKCE (the OAuth 2.0 Client
+    // ID/Secret from the X developer portal, not the OAuth 1.0a API key pair).
     twitterClientId: env("TWITTER_CLIENT_ID"),
     twitterClientSecret: env("TWITTER_CLIENT_SECRET"),
     twitterBearerToken: env("TWITTER_BEARER_TOKEN"),
@@ -100,22 +102,26 @@ function loadConfig() {
     referrerShareBps: parseInt(env("REFERRER_SHARE_BPS", "1000"), 10), // referrer's share (falls to protocol when unreferred)
     reserveTrancheBps: parseInt(env("RESERVE_TRANCHE_BPS", "9000"), 10), // slice of gross routed to the token side
 
-    // ---- USDC advertiser checkout (dwell/docs/08) — non-custodial pay-and-swap ----
-    // The whole surface is gated on DWELL_MINT: until the $DWELL SPL mint exists
-    // (star.fun launch), every /v1/ads/usdc route 404s and none of this is read.
-    // No signing keys here or anywhere — the backend only builds unsigned
-    // transactions and verifies finalized ones read-only.
+    // ---- Crypto advertiser checkout (dwell/docs/08, tokenomics v2) ----
+    // Non-custodial, swap-free: no leg of any payment buys $DWELL (docs/01).
+    // USDC/SOL rails are live once the treasury + revenue accounts are set —
+    // no dependency on the token existing. The $DWELL rail (a single transfer
+    // to the treasury at a spot quote, held there) opens at token launch:
+    // DWELL_MINT + TREASURY_DWELL_ATA gate that one rail only. No signing keys
+    // here or anywhere — the backend only builds unsigned transactions and
+    // verifies finalized ones read-only.
     dwellMint: env("DWELL_MINT"),
     usdcMint: env("USDC_MINT", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // canonical USDC on Solana mainnet (6 dp)
     solanaRpcUrl: env("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
-    jupiterBaseUrl: env("JUPITER_BASE_URL", "https://lite-api.jup.ag/swap/v1"),
-    treasuryUsdcAta: env("TREASURY_USDC_ATA"),           // Squads treasury vault's USDC token account — the 10% leg
-    treasurySolAccount: env("TREASURY_SOL_ACCOUNT"),     // Squads treasury vault address for native-SOL fee legs; empty = SOL rail off
-    treasuryDwellAta: env("TREASURY_DWELL_ATA"),         // Squads treasury vault's DWELL token account — the 10% leg on the $DWELL rail; empty = $DWELL rail off
-    distributorDwellAta: env("DISTRIBUTOR_DWELL_ATA"),   // rewards distributor vault's DWELL token account — the swap output / $DWELL 90% leg
+    jupiterBaseUrl: env("JUPITER_BASE_URL", "https://lite-api.jup.ag/swap/v1"), // spot PRICING quotes only (SOL/$DWELL rails) — nothing is ever swapped
+    treasuryUsdcAta: env("TREASURY_USDC_ATA"),           // company treasury USDC account — the protocol-fee leg
+    revenueUsdcAta: env("REVENUE_USDC_ATA"),             // company revenue USDC account — the rewards-pool leg (funds dwell payouts)
+    treasurySolAccount: env("TREASURY_SOL_ACCOUNT"),     // treasury address for native-SOL fee legs; empty = SOL rail off
+    revenueSolAccount: env("REVENUE_SOL_ACCOUNT"),       // revenue address for native-SOL rewards-pool legs
+    treasuryDwellAta: env("TREASURY_DWELL_ATA"),         // treasury $DWELL account — the whole $DWELL-rail payment lands here, held (docs/01)
     dwellDecimals: parseInt(env("DWELL_DECIMALS", "6"), 10), // display only — raw DWELL units ÷ 10^decimals for the "≈ pay in $DWELL" figure
     dwellPayBoostBps: parseInt(env("DWELL_PAY_BOOST_BPS", "1000"), 10), // paying in $DWELL boosts a campaign's impressions by this (1000 = +10%)
-    maxSlippageBps: parseInt(env("MAX_SLIPPAGE_BPS", "100"), 10), // swap slippage bound; the verifier enforces the implied minOut
+    maxSlippageBps: parseInt(env("MAX_SLIPPAGE_BPS", "100"), 10), // slippageBps param on pricing quotes (no swap executes)
     usdcOrderTtlMinutes: parseInt(env("USDC_ORDER_TTL_MINUTES", "30"), 10), // price validity window; each built tx is only ~60s (blockhash)
 
     // ---- brand — the DWELL deployment bills and writes copy under its own name ----
@@ -130,10 +136,16 @@ if (config.viewerShareBps + config.referrerShareBps > 10000) {
   throw new Error("VIEWER_SHARE_BPS + REFERRER_SHARE_BPS must be <= 10000");
 }
 if (config.reserveTrancheBps > 10000) throw new Error("RESERVE_TRANCHE_BPS must be <= 10000");
-// USDC checkout (dwell/docs/08): enabling it needs the full account triple —
-// half-configured would build transactions that can never verify.
-if (config.dwellMint && !(config.treasuryUsdcAta && config.distributorDwellAta)) {
-  throw new Error("DWELL_MINT is set — TREASURY_USDC_ATA and DISTRIBUTOR_DWELL_ATA are required too");
+// Crypto checkout (dwell/docs/08 v2): half-configured rails would build
+// transactions that can never verify — require account pairs together.
+if ((config.treasuryUsdcAta || config.revenueUsdcAta) && !(config.treasuryUsdcAta && config.revenueUsdcAta)) {
+  throw new Error("crypto checkout needs BOTH TREASURY_USDC_ATA and REVENUE_USDC_ATA");
+}
+if ((config.treasurySolAccount || config.revenueSolAccount) && !(config.treasurySolAccount && config.revenueSolAccount)) {
+  throw new Error("the SOL rail needs BOTH TREASURY_SOL_ACCOUNT and REVENUE_SOL_ACCOUNT");
+}
+if (config.dwellMint && !config.treasuryDwellAta) {
+  throw new Error("DWELL_MINT is set — TREASURY_DWELL_ATA is required for the $DWELL rail");
 }
 // When TOKEN_MODE is set, impressions split three ways into points entries
 // instead of the legacy two-way credit (passed into ingestBatch/redeem/paid).
@@ -292,6 +304,10 @@ function createStripe(secretKey: string) {
   }
   return {
     createCheckoutSession: (p: any) => request("POST", "/checkout/sessions", p),
+    // Recent card charges for the admin transactions view. GET, so the query
+    // rides in the path (the shared request() form-encodes into the body). Cap 100.
+    listCharges: ({ limit = 25 }: any = {}) =>
+      request("GET", `/charges?limit=${encodeURIComponent(Math.max(1, Math.min(100, limit)))}`),
     createRefund: (p: any) => request("POST", "/refunds", p),
     createAccount: (p: any) => request("POST", "/accounts", p),
     createAccountLink: (p: any) => request("POST", "/account_links", p),
@@ -1416,7 +1432,7 @@ function createRepo(pool: any) {
       );
       return rows.map((r: any) => ({ ...r, balance: Number(r.balance) }));
     },
-    async upsertUserByOAuth({ email, googleId, appleId, twitterId, referralCode, emailVerified }: any, sessionTtlMs: number) {
+    async upsertUserByOAuth({ email, googleId, appleId, twitterId, twitterUsername, referralCode, emailVerified }: any, sessionTtlMs: number) {
       return tx(async (c: any) => {
         const matchEmail = emailVerified ? (email || null) : null;
         let found: any = null;
@@ -1444,13 +1460,14 @@ function createRepo(pool: any) {
           if (googleId && !found.google_id) { sets.push(`google_id = $${vals.length + 1}`); vals.push(googleId); }
           if (appleId && !found.apple_id) { sets.push(`apple_id = $${vals.length + 1}`); vals.push(appleId); }
           if (twitterId && !found.twitter_id) { sets.push(`twitter_id = $${vals.length + 1}`); vals.push(twitterId); }
+          if (twitterUsername)                { sets.push(`twitter_username = $${vals.length + 1}`); vals.push(twitterUsername); }
           await c.query(`update users set ${sets.join(", ")} where id = $1`, vals);
           userId = found.id;
         } else {
           const r = await c.query(
-            `insert into users (email, email_verified, google_id, apple_id, twitter_id)
-             values ($1, true, $2, $3, $4) returning id`,
-            [matchEmail || null, googleId || null, appleId || null, twitterId || null]
+            `insert into users (email, email_verified, google_id, apple_id, twitter_id, twitter_username)
+             values ($1, true, $2, $3, $4, $5) returning id`,
+            [matchEmail || null, googleId || null, appleId || null, twitterId || null, twitterUsername || null]
           );
           userId = r.rows[0].id;
           await applyCode(c, userId, referralCode);
@@ -1491,7 +1508,7 @@ function createRepo(pool: any) {
     async userForSession(sessionToken: string | null) {
       if (!sessionToken) return null;
       const { rows } = await pool.query(
-        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled, u.wallet_address
+        `select u.id, u.email, u.email_verified, u.stripe_account_id, u.payouts_enabled, u.wallet_address, u.twitter_username
            from web_sessions s join users u on u.id = s.user_id
           where s.token = $1 and s.expires_at > now()`,
         [sessionToken]
@@ -1684,6 +1701,30 @@ function createRepo(pool: any) {
       return rows[0] || null;
     },
 
+    // Crypto orders for the admin transactions view: every rail, every status,
+    // newest first, joined to the campaign + advertiser for context. Read-only.
+    async listCryptoOrders({ limit, status }: any = {}) {
+      const n = Math.max(1, Math.min(200, parseInt(limit, 10) || 100));
+      const params: any[] = [];
+      let where = "";
+      if (status) { params.push(status); where = `where o.status = $${params.length}`; }
+      params.push(n); const lim = `$${params.length}`;
+      const { rows } = await pool.query(
+        `select o.id, o.pay_currency, o.status, o.fail_reason,
+                o.price_micro_usdc, o.pay_total_units, o.pay_fee_units,
+                o.reference_pubkey, o.tx_signature, o.created_at, o.expires_at,
+                c.brand, c.ad_line, a.email as advertiser_email
+           from usdc_orders o
+           join campaigns c on c.id = o.campaign_id
+           left join advertisers a on a.id = c.advertiser_id
+           ${where}
+          order by o.created_at desc
+          limit ${lim}`,
+        params
+      );
+      return rows;
+    },
+
     // Each build re-quotes (a built transaction is only ~60s of blockhash
     // validity); the stored quote + slippage floor — and, on the SOL rail, the
     // re-priced lamport amounts — track the latest build so the verifier
@@ -1708,18 +1749,18 @@ function createRepo(pool: any) {
     },
 
     // The one state transition that funds a campaign from a verified on-chain
-    // payment. Mirrors markCampaignPaid's exactly-once shape (only an
-    // awaiting_signature order and a pending_payment campaign transition) and
-    // adds the token_campaign_pools row — the locked-rate source of truth:
-    //   locked rate = dwellOut × viewer share ÷ impressions bought.
-    // All bought DWELL goes to the distributor; the treasury's 30–40% leg
-    // settles via the Merkle root's treasury shortfall leaf (docs/04 §A).
-    async confirmUsdcOrder({ orderId, txSignature, dwellOut, tokenSplit, viewerShareBps }: any) {
+    // payment (tokenomics v2). Mirrors markCampaignPaid's exactly-once shape
+    // (only an awaiting_signature order and a pending_payment campaign
+    // transition) and funds the campaign on the dollar ledger exactly like a
+    // card payment: campaign_credit for the exact charge plus the rewards-pool
+    // earmark. No token machinery — viewers earn dollar-denominated dwells on
+    // every rail.
+    async confirmUsdcOrder({ orderId, txSignature, tokenSplit }: any) {
       return tx(async (c: any) => {
         const ord = await c.query(
           `update usdc_orders set status = 'confirmed', tx_signature = $2
             where id = $1 and status = 'awaiting_signature'
-            returning campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc`,
+            returning campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc, pay_currency`,
           [orderId, txSignature]
         );
         if (!ord.rows[0]) return false; // already confirmed/expired/failed — idempotent no-op
@@ -1747,7 +1788,7 @@ function createRepo(pool: any) {
           `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
            values ('campaign_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
           [funded.toString(), o.campaign_id,
-           JSON.stringify({ impressions: rows[0].impressions_total, rail: "usdc", tx: txSignature })]
+           JSON.stringify({ impressions: rows[0].impressions_total, rail: o.pay_currency, tx: txSignature })]
         );
         if (tokenSplit) {
           const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
@@ -1755,19 +1796,9 @@ function createRepo(pool: any) {
             `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
              values ('reserve_allocation', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
             [tranche.toString(), o.campaign_id,
-             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: "usdc" })]
+             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: o.pay_currency })]
           );
         }
-
-        const impressions = BigInt(rows[0].impressions_total);
-        const lockedRate = (BigInt(dwellOut) * BigInt(viewerShareBps)) / 10000n / impressions;
-        await c.query(
-          `insert into token_campaign_pools
-             (campaign_id, usdc_in_micro, dwell_out_wei, to_distributor_wei,
-              to_treasury_wei, locked_rate_wei, tx_hash)
-           values ($1,$2,$3,$3,0,$4,$5)`,
-          [o.campaign_id, o.tranche_micro_usdc, String(dwellOut), lockedRate.toString(), txSignature]
-        );
 
         return {
           email: rows[0].email,
@@ -2292,7 +2323,7 @@ function createRepo(pool: any) {
         `select p.id, p.user_id, p.amount_cents as net_cents, p.created_at,
                 (l.meta->>'grossCents')::int as gross_cents,
                 (l.meta->>'feeCents')::int as fee_cents,
-                u.email, u.twitter_id, u.stripe_account_id, u.payouts_enabled,
+                u.email, u.twitter_id, u.twitter_username, u.stripe_account_id, u.payouts_enabled,
                 u.onboarding_posted_at, u.onboarding_post_verified_at,
                 u.onboarding_post_url, u.onboarding_post_checked_at
            from payouts p
@@ -2966,6 +2997,7 @@ function payoutRequestView(r: any) {
   return {
     payoutId: r.id, userId: r.user_id, email: r.email,
     twitterId: r.twitter_id || null,
+    twitterUsername: r.twitter_username || null,
     grossUsd: (r.gross_cents || 0) / 100,
     feeUsd: (r.fee_cents || 0) / 100,
     netUsd: (r.net_cents || 0) / 100,
@@ -3000,6 +3032,10 @@ let liveTopCpm = false;
 // Whether the portal shows the "Not serving ads until after launch." banner.
 // Off by default; flipped from the admin dashboard and surfaced via /v1/config.
 let adNoticeVisible = false;
+// Whether clients show the non-billable house/default ad ("$empty — promote your
+// token now") when the auction is empty. ON by default; flipped from the admin
+// dashboard and surfaced via /v1/config so every client can gate the filler.
+let houseAdEnabled = true;
 let servingSyncedAt = 0;
 async function syncServing() {
   if (Date.now() - servingSyncedAt < 15000) return;
@@ -3021,6 +3057,10 @@ async function syncServing() {
   try {
     adNoticeVisible = (await repo.getSetting("ad_notice_visible")) === true;
   } catch { /* settings absent — keep default (hidden) */ }
+  try {
+    // Default ON: only an explicit `false` disables the house ad.
+    houseAdEnabled = (await repo.getSetting("house_ad_enabled")) !== false;
+  } catch { /* settings absent — keep default (on) */ }
 }
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -3136,7 +3176,7 @@ function parseAffiliateSocials(body: any): { socials?: any; error?: string } {
 
 // ── health & catalog ──
 route("GET", "/healthz", async () => json(200, { ok: true }));
-route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) }); });
+route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, houseAdEnabled, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) }); });
 
 // Advertiser pricing for the lander (min / suggested / top). Kept off /v1/config
 // so the extension's frequent config polls stay query-free. top = max(anchor,
@@ -3539,63 +3579,33 @@ async function jupiterQuote({ inputMint, outputMint, amount }: any) {
   if (!quote.outAmount) throw new Error("jupiter quote: no route");
   return quote;
 }
-// The swap leg's quote for an order: USDC pays the tranche in micro-USDC;
-// SOL pays it in lamports (priced first via priceOrderInSol). The $DWELL rail
-// has no swap leg, so it never calls this.
-function tranchQuoteParams(order: any) {
-  return order.pay_currency === "sol"
-    ? { inputMint: WSOL_MINT, outputMint: config.dwellMint, amount: BigInt(order.pay_total_units) - BigInt(order.pay_fee_units) }
-    : { inputMint: config.usdcMint, outputMint: config.dwellMint, amount: order.tranche_micro_usdc };
-}
 // How many lamports the order's USD price is worth right now, via a
-// USDC -> wSOL quote of the exact price. Re-run on every build, like the
-// slippage floor — the wallet always sees a current number.
+// USDC -> wSOL spot PRICING quote (nothing is swapped). Re-run on every
+// build — the wallet always sees a current number.
 async function priceOrderInSol(priceMicroUsdc: string, feeBps: number) {
   const pricing = await jupiterQuote({ inputMint: config.usdcMint, outputMint: WSOL_MINT, amount: priceMicroUsdc });
   const total = BigInt(pricing.outAmount);
   const fee = (total * BigInt(feeBps)) / 10000n;
-  return { totalLamports: total, feeLamports: fee, trancheLamports: total - fee };
+  return { totalLamports: total, feeLamports: fee, trancheLamports: total - fee, quote: pricing };
 }
 // How many raw $DWELL units the order's USD price is worth right now, via a
-// USDC -> DWELL quote. The $DWELL rail sends this directly (no swap): 10% to
-// the treasury, 90% to the distributor. Re-priced on every build like SOL.
-async function priceOrderInDwell(priceMicroUsdc: string, feeBps: number) {
+// USDC -> DWELL spot PRICING quote (docs/01 ▸ "priced at the USD campaign
+// price via a spot quote at checkout"). Re-priced on every build like SOL.
+async function priceOrderInDwell(priceMicroUsdc: string) {
   const pricing = await jupiterQuote({ inputMint: config.usdcMint, outputMint: config.dwellMint, amount: priceMicroUsdc });
-  const total = BigInt(pricing.outAmount);
-  const fee = (total * BigInt(feeBps)) / 10000n;
-  return { totalDwell: total, feeDwell: fee, trancheDwell: total - fee, quote: pricing };
+  return { totalDwell: BigInt(pricing.outAmount), quote: pricing };
 }
-async function jupiterSwapInstructions({ quoteResponse, userPublicKey, wrapSol = false }: any) {
-  const res = await fetch(`${config.jupiterBaseUrl}/swap-instructions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      quoteResponse,
-      userPublicKey,
-      // The whole point: the bought DWELL lands in the distributor vault,
-      // never in a company hot wallet and never back with the payer.
-      destinationTokenAccount: config.distributorDwellAta,
-      asLegacyTransaction: true,
-      // USDC in: no SOL legs. SOL in: Jupiter wraps the payer's native SOL.
-      wrapAndUnwrapSol: wrapSol,
-    }),
-  });
-  if (!res.ok) throw new Error(`jupiter swap-instructions: HTTP ${res.status}`);
-  const body = await res.json();
-  if (body.error) throw new Error(`jupiter swap-instructions: ${body.error}`);
-  if (body.addressLookupTableAddresses?.length) {
-    throw new Error("jupiter returned a v0-only route — re-quote");
-  }
-  return body;
-}
-// One atomic unsigned transaction for an order: fee transfer (with reference
-// key) + order-id memo + the Jupiter swap of the 90% tranche. Rail-aware:
-// USDC pays the fee as an SPL transfer; SOL as a native lamport transfer.
-async function buildOrderTransaction({ order, payer, quoteResponse }: any) {
+// One atomic unsigned transaction for an order (tokenomics v2 — plain
+// transfers, nothing is ever swapped and no leg buys $DWELL):
+//   usdc  — fee leg (USDC -> treasury, with the reference key) + revenue leg
+//           (USDC -> revenue account) + order-id memo;
+//   sol   — the same two legs as native lamport transfers;
+//   dwell — ONE transfer of the full amount to the company treasury, where
+//           it is held (docs/01 ▸ What the token does), + memo.
+async function buildOrderTransaction({ order, payer }: any) {
   if (!isPubkey(payer)) throw Object.assign(new Error("payer must be a Solana pubkey"), { code: "BAD_ACCOUNT" });
+  let instructions: any[];
 
-  // $DWELL rail: no swap. Two plain SPL transfers of the payer's own $DWELL —
-  // 10% to the treasury, 90% to the distributor — + memo.
   if (order.pay_currency === "dwell") {
     const dwellAccount = await findTokenAccount(payer, config.dwellMint);
     if (!dwellAccount) throw Object.assign(new Error("no $DWELL account for this wallet"), { code: "NO_FUNDS" });
@@ -3603,32 +3613,29 @@ async function buildOrderTransaction({ order, payer, quoteResponse }: any) {
     if (dwellAccount.amount < need) {
       throw Object.assign(new Error(`insufficient $DWELL: need ${need}, have ${dwellAccount.amount}`), { code: "NO_FUNDS" });
     }
-    const bh0 = await solanaRpc("getLatestBlockhash", [{ commitment: "finalized" }]);
-    const value0 = bh0.value || bh0;
-    const tranche = need - BigInt(order.pay_fee_units);
-    const instructions0 = [
-      tokenTransferInstruction({ source: dwellAccount.pubkey, destination: config.treasuryDwellAta, owner: payer, amount: order.pay_fee_units, reference: order.reference_pubkey }),
-      tokenTransferInstruction({ source: dwellAccount.pubkey, destination: config.distributorDwellAta, owner: payer, amount: tranche.toString() }),
+    instructions = [
+      tokenTransferInstruction({
+        source: dwellAccount.pubkey, destination: config.treasuryDwellAta, owner: payer,
+        amount: need.toString(), reference: order.reference_pubkey,
+      }),
       memoInstruction(`dwell-usdc-order:${order.id}`),
     ];
-    return serializeUnsignedTransaction({ feePayer: payer, recentBlockhash: value0.blockhash, instructions: instructions0 });
-  }
-
-  const isSol = order.pay_currency === "sol";
-  let feeInstruction: any;
-  if (isSol) {
+  } else if (order.pay_currency === "sol") {
     const bal = await solanaRpc("getBalance", [payer, { commitment: "finalized" }]);
     const lamports = BigInt(bal?.value ?? bal ?? 0);
     const need = BigInt(order.pay_total_units) + SOL_GAS_HEADROOM_LAMPORTS;
     if (lamports < need) {
       throw Object.assign(new Error(`insufficient SOL: need ${need} lamports (incl. gas headroom), have ${lamports}`), { code: "NO_FUNDS" });
     }
-    feeInstruction = systemTransferInstruction({
-      from: payer,
-      to: config.treasurySolAccount,
-      lamports: order.pay_fee_units,
-      reference: order.reference_pubkey,
-    });
+    const tranche = BigInt(order.pay_total_units) - BigInt(order.pay_fee_units);
+    instructions = [
+      systemTransferInstruction({
+        from: payer, to: config.treasurySolAccount,
+        lamports: order.pay_fee_units, reference: order.reference_pubkey,
+      }),
+      systemTransferInstruction({ from: payer, to: config.revenueSolAccount, lamports: tranche.toString() }),
+      memoInstruction(`dwell-usdc-order:${order.id}`),
+    ];
   } else {
     const usdcAccount = await findUsdcAccount(payer);
     if (!usdcAccount) throw Object.assign(new Error("no USDC account for this wallet"), { code: "NO_FUNDS" });
@@ -3636,27 +3643,22 @@ async function buildOrderTransaction({ order, payer, quoteResponse }: any) {
     if (usdcAccount.amount < need) {
       throw Object.assign(new Error(`insufficient USDC: need ${need}, have ${usdcAccount.amount}`), { code: "NO_FUNDS" });
     }
-    feeInstruction = transferCheckedInstruction({
-      source: usdcAccount.pubkey,
-      mint: config.usdcMint,
-      destination: config.treasuryUsdcAta,
-      owner: payer,
-      amount: order.fee_micro_usdc,
-      decimals: USDC_DECIMALS,
-      reference: order.reference_pubkey,
-    });
+    instructions = [
+      transferCheckedInstruction({
+        source: usdcAccount.pubkey, mint: config.usdcMint, destination: config.treasuryUsdcAta,
+        owner: payer, amount: order.fee_micro_usdc, decimals: USDC_DECIMALS,
+        reference: order.reference_pubkey,
+      }),
+      transferCheckedInstruction({
+        source: usdcAccount.pubkey, mint: config.usdcMint, destination: config.revenueUsdcAta,
+        owner: payer, amount: order.tranche_micro_usdc, decimals: USDC_DECIMALS,
+      }),
+      memoInstruction(`dwell-usdc-order:${order.id}`),
+    ];
   }
-  const swap = await jupiterSwapInstructions({ quoteResponse, userPublicKey: payer, wrapSol: isSol });
+
   const bh = await solanaRpc("getLatestBlockhash", [{ commitment: "finalized" }]);
   const value = bh.value || bh;
-  const instructions = [
-    ...(swap.computeBudgetInstructions || []),
-    feeInstruction,
-    memoInstruction(`dwell-usdc-order:${order.id}`),
-    ...(swap.setupInstructions || []),
-    swap.swapInstruction,
-    ...(swap.cleanupInstruction ? [swap.cleanupInstruction] : []),
-  ];
   return serializeUnsignedTransaction({ feePayer: payer, recentBlockhash: value.blockhash, instructions });
 }
 // Signatures that touched the order's reference key (Solana Pay findReference).
@@ -3664,9 +3666,9 @@ async function findReferenceSignatures(referencePubkey: string) {
   const result = await solanaRpc("getSignaturesForAddress", [referencePubkey, { limit: 5 }]);
   return (result || []).map((r: any) => r.signature);
 }
-// Read-only verification of a finalized transaction against the order. Amount
-// deltas come from the runtime's own pre/post token balances — never from
-// anything the client claims.
+// Read-only verification of a finalized transaction against the order
+// (tokenomics v2 — both legs are plain transfers). Amount deltas come from the
+// runtime's own pre/post balances — never from anything the client claims.
 async function verifyOrderTransaction({ signature, order }: any) {
   const txr = await solanaRpc("getTransaction", [
     signature,
@@ -3676,37 +3678,41 @@ async function verifyOrderTransaction({ signature, order }: any) {
   if (txr.meta?.err) return { ok: false, reason: "tx_failed" };
   const keys = (txr.transaction?.message?.accountKeys || []).map((k: any) => (typeof k === "string" ? k : k.pubkey));
   if (!keys.includes(order.reference_pubkey)) return { ok: false, reason: "reference_missing" };
-  const delta = (account: string, mint: string) => {
+  const tokenDelta = (account: string, mint: string) => {
     const find = (list: any[]) => (list || []).find((b: any) => keys[b.accountIndex] === account && b.mint === mint);
     const pre = find(txr.meta?.preTokenBalances);
     const post = find(txr.meta?.postTokenBalances);
     if (!post && !pre) return null; // account untouched by this tx
     return BigInt(post?.uiTokenAmount?.amount || "0") - BigInt(pre?.uiTokenAmount?.amount || "0");
   };
-  let feePaid: bigint | null;
+  const nativeDelta = (account: string) => {
+    const idx = keys.indexOf(account);
+    if (idx < 0) return null;
+    return BigInt(txr.meta?.postBalances?.[idx] ?? 0) - BigInt(txr.meta?.preBalances?.[idx] ?? 0);
+  };
+  let feePaid: bigint | null, revenuePaid: bigint | null;
   if (order.pay_currency === "sol") {
-    // Native fee leg: the treasury's lamport delta from the runtime's own
-    // pre/post balances (aligned with accountKeys).
-    const idx = keys.indexOf(config.treasurySolAccount);
-    if (idx < 0) return { ok: false, reason: "fee_short" };
-    feePaid = BigInt(txr.meta?.postBalances?.[idx] ?? 0) - BigInt(txr.meta?.preBalances?.[idx] ?? 0);
-    if (feePaid < BigInt(order.pay_fee_units)) return { ok: false, reason: "fee_short" };
-  } else if (order.pay_currency === "dwell") {
-    // $DWELL rail: the fee leg is $DWELL to the treasury's DWELL account.
-    feePaid = delta(config.treasuryDwellAta, config.dwellMint);
+    feePaid = nativeDelta(config.treasurySolAccount);
     if (feePaid === null || feePaid < BigInt(order.pay_fee_units)) return { ok: false, reason: "fee_short" };
+    const trancheLamports = BigInt(order.pay_total_units) - BigInt(order.pay_fee_units);
+    revenuePaid = nativeDelta(config.revenueSolAccount);
+    if (revenuePaid === null || revenuePaid < trancheLamports) return { ok: false, reason: "revenue_short" };
+  } else if (order.pay_currency === "dwell") {
+    // $DWELL rail: one leg — the full payment to the company treasury, held.
+    feePaid = tokenDelta(config.treasuryDwellAta, config.dwellMint);
+    if (feePaid === null || feePaid < BigInt(order.pay_total_units)) return { ok: false, reason: "payment_short" };
+    revenuePaid = 0n;
   } else {
-    feePaid = delta(config.treasuryUsdcAta, config.usdcMint);
+    feePaid = tokenDelta(config.treasuryUsdcAta, config.usdcMint);
     if (feePaid === null || feePaid < BigInt(order.fee_micro_usdc)) return { ok: false, reason: "fee_short" };
+    revenuePaid = tokenDelta(config.revenueUsdcAta, config.usdcMint);
+    if (revenuePaid === null || revenuePaid < BigInt(order.tranche_micro_usdc)) return { ok: false, reason: "revenue_short" };
   }
-  const dwellOut = delta(config.distributorDwellAta, config.dwellMint);
-  if (dwellOut === null || dwellOut <= 0n) return { ok: false, reason: "no_dwell_out" };
-  if (dwellOut < BigInt(order.min_dwell_out)) return { ok: false, reason: "slippage_floor" };
-  return { ok: true, dwellOut, feePaid, slot: txr.slot ?? null, blockTime: txr.blockTime ?? null };
+  return { ok: true, feePaid, revenuePaid, slot: txr.slot ?? null, blockTime: txr.blockTime ?? null };
 }
 
 const usdcCheckoutOff = () =>
-  !config.tokenMode || !config.dwellMint || !config.treasuryUsdcAta || !config.distributorDwellAta;
+  !config.tokenMode || !config.treasuryUsdcAta || !config.revenueUsdcAta;
 const microUsd = (micro: any) => Number(micro) / 1e6;
 const shapeUsdcOrder = (o: any) => ({
   orderId: o.id,
@@ -3723,7 +3729,6 @@ const shapeUsdcOrder = (o: any) => ({
   payFeeUnits: String(o.pay_fee_units),
   ...(o.pay_currency === "sol" ? { estPayTotalSol: Number(o.pay_total_units) / 1e9 } : {}),
   ...(o.pay_currency === "dwell" ? { estPayTotalDwell: Number(o.pay_total_units) / 10 ** config.dwellDecimals, boostBps: config.dwellPayBoostBps } : {}),
-  minDwellOut: String(o.min_dwell_out),
   reference: o.reference_pubkey,
   txSignature: o.tx_signature || null,
   failReason: o.fail_reason || null,
@@ -3733,20 +3738,27 @@ const shapeUsdcOrder = (o: any) => ({
 route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
   if (usdcCheckoutOff()) return json(404, { error: "not found" });
   // Same budget+CPM campaign shape as the card checkout — only the rail
-  // differs. currency picks what the wallet pays with: 'usdc' (default) or
-  // 'sol' (native transfer fee leg + wSOL->DWELL swap; needs the treasury's
-  // SOL account configured).
+  // differs. currency picks what the wallet pays with: 'usdc' (default),
+  // 'sol' (two native transfers; needs the SOL account pair), or 'dwell'
+  // (post-launch: one transfer to the treasury at a spot quote).
   const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency, timescale } = ctx.body || {};
   const payCurrency = ["sol", "dwell"].includes(currency) ? currency : "usdc";
-  if (payCurrency === "sol" && !config.treasurySolAccount) {
+  if (payCurrency === "sol" && !(config.treasurySolAccount && config.revenueSolAccount)) {
     return json(400, { error: "SOL payments aren't enabled — pay with USDC" });
   }
-  if (payCurrency === "dwell" && !config.treasuryDwellAta) {
-    return json(400, { error: "$DWELL payments aren't enabled — pay with USDC" });
+  if (payCurrency === "dwell" && !(config.dwellMint && config.treasuryDwellAta)) {
+    return json(400, { error: "$DWELL payments open after token launch — pay with USDC or SOL" });
   }
   const budgetCents = Math.round(Number(budget) * 100);
   const cpmCents = Math.round(Number(cpm) * 100);
-  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(400, { error: "valid email required" });
+  // Email is optional on the crypto rails (the wallet is the identity; a
+  // receipt address is Stripe-only). When absent, the advertiser row hangs
+  // off a synthetic per-order address on the reserved .invalid TLD — never
+  // deliverable, never mailed.
+  const advertiserEmail = String(email || "").trim();
+  if (advertiserEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(advertiserEmail)) {
+    return json(400, { error: "that email doesn't look valid — fix it or leave it blank" });
+  }
   if (!isCleanAdLine(adLine)) return json(400, { error: "ad line must be 3-60 printable chars, no < >" });
   if (!/^https:\/\/[^\s]+$/.test(url || "")) return json(400, { error: "https url required" });
   const P = await repo.getPricing();
@@ -3756,52 +3768,50 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
   if (!(budgetCents >= P.minBudgetCents && budgetCents <= P.maxBudgetCents)) {
     return json(400, { error: `budget must be $${(P.minBudgetCents / 100).toFixed(0)}–$${(P.maxBudgetCents / 100).toLocaleString("en-US")}` });
   }
-  // Paying in $DWELL boosts the campaign's impressions (docs/08) — same spend,
-  // +DWELL_PAY_BOOST_BPS more reach. Applied to impressions only; the 90%
-  // rewards pool stays sized to the actual $DWELL paid, so it's pure extra
-  // reach, not a subsidy of the viewer pool.
+  // Paying in $DWELL boosts the campaign's impressions (docs/08) — same
+  // spend, +DWELL_PAY_BOOST_BPS more reach. Impressions only; the rewards
+  // pool stays sized to the USD price, so the boost is extra reach, not a
+  // bigger viewer pool.
   const boostBps = payCurrency === "dwell" ? config.dwellPayBoostBps : 0;
   const baseImpressions = Math.floor((budgetCents * 1000) / cpmCents);
   const impressions = Math.floor(baseImpressions * (10000 + boostBps) / 10000);
   if (!(baseImpressions >= 1)) return json(400, { error: "budget too small for this CPM" });
 
-  // 90/10 in micro-USDC, exact: the fee is the 10000-RESERVE_TRANCHE_BPS
-  // remainder, the tranche keeps every leftover micro unit. The USD split is
-  // the pricing truth on every rail; SOL/DWELL amounts derive from it per quote.
+  // The USD split is the pricing truth on every rail, exact in micro-USDC:
+  // the fee leg is the 10000-RESERVE_TRANCHE_BPS remainder; the rewards-pool
+  // (revenue) leg keeps every leftover micro unit. SOL/$DWELL amounts derive
+  // from it per spot quote — nothing is swapped, no leg buys $DWELL.
   const priceMicro = BigInt(budgetCents) * 10000n;
   const feeMicro = (priceMicro * BigInt(10000 - config.reserveTrancheBps)) / 10000n;
   const trancheMicro = priceMicro - feeMicro;
 
-  let quote: any, payTotalUnits: string, payFeeUnits: string, minDwellOut: string;
+  let quote: any = {}, payTotalUnits: string, payFeeUnits: string;
   try {
     if (payCurrency === "sol") {
       const sol = await priceOrderInSol(priceMicro.toString(), 10000 - config.reserveTrancheBps);
       payTotalUnits = sol.totalLamports.toString();
       payFeeUnits = sol.feeLamports.toString();
-      quote = await jupiterQuote({ inputMint: WSOL_MINT, outputMint: config.dwellMint, amount: sol.trancheLamports.toString() });
-      minDwellOut = String(quote.otherAmountThreshold || quote.outAmount);
+      quote = sol.quote;
     } else if (payCurrency === "dwell") {
-      // No swap: the advertiser sends $DWELL directly. Price the budget into
-      // $DWELL; 90% to the distributor is the min_dwell_out (exact transfer).
-      const d = await priceOrderInDwell(priceMicro.toString(), 10000 - config.reserveTrancheBps);
+      const d = await priceOrderInDwell(priceMicro.toString());
       payTotalUnits = d.totalDwell.toString();
-      payFeeUnits = d.feeDwell.toString();
+      payFeeUnits = d.totalDwell.toString(); // one leg: the verifier enforces the full payment
       quote = d.quote;
-      minDwellOut = d.trancheDwell.toString();
     } else {
+      // USDC needs no quote at all — the price IS the pay amount.
       payTotalUnits = priceMicro.toString();
       payFeeUnits = feeMicro.toString();
-      quote = await jupiterQuote({ inputMint: config.usdcMint, outputMint: config.dwellMint, amount: trancheMicro.toString() });
-      minDwellOut = String(quote.otherAmountThreshold || quote.outAmount);
     }
   } catch (err: any) {
-    console.error("[dwell] usdc order quote failed:", err?.message);
-    return json(502, { error: "couldn't quote the swap — try again" });
+    console.error("[dwell] crypto order pricing failed:", err?.message);
+    return json(502, { error: "couldn't price the order — try again" });
   }
 
+  const reference = newReferencePubkey();
   const blocks = Math.max(1, Math.round(impressions / 1000));
   const campaignId = await repo.createPendingCampaign({
-    email, brand, adLine, url, category, color: normalizeHexColor(color),
+    email: advertiserEmail || `${reference.slice(0, 20).toLowerCase()}@wallet.invalid`,
+    brand, adLine, url, category, color: normalizeHexColor(color),
     pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard,
     changeTimescale: normalizeTimescale(timescale),
   });
@@ -3814,8 +3824,8 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
     payTotalUnits,
     payFeeUnits,
     quote,
-    minDwellOut,
-    referencePubkey: newReferencePubkey(),
+    minDwellOut: "0", // v2: no swap, no slippage floor (column kept for compatibility)
+    referencePubkey: reference,
     ttlMinutes: config.usdcOrderTtlMinutes,
   });
   return json(200, {
@@ -3831,8 +3841,6 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
       boostBps: config.dwellPayBoostBps,
       boostImpressions: impressions - baseImpressions,
     } : {}),
-    estDwellOut: String(quote.outAmount),
-    minDwellOut,
     expiresAt: order.expires_at,
     // Solana Pay transaction request: wallets GET label/icon then POST
     // {account} to this link and receive the unsigned transaction.
@@ -3867,9 +3875,9 @@ route("GET", "/v1/ads/usdc/orders/:id", async (ctx: any) => {
       continue;
     }
     if (!v.ok) {
-      // A landed-but-wrong transaction (fee short, slippage floor breached)
-      // permanently fails the order; not-yet-final ones keep the order open.
-      if (["tx_failed", "fee_short", "no_dwell_out", "slippage_floor", "reference_missing"].includes(v.reason) && !hinted) {
+      // A landed-but-wrong transaction (a short leg) permanently fails the
+      // order; not-yet-final ones keep the order open.
+      if (["tx_failed", "fee_short", "revenue_short", "payment_short", "reference_missing"].includes(v.reason) && !hinted) {
         await repo.failUsdcOrder(order.id, v.reason, signature);
       }
       continue;
@@ -3878,11 +3886,11 @@ route("GET", "/v1/ads/usdc/orders/:id", async (ctx: any) => {
       const paid = await repo.confirmUsdcOrder({
         orderId: order.id,
         txSignature: signature,
-        dwellOut: v.dwellOut.toString(),
         tokenSplit,
-        viewerShareBps: config.viewerShareBps,
       });
-      if (paid) {
+      // Receipt only when the advertiser gave a real address — anonymous
+      // wallet checkouts hang off a synthetic @wallet.invalid address.
+      if (paid && !(paid as any).email.endsWith("@wallet.invalid")) {
         try {
           await mailer.sendAdvertiserReceiptEmail((paid as any).email, {
             campaignId: order.campaign_id,
@@ -3916,9 +3924,10 @@ route("GET", "/v1/ads/usdc/orders/:id/transaction", async () => {
 });
 
 // Solana Pay transaction request (POST half): build the atomic unsigned
-// transaction for the paying wallet. Re-quotes on every build — a built
-// transaction is only ~60s of blockhash validity — and pins the refreshed
-// slippage floor to the order so the verifier enforces what the wallet saw.
+// transaction for the paying wallet. SOL/$DWELL re-price on every build —
+// a built transaction is only ~60s of blockhash validity — and the refreshed
+// amounts pin to the order so the verifier enforces what the wallet saw.
+// USDC amounts are the USD price itself: nothing to re-price.
 route("POST", "/v1/ads/usdc/orders/:id/transaction", async (ctx: any) => {
   if (usdcCheckoutOff()) return json(404, { error: "not found" });
   const order = await repo.getUsdcOrder(ctx.params.id);
@@ -3929,42 +3938,32 @@ route("POST", "/v1/ads/usdc/orders/:id/transaction", async (ctx: any) => {
   if (!isPubkey(payer)) return json(400, { error: "account must be a Solana pubkey" });
   try {
     const built: any = { ...order };
-    let transaction: string, tail = "";
+    let tail = "";
 
     if (order.pay_currency === "dwell") {
-      // $DWELL rail: no swap. Re-price the $DWELL legs (its price floats), pin
-      // them + the 90% floor to the order, then build the two-transfer tx.
-      const d = await priceOrderInDwell(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
+      const d = await priceOrderInDwell(String(order.price_micro_usdc));
       built.pay_total_units = d.totalDwell.toString();
-      built.pay_fee_units = d.feeDwell.toString();
-      const minOut = d.trancheDwell.toString();
-      await repo.refreshUsdcOrderQuote(order.id, d.quote, minOut, { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units });
-      transaction = await buildOrderTransaction({ order: { ...built, min_dwell_out: minOut }, payer });
-      tail = ` (≈ ${(Number(built.pay_total_units) / 10 ** config.dwellDecimals).toLocaleString("en-US", { maximumFractionDigits: 2 })} $DWELL, +${config.dwellPayBoostBps / 100}% impressions)`;
-    } else {
-      // SOL rail: re-price the lamport legs first (the USD split is fixed;
-      // what that costs in SOL floats), then quote the swap of the tranche.
-      if (order.pay_currency === "sol") {
-        const sol = await priceOrderInSol(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
-        built.pay_total_units = sol.totalLamports.toString();
-        built.pay_fee_units = sol.feeLamports.toString();
-      }
-      const quote = await jupiterQuote(tranchQuoteParams(built));
-      const minOut = String(quote.otherAmountThreshold || quote.outAmount);
-      await repo.refreshUsdcOrderQuote(order.id, quote, minOut, order.pay_currency === "sol"
-        ? { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units }
-        : {});
-      transaction = await buildOrderTransaction({ order: { ...built, min_dwell_out: minOut }, payer, quoteResponse: quote });
-      if (order.pay_currency === "sol") tail = ` (≈ ${(Number(built.pay_total_units) / 1e9).toFixed(4)} SOL)`;
+      built.pay_fee_units = d.totalDwell.toString();
+      await repo.refreshUsdcOrderQuote(order.id, d.quote, "0", { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units });
+      tail = ` (≈ ${(Number(built.pay_total_units) / 10 ** config.dwellDecimals).toLocaleString("en-US", { maximumFractionDigits: 2 })} $DWELL to the company treasury, +${config.dwellPayBoostBps / 100}% impressions)`;
+    } else if (order.pay_currency === "sol") {
+      const sol = await priceOrderInSol(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
+      built.pay_total_units = sol.totalLamports.toString();
+      built.pay_fee_units = sol.feeLamports.toString();
+      await repo.refreshUsdcOrderQuote(order.id, sol.quote, "0", { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units });
+      tail = ` (≈ ${(Number(built.pay_total_units) / 1e9).toFixed(4)} SOL)`;
     }
 
+    const transaction = await buildOrderTransaction({ order: built, payer });
     return json(200, {
       transaction,
-      message: `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} ${order.pay_currency === "dwell" ? "to the rewards pool" : "DWELL buy to the rewards pool"}${tail}`,
+      message: order.pay_currency === "dwell"
+        ? `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign paid in $DWELL${tail}`
+        : `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} to the rewards pool${tail}`,
     });
   } catch (err: any) {
     if (err.code === "NO_FUNDS" || err.code === "BAD_ACCOUNT") return json(400, { error: err.message });
-    console.error("[dwell] usdc order build failed:", err?.message);
+    console.error("[dwell] crypto order build failed:", err?.message);
     return json(502, { error: "couldn't build the transaction — try again" });
   }
 });
@@ -4225,10 +4224,10 @@ function verifyOAuthState(state: string | null) {
   if (!Number.isFinite(ts) || Date.now() - ts >= 10 * 60 * 1000) return null;
   return { ref: parts[2] || "", nonce: parts[1] || "" };
 }
-// X (Twitter) OAuth 2.0 mandates PKCE even for confidential clients. We stay
-// stateless by deriving the verifier from the signed state's nonce with a server
-// secret — only its S256 hash (the challenge) travels through the browser, and
-// the callback recomputes the verifier from the returned state.
+// X's OAuth 2.0 Authorization Code flow mandates PKCE. We stay stateless by
+// deriving the code_verifier from the signed state's nonce with a server secret
+// — only its S256 hash (the challenge) travels through the browser, and the
+// callback recomputes the verifier from the returned state.
 function pkceVerifier(nonce: string) {
   return crypto.createHmac("sha256", config.adminKey || "fallback").update(`pkce:${nonce}`).digest("hex");
 }
@@ -4332,9 +4331,12 @@ route("GET", "/v1/auth/apple/callback", async (ctx: any) => {
   }
 });
 
-// ── X (Twitter) OAuth 2.0 (PKCE) ──
-// X returns no email, so accounts are keyed on the numeric X user id alone. The
-// confidential client authenticates the token exchange with HTTP Basic.
+// ── X (Twitter) sign-in — OAuth 2.0 Authorization Code + PKCE ──
+// Endpoints per docs.x.com: authorize at x.com/i/oauth2/authorize, token at
+// api.x.com/2/oauth2/token, identity via GET /2/users/me (tweet.read +
+// users.read scopes). X returns no email, so accounts are keyed on the numeric
+// X user id; the handle is display-only. The confidential client authenticates
+// the token exchange with HTTP Basic.
 route("GET", "/v1/auth/twitter", async (ctx: any) => {
   if (!config.twitterClientId) return redirect(`${config.siteUrl}/portal.html?login=no-twitter`);
   const state = makeOAuthState(ctx.query.get("ref"));
@@ -4342,10 +4344,10 @@ route("GET", "/v1/auth/twitter", async (ctx: any) => {
   const params = new URLSearchParams({
     response_type: "code", client_id: config.twitterClientId,
     redirect_uri: `${config.apiBaseUrl}/v1/auth/twitter/callback`,
-    scope: "tweet.read users.read offline.access", state,
+    scope: "tweet.read users.read", state,
     code_challenge: pkceChallenge(pkceVerifier(st!.nonce)), code_challenge_method: "S256",
   });
-  return redirect(`https://twitter.com/i/oauth2/authorize?${params}`);
+  return redirect(`https://x.com/i/oauth2/authorize?${params}`);
 });
 route("GET", "/v1/auth/twitter/callback", async (ctx: any) => {
   const query = ctx.query;
@@ -4354,23 +4356,31 @@ route("GET", "/v1/auth/twitter/callback", async (ctx: any) => {
   if (!oauthState) return redirect(`${config.siteUrl}/portal.html?login=error`);
   try {
     const basic = Buffer.from(`${config.twitterClientId}:${config.twitterClientSecret}`).toString("base64");
-    const tokRes = await fetch("https://api.twitter.com/2/oauth2/token", {
+    const tokRes = await fetch("https://api.x.com/2/oauth2/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${basic}` },
       body: new URLSearchParams({ code: query.get("code"), grant_type: "authorization_code", client_id: config.twitterClientId, redirect_uri: `${config.apiBaseUrl}/v1/auth/twitter/callback`, code_verifier: pkceVerifier(oauthState.nonce) }).toString(),
     });
     const tokens = await tokRes.json();
-    if (!tokens.access_token) throw new Error("no access_token from X");
-    const uiRes = await fetch("https://api.twitter.com/2/users/me", { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+    if (!tokens.access_token) throw new Error(`no access_token from X (${tokRes.status}: ${JSON.stringify(tokens).slice(0, 200)})`);
+    const uiRes = await fetch("https://api.x.com/2/users/me", { headers: { Authorization: `Bearer ${tokens.access_token}` } });
     const tu = await uiRes.json();
-    if (!tu?.data?.id) throw new Error("no user id from X");
+    if (!tu?.data?.id) throw new Error(`no user id from X (${uiRes.status}: ${JSON.stringify(tu).slice(0, 200)})`);
     const { sessionToken } = await repo.upsertUserByOAuth(
-      { twitterId: String(tu.data.id), referralCode: oauthState.ref, emailVerified: false },
+      { twitterId: String(tu.data.id), twitterUsername: tu.data.username || null, referralCode: oauthState.ref, emailVerified: false },
       config.webSessionTtlMs
     );
     return redirect(`${config.siteUrl}/portal.html#session=${sessionToken}`);
   } catch (err: any) {
     console.error("[dwell] twitter oauth:", err.message);
+    // Record the failure durably — the redirect swallows it from the caller, and
+    // console output alone has proven easy to miss when debugging sign-in.
+    try {
+      await pool.query(
+        "insert into diag_errors (method, path, message, stack) values ($1,$2,$3,$4)",
+        ["GET", "/v1/auth/twitter/callback", String(err?.message || err), String(err?.stack || "")]
+      );
+    } catch (_e) { /* diagnostics must never break the redirect */ }
     return redirect(`${config.siteUrl}/portal.html?login=error`);
   }
 });
@@ -4404,7 +4414,8 @@ route("GET", "/v1/web/me", async (ctx: any) => {
     repo.getOrCreateReferralCode(user.id),
   ]);
   return json(200, {
-    email: user.email, balanceUsd: bal.balanceMillicents / 100000,
+    email: user.email, twitterUsername: user.twitter_username || null,
+    balanceUsd: bal.balanceMillicents / 100000,
     needsSurvey: !hasSurvey, needsPost: !posted,
     referralLink: `${config.siteUrl}/portal.html?ref=${code}`,
   });
@@ -5142,6 +5153,46 @@ route("GET", "/v1/admin/advertisers", async (ctx: any) => {
   }) });
 });
 
+// Transactions view: crypto orders (DB, every rail + status) merged with card
+// charges (pulled live from Stripe). Independent rails — a Stripe outage must
+// never blank the crypto side — so the card fetch is best-effort.
+route("GET", "/v1/admin/transactions", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const limit = ctx.query.get("limit");
+
+  const orders = await repo.listCryptoOrders({ limit, status: ctx.query.get("status") || null });
+  const realEmail = (e: any) => (e && !e.endsWith("@wallet.invalid") ? e : null);
+  const cryptoTx = orders.map((o: any) => ({
+    id: o.id, rail: o.pay_currency, status: o.status, failReason: o.fail_reason,
+    priceUsd: Number(o.price_micro_usdc) / 1e6,
+    payTotalUnits: o.pay_total_units, payFeeUnits: o.pay_fee_units,
+    reference: o.reference_pubkey, txSignature: o.tx_signature,
+    brand: o.brand, adLine: o.ad_line, advertiserEmail: realEmail(o.advertiser_email),
+    createdAt: o.created_at, expiresAt: o.expires_at,
+  }));
+
+  const stripeLive = !!config.stripeSecretKey && config.stripeSecretKey !== "sk_test_devnet";
+  let card: any[] = [], cardError: string | null = null;
+  if (stripeLive) {
+    try {
+      const charges = await stripe.listCharges({ limit: parseInt(limit, 10) || 25 });
+      card = (charges.data || []).map((ch: any) => ({
+        id: ch.id, amountUsd: (ch.amount || 0) / 100, currency: ch.currency,
+        status: ch.status, refunded: !!ch.refunded,
+        brand: ch.payment_method_details?.card?.brand || null,
+        last4: ch.payment_method_details?.card?.last4 || null,
+        email: ch.billing_details?.email || ch.receipt_email || null,
+        receiptUrl: ch.receipt_url || null,
+        campaignId: ch.metadata?.campaign_id || null,
+        createdAt: ch.created ? new Date(ch.created * 1000).toISOString() : null,
+      }));
+    } catch (err: any) {
+      cardError = "couldn't reach Stripe: " + (err?.message || "unknown error");
+    }
+  }
+  return json(200, { crypto: cryptoTx, card, cardError, stripeLive });
+});
+
 // ── completion-receipt preview (no stamp) + manual once-only send (+ force resend) ──
 route("GET", "/v1/admin/campaigns/receipt-preview", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
@@ -5214,6 +5265,21 @@ route("POST", "/v1/admin/ad-notice", async (ctx: any) => {
   adNoticeVisible = ctx.body.visible;
   servingSyncedAt = Date.now(); // reflect immediately in /v1/config without waiting on the sync window
   return json(200, { ok: true, visible: ctx.body.visible });
+});
+// Whether clients show the non-billable house ad when the auction is empty (ON by default).
+route("GET", "/v1/admin/house-ad", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  let enabled = true;
+  try { enabled = (await repo.getSetting("house_ad_enabled")) !== false; } catch { /* settings absent → default on */ }
+  return json(200, { enabled });
+});
+route("POST", "/v1/admin/house-ad", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  if (typeof ctx.body?.enabled !== "boolean") return json(400, { error: "enabled (boolean) required" });
+  await repo.setSetting("house_ad_enabled", ctx.body.enabled);
+  houseAdEnabled = ctx.body.enabled;
+  servingSyncedAt = Date.now(); // reflect immediately in /v1/config without waiting on the sync window
+  return json(200, { ok: true, enabled: ctx.body.enabled });
 });
 route("GET", "/v1/admin/campaigns/receipts-auto", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
