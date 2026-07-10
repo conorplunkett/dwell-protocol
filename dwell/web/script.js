@@ -881,6 +881,77 @@ const CRYPTO_CHECKOUT = true;
       dwellBtn.disabled = false;
     }
   });
+
+  // "Buy $DWELL" — for advertisers who want the +10% $DWELL rail but don't hold
+  // any yet. Opens Jupiter's official swap widget (the best Solana aggregator,
+  // already our server-side price oracle) pre-filled to swap USDC → $DWELL for
+  // their ad-budget amount, from their own wallet; then they Pay with $DWELL
+  // above. The mints come from /v1/config (only present once DWELL_MINT is set),
+  // so the button — and the whole $DWELL rail — light up at token launch from a
+  // single env var. Nothing here signs or holds funds; Jupiter's own wallet UI does.
+  const RPC = window.DWELL_RPC || document.querySelector('meta[name="dwell-rpc"]')?.content || "https://api.mainnet-beta.solana.com";
+  const USDC_DECIMALS = 6; // buy amount is priced in USDC (a dollar stablecoin)
+  const BUY_BUFFER = 1.05; // +5% cushion so price drift doesn't leave them short when they pay in $DWELL
+  const wireBuyDwell = async () => {
+    const buyBtn = document.getElementById("dwell-buy-btn");
+    if (!buyBtn) return;
+    const cfg = await getConfig();
+    if (!cfg || !cfg.dwellMint || !cfg.usdcMint) return; // pre-launch — stays hidden
+    // Launch is live: reveal the Buy button and enable the $DWELL tab (paying in
+    // $DWELL additionally needs TREASURY_DWELL_ATA — the backend enforces that and
+    // the pay button surfaces the friendly 400; buying only needs the mint).
+    buyBtn.hidden = false;
+    const dwellTab = document.getElementById("paytab-dwell");
+    if (dwellTab) { dwellTab.disabled = false; dwellTab.removeAttribute("data-tip"); }
+
+    let jupLoading = null;
+    const loadJupiter = () => {
+      if (window.Jupiter) return Promise.resolve();
+      if (jupLoading) return jupLoading;
+      jupLoading = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://terminal.jup.ag/main-v1.js";
+        s.setAttribute("data-preload", "");
+        s.onload = () => resolve();
+        s.onerror = () => { jupLoading = null; reject(new Error("jupiter load failed")); };
+        document.head.appendChild(s);
+      });
+      return jupLoading;
+    };
+
+    buyBtn.addEventListener("click", async () => {
+      // Same required-field gate as the pay button (a valid campaign before swapping).
+      if (window.validateTickerFields && !window.validateTickerFields()) return;
+      const budget = readForm().budget;
+      if (!(budget > 0)) return;
+      // USDC base units = dollars × 10^6, +5% buffer. USDC ≈ $1, so this ≈ the ad budget in $.
+      const amount = Math.round(budget * BUY_BUFFER * 10 ** USDC_DECIMALS);
+      const old = buyBtn.innerHTML;
+      buyBtn.disabled = true;
+      buyBtn.textContent = "Opening Jupiter…";
+      try {
+        await loadJupiter();
+        window.Jupiter.init({
+          displayMode: "modal",
+          endpoint: RPC,
+          formProps: {
+            fixedInputMint: true,           // lock input to USDC
+            initialInputMint: cfg.usdcMint,
+            initialOutputMint: cfg.dwellMint,
+            initialAmount: String(amount),
+            swapMode: "ExactIn",
+          },
+        });
+      } catch (_) {
+        buyBtn.textContent = "Couldn't open the swap — try again";
+        setTimeout(() => { buyBtn.innerHTML = old; buyBtn.disabled = false; }, 2600);
+        return;
+      }
+      buyBtn.innerHTML = old;
+      buyBtn.disabled = false;
+    });
+  };
+  wireBuyDwell();
 })();
 
 // --- Surfaces showcase: provider-tab cross-fade ("Native everywhere it

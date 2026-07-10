@@ -3176,7 +3176,10 @@ function parseAffiliateSocials(body: any): { socials?: any; error?: string } {
 
 // ── health & catalog ──
 route("GET", "/healthz", async () => json(200, { ok: true }));
-route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, houseAdEnabled, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) }); });
+// Expose the Solana mints only once $DWELL launches (DWELL_MINT set) — the static
+// lander needs them to prefill the Jupiter "Buy $DWELL" swap (USDC → $DWELL). Both
+// are public on-chain addresses; no secret leaves here.
+route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, houseAdEnabled, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}), ...(config.dwellMint ? { dwellMint: config.dwellMint, usdcMint: config.usdcMint } : {}) }); });
 
 // Advertiser pricing for the lander (min / suggested / top). Kept off /v1/config
 // so the extension's frequent config polls stay query-free. top = max(anchor,

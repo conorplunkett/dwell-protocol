@@ -179,7 +179,10 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     try { liveTopCpm = (await repo.getSetting("live_top_cpm")) === true; } catch { /* settings table absent */ }
     try { adNoticeVisible = (await repo.getSetting("ad_notice_visible")) === true; } catch { /* settings table absent */ }
     try { houseAdEnabled = (await repo.getSetting("house_ad_enabled")) !== false; } catch { /* settings table absent → default on */ }
-    json(res, 200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, houseAdEnabled, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) });
+    // Expose the Solana mints only once $DWELL launches (DWELL_MINT set) — the
+    // static lander needs them to prefill the Jupiter "Buy $DWELL" swap
+    // (USDC → $DWELL). Both are public on-chain addresses; no secret leaves here.
+    json(res, 200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, houseAdEnabled, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}), ...(config.dwellMint ? { dwellMint: config.dwellMint, usdcMint: config.usdcMint } : {}) });
   });
 
   route("GET", "/v1/ads", async (req, res) => {

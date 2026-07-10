@@ -2065,7 +2065,15 @@ globalThis.fetch = async (url, opts) => {
     const dwell = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
     assert.strictEqual(dwell.status, 400);
     assert.ok(/after token launch/.test(dwell.body.error), "the $DWELL rail names its gate");
+    // Pre-launch, /v1/config hides the mints so the lander's "Buy $DWELL" swap stays dark.
+    const cfgOff = (await apiU("GET", "/v1/config")).body;
+    assert.strictEqual(cfgOff.dwellMint, undefined, "no mint exposed before launch");
+    assert.strictEqual(cfgOff.usdcMint, undefined, "no USDC mint exposed before launch");
     cfgUsdc.dwellMint = DWELL_MINT;
+    // At launch (DWELL_MINT set) /v1/config surfaces both mints for the Jupiter buy widget.
+    const cfgOn = (await apiU("GET", "/v1/config")).body;
+    assert.strictEqual(cfgOn.dwellMint, DWELL_MINT, "$DWELL mint exposed at launch");
+    assert.strictEqual(cfgOn.usdcMint, USDC_MINT, "USDC mint exposed at launch");
   });
 
   let orderU;

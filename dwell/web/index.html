@@ -8,6 +8,10 @@
        self-contained mock-data mode (sticky; ?dev=0 to exit) — handled in
        script.js. -->
   <meta name="dwell-api" content="https://wpjfhezklpczxzocgxsb.supabase.co/functions/v1/dwell-api" />
+  <!-- Public Solana RPC the Jupiter "Buy $DWELL" swap widget talks to (or set
+       window.DWELL_RPC). Must be a PUBLIC endpoint — never the server's keyed
+       SOLANA_RPC_URL, which stays server-side. -->
+  <meta name="dwell-rpc" content="https://api.mainnet-beta.solana.com" />
   <title>DWELL — Get your token in front of the internet</title>
   <meta name="description" content="One sponsored line shows while ChatGPT, Claude, or Gemini is thinking. Advertisers buy adspace with $DWELL; you earn $USDC while you use AI." />
   <link rel="canonical" href="https://dwellprotocol.com/" />
@@ -537,6 +541,13 @@
             <button class="usdc-btn dwell-btn" id="dwell-btn" type="button">
               <span class="usdc-btn-label">Pay with</span> <strong>$DWELL</strong>
               <span class="usdc-btn-boost">+10% impressions</span>
+            </button>
+            <!-- Don't hold $DWELL yet? Buy it right here (swap USDC → $DWELL for
+                 your ad-budget amount via Jupiter), then Pay with $DWELL above.
+                 Hidden until the backend reports DWELL_MINT is live (script.js). -->
+            <button class="usdc-btn dwell-buy-btn" id="dwell-buy-btn" type="button" hidden>
+              <span class="usdc-btn-label">Buy</span> <strong>$DWELL</strong>
+              <span class="usdc-btn-boost">powered by Jupiter</span>
             </button>
             <div class="usdc-panel" id="dwell-panel" hidden>
               <div class="usdc-row"><span>Ad budget</span><strong id="dwell-price">$0.00</strong></div>
