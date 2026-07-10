@@ -642,27 +642,28 @@ if (adForm) {
   });
 }
 
-// --- Crypto checkout: USDC/SOL or $DWELL (dwell/docs/08) --------------------
-// Non-custodial pay-and-swap: the backend builds ONE atomic Solana transaction
-// the advertiser signs from their own wallet via a Solana Pay link. Two crypto
-// rails: USDC/SOL (10% fee to treasury, 90% market-bought into $DWELL for the
-// rewards pool) and $DWELL direct (no swap — 10% fee + 90% to the pool, and the
-// campaign gets +10% impressions). Fully wired but HIDDEN: the backend 404s the
-// whole surface until the $DWELL mint exists (DWELL_MINT env), so this flag
-// stays false until launch — flip it to reveal the slider.
-const USDC_CHECKOUT = false;
+// --- Crypto checkout: USDC/SOL now, $DWELL after launch (dwell/docs/08 v2) --
+// Non-custodial and swap-free (tokenomics v2 — no leg of any payment buys
+// $DWELL): the backend builds ONE atomic Solana transaction the advertiser
+// signs from their own wallet via a Solana Pay link — the protocol-fee leg to
+// the treasury + the rewards-pool leg to the revenue account. USDC/SOL are
+// LIVE (no token needed). The $DWELL rail (pay the USD price in $DWELL at a
+// spot quote, +10% impressions) opens at token launch — its tab sits disabled
+// with an "after token launch" tag until the backend accepts currency:"dwell".
+const CRYPTO_CHECKOUT = true;
 (() => {
   const tabs = document.getElementById("paytabs");
   if (!tabs || !adForm) return;
-  if (!USDC_CHECKOUT || !API_BASE) return; // stays hidden pre-launch (and in dev mode)
+  if (!CRYPTO_CHECKOUT || !API_BASE) return; // kill-switch (and dev mode)
 
   // Reveal the payment-method slider and wire the tabs. Order: USDC/SOL
-  // (default), $DWELL, Credit card. The thumb width comes from the segment
-  // count (CSS), so selecting tab i is just translateX(i * 100%).
+  // (default), $DWELL (disabled until launch), Credit card. The thumb width
+  // comes from the segment count (CSS): selecting tab i is translateX(i*100%).
   tabs.hidden = false;
   const thumb = document.getElementById("paytabs-thumb");
   const tabEls = [...tabs.querySelectorAll(".paytab")];
   const selectTab = (idx) => {
+    if (tabEls[idx]?.disabled) return; // the $DWELL rail until token launch
     if (thumb) thumb.style.transform = `translateX(${idx * 100}%)`;
     tabEls.forEach((t, i) => {
       const on = i === idx;
@@ -742,7 +743,11 @@ const USDC_CHECKOUT = false;
         });
         const data = await res.json();
         if (!res.ok) {
-          btn.textContent = data.error || "Something went wrong";
+          // A 404 means this deployment hasn't configured its crypto accounts
+          // yet — steer to the card rail instead of echoing "not found".
+          btn.textContent = res.status === 404
+            ? "Crypto checkout isn't live here yet — pay with card"
+            : (data.error || "Something went wrong");
           setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2600);
           return;
         }
@@ -785,26 +790,26 @@ const USDC_CHECKOUT = false;
         document.getElementById("usdc-sol-total").textContent = data.estPayTotalSol.toFixed(4) + " SOL";
       }
       return cur === "sol"
-        ? "Open the link in your Solana wallet and approve — one signature pays the fee in SOL and funds the rewards pool. The SOL amount re-prices when the wallet fetches the transaction."
-        : "Open the link in your Solana wallet and approve the transaction — one signature pays the fee and funds the rewards pool.";
+        ? "Open the link in your Solana wallet and approve — one signature pays the protocol fee and funds the rewards pool, in SOL. The SOL amount re-prices when the wallet fetches the transaction."
+        : "Open the link in your Solana wallet and approve — one signature pays the protocol fee and funds the rewards pool.";
     },
   });
 
-  // $DWELL pane — pay the budget directly in $DWELL (no swap), +10% impressions.
+  // $DWELL pane — post-launch: pay the USD price in $DWELL at a spot quote
+  // (the payment goes to the company treasury and is held; docs/01), with
+  // +10% impressions. Unreachable while its tab is disabled.
   wirePane({
     currency: "dwell",
     ids: { btn: "dwell-btn", panel: "dwell-panel", status: "dwell-status", paylink: "dwell-paylink", copy: "dwell-copy" },
     fill: (data) => {
       document.getElementById("dwell-price").textContent = usd(data.priceUsdc);
-      document.getElementById("dwell-fee").textContent = usd(data.feeUsdc);
-      document.getElementById("dwell-tranche").textContent = usd(data.trancheUsdc);
       const boostPct = Number.isFinite(data.boostBps) ? (data.boostBps / 100) : 10;
       document.getElementById("dwell-boost").textContent = "+" + boostPct + "% impressions";
       if (Number.isFinite(data.estPayTotalDwell)) {
         document.getElementById("dwell-amount").textContent =
           Number(data.estPayTotalDwell).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " $DWELL";
       }
-      return "Open the link in your Solana wallet and approve — one signature pays 10% to the treasury and 90% to the rewards pool. Your campaign runs with +" + boostPct + "% impressions.";
+      return "Open the link in your Solana wallet and approve — one signature pays the campaign price in $DWELL. Your campaign runs with +" + boostPct + "% impressions. The $DWELL amount re-prices when the wallet fetches the transaction.";
     },
   });
 })();

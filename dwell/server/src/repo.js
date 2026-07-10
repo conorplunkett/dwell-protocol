@@ -1456,18 +1456,18 @@ function createRepo(pool) {
     },
 
     // The one state transition that funds a campaign from a verified on-chain
-    // payment. Mirrors markCampaignPaid's exactly-once shape (only an
-    // awaiting_signature order and a pending_payment campaign transition) and
-    // adds the token_campaign_pools row — the locked-rate source of truth:
-    //   locked rate = dwellOut × viewer share ÷ impressions bought.
-    // All bought DWELL goes to the distributor; the treasury's 30–40% leg
-    // settles via the Merkle root's treasury shortfall leaf (docs/04 §A).
-    async confirmUsdcOrder({ orderId, txSignature, dwellOut, tokenSplit, viewerShareBps }) {
+    // payment (tokenomics v2). Mirrors markCampaignPaid's exactly-once shape
+    // (only an awaiting_signature order and a pending_payment campaign
+    // transition) and funds the campaign on the dollar ledger exactly like a
+    // card payment: campaign_credit for the exact charge plus the rewards-pool
+    // earmark. No token machinery — viewers earn dollar-denominated dwells on
+    // every rail.
+    async confirmUsdcOrder({ orderId, txSignature, tokenSplit }) {
       return tx(async (c) => {
         const ord = await c.query(
           `update usdc_orders set status = 'confirmed', tx_signature = $2
             where id = $1 and status = 'awaiting_signature'
-            returning campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc`,
+            returning campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc, pay_currency`,
           [orderId, txSignature]
         );
         if (!ord.rows[0]) return false; // already confirmed/expired/failed — idempotent no-op
@@ -1495,7 +1495,7 @@ function createRepo(pool) {
           `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
            values ('campaign_credit', $1, $2, $3)`,
           [funded.toString(), o.campaign_id,
-           JSON.stringify({ impressions: rows[0].impressions_total, rail: "usdc", tx: txSignature })]
+           JSON.stringify({ impressions: rows[0].impressions_total, rail: o.pay_currency, tx: txSignature })]
         );
         if (tokenSplit) {
           const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
@@ -1503,19 +1503,9 @@ function createRepo(pool) {
             `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
              values ('reserve_allocation', $1, $2, $3)`,
             [tranche.toString(), o.campaign_id,
-             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: "usdc" })]
+             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: o.pay_currency })]
           );
         }
-
-        const impressions = BigInt(rows[0].impressions_total);
-        const lockedRate = (BigInt(dwellOut) * BigInt(viewerShareBps)) / 10000n / impressions;
-        await c.query(
-          `insert into token_campaign_pools
-             (campaign_id, usdc_in_micro, dwell_out_wei, to_distributor_wei,
-              to_treasury_wei, locked_rate_wei, tx_hash)
-           values ($1,$2,$3,$3,0,$4,$5)`,
-          [o.campaign_id, o.tranche_micro_usdc, String(dwellOut), lockedRate.toString(), txSignature]
-        );
 
         return {
           email: rows[0].email,

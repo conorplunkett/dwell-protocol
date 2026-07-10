@@ -78,22 +78,26 @@ function loadConfig(env = process.env) {
     referrerShareBps: parseInt(env.REFERRER_SHARE_BPS || "1000", 10), // referrer's share (falls to protocol when unreferred)
     reserveTrancheBps: parseInt(env.RESERVE_TRANCHE_BPS || "9000", 10), // slice of gross routed to the token side
 
-    // ---- USDC advertiser checkout (dwell/docs/08) — non-custodial pay-and-swap ----
-    // The whole surface is gated on DWELL_MINT: until the $DWELL SPL mint exists
-    // (star.fun launch), every /v1/ads/usdc route 404s and none of this is read.
-    // No signing keys here or anywhere — the backend only builds unsigned
-    // transactions and verifies finalized ones read-only.
+    // ---- Crypto advertiser checkout (dwell/docs/08, tokenomics v2) ----
+    // Non-custodial, swap-free: no leg of any payment buys $DWELL (docs/01).
+    // USDC/SOL rails are live once the treasury + revenue accounts are set —
+    // no dependency on the token existing. The $DWELL rail (a single transfer
+    // to the treasury at a spot quote, held there) opens at token launch:
+    // DWELL_MINT + TREASURY_DWELL_ATA gate that one rail only. No signing keys
+    // here or anywhere — the backend only builds unsigned transactions and
+    // verifies finalized ones read-only.
     dwellMint: env.DWELL_MINT || "",
     usdcMint: env.USDC_MINT || "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // canonical USDC on Solana mainnet (6 dp)
     solanaRpcUrl: env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
-    jupiterBaseUrl: env.JUPITER_BASE_URL || "https://lite-api.jup.ag/swap/v1",
-    treasuryUsdcAta: env.TREASURY_USDC_ATA || "",           // Squads treasury vault's USDC token account — the 10% leg
-    treasurySolAccount: env.TREASURY_SOL_ACCOUNT || "",     // Squads treasury vault address for native-SOL fee legs; empty = SOL rail off
-    treasuryDwellAta: env.TREASURY_DWELL_ATA || "",         // Squads treasury vault's DWELL token account — the 10% leg on the $DWELL rail; empty = $DWELL rail off
-    distributorDwellAta: env.DISTRIBUTOR_DWELL_ATA || "",   // rewards distributor vault's DWELL token account — the swap output / $DWELL 90% leg
+    jupiterBaseUrl: env.JUPITER_BASE_URL || "https://lite-api.jup.ag/swap/v1", // spot PRICING quotes only (SOL/$DWELL rails) — nothing is ever swapped
+    treasuryUsdcAta: env.TREASURY_USDC_ATA || "",           // company treasury USDC account — the protocol-fee leg
+    revenueUsdcAta: env.REVENUE_USDC_ATA || "",             // company revenue USDC account — the rewards-pool leg (funds dwell payouts)
+    treasurySolAccount: env.TREASURY_SOL_ACCOUNT || "",     // treasury address for native-SOL fee legs; empty = SOL rail off
+    revenueSolAccount: env.REVENUE_SOL_ACCOUNT || "",       // revenue address for native-SOL rewards-pool legs
+    treasuryDwellAta: env.TREASURY_DWELL_ATA || "",         // treasury $DWELL account — the whole $DWELL-rail payment lands here, held (docs/01)
     dwellDecimals: parseInt(env.DWELL_DECIMALS || "6", 10), // display only — raw DWELL units ÷ 10^decimals for the "≈ pay in $DWELL" figure
     dwellPayBoostBps: parseInt(env.DWELL_PAY_BOOST_BPS || "1000", 10), // paying in $DWELL boosts a campaign's impressions by this (1000 = +10%)
-    maxSlippageBps: parseInt(env.MAX_SLIPPAGE_BPS || "100", 10), // swap slippage bound; the verifier enforces the implied minOut
+    maxSlippageBps: parseInt(env.MAX_SLIPPAGE_BPS || "100", 10), // slippageBps param on pricing quotes (no swap executes)
     usdcOrderTtlMinutes: parseInt(env.USDC_ORDER_TTL_MINUTES || "30", 10), // price validity window; each built tx is only ~60s (blockhash)
 
     // ---- brand — the DWELL deployment bills and writes copy under its own name ----
@@ -142,10 +146,16 @@ async function boot(env = process.env) {
     }
   }
 
-  // USDC checkout (dwell/docs/08): enabling it needs the full account triple —
-  // half-configured would build transactions that can never verify.
-  if (config.dwellMint && !(config.treasuryUsdcAta && config.distributorDwellAta)) {
-    throw new Error("DWELL_MINT is set — TREASURY_USDC_ATA and DISTRIBUTOR_DWELL_ATA are required too");
+  // Crypto checkout (dwell/docs/08 v2): half-configured rails would build
+  // transactions that can never verify — require account pairs together.
+  if ((config.treasuryUsdcAta || config.revenueUsdcAta) && !(config.treasuryUsdcAta && config.revenueUsdcAta)) {
+    throw new Error("crypto checkout needs BOTH TREASURY_USDC_ATA and REVENUE_USDC_ATA");
+  }
+  if ((config.treasurySolAccount || config.revenueSolAccount) && !(config.treasurySolAccount && config.revenueSolAccount)) {
+    throw new Error("the SOL rail needs BOTH TREASURY_SOL_ACCOUNT and REVENUE_SOL_ACCOUNT");
+  }
+  if (config.dwellMint && !config.treasuryDwellAta) {
+    throw new Error("DWELL_MINT is set — TREASURY_DWELL_ATA is required for the $DWELL rail");
   }
 
   const { Pool } = require("pg");
