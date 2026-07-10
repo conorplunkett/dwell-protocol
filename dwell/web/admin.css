@@ -102,6 +102,14 @@ td.wrap { white-space: normal; max-width: 320px; }
 .badge.rejected, .badge.cancelled, .badge.failed, .badge.capped { background: var(--err-bg); color: var(--err-fg); }
 .badge.exhausted { background: var(--bg-tint); color: var(--ink-2); }
 .badge.tool { background: rgba(var(--accent-rgb), .12); color: var(--accent-d); text-transform: none; }
+/* transactions: crypto-order statuses + card outcomes */
+.badge.confirmed, .badge.succeeded { background: var(--ok-bg); color: var(--ok-fg); }
+.badge.awaiting_signature, .badge.refunded { background: #fff6e6; color: #8a5a00; }
+.badge.expired { background: var(--err-bg); color: var(--err-fg); }
+/* transactions: pay-rail chips (kept off the semantic status palette) */
+.badge.usdc { background: #e7f0ff; color: #1a52b0; text-transform: none; }
+.badge.sol { background: #efe9ff; color: #5b34c0; text-transform: none; }
+.badge.dwell { background: #f0efe9; color: #6b5b2e; text-transform: none; }
 
 /* ── inputs ── */
 input[type=text], input[type=number], input[type=search], select {

@@ -62,6 +62,12 @@ function createStripe(secretKey, { fetchImpl = fetch } = {}) {
     // --- money in: advertiser checkout ---
     createCheckoutSession: (params) => request("POST", "/checkout/sessions", params),
 
+    // --- read: recent card charges for the admin transactions view ---
+    // GET, so the query rides in the path (the shared request() form-encodes
+    // params into the body, which a GET has none of). Stripe caps limit at 100.
+    listCharges: ({ limit = 25 } = {}) =>
+      request("GET", `/charges?limit=${encodeURIComponent(Math.max(1, Math.min(100, limit)))}`),
+
     // --- refund a rejected campaign ---
     createRefund: (params) => request("POST", "/refunds", params),
 

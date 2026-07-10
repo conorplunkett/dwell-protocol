@@ -33,6 +33,12 @@ const fakeFetch = async (url, opts) => {
   const body =
     p === "/v1/checkout/sessions" ? { id, url: `https://checkout.stripe.com/c/pay/${id}` }
     : p === "/v1/account_links" ? { url: "https://connect.stripe.com/setup/e/test" }
+    : p === "/v1/charges" ? { data: [{
+        id: "ch_test_1", amount: 2500, currency: "usd", status: "succeeded", refunded: false,
+        payment_method_details: { card: { brand: "visa", last4: "4242" } },
+        billing_details: { email: "card-buyer@example.com" }, receipt_url: "https://pay.stripe.com/receipts/test",
+        metadata: { campaign_id: "cmp_test" }, created: 1_700_000_000,
+      }] }
     : { id };
   return { ok: true, status: 200, json: async () => body };
 };
@@ -2216,6 +2222,38 @@ globalThis.fetch = async (url, opts) => {
     const got = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
     assert.strictEqual(got.body.status, "expired", "lazy expiry on read — nothing on-chain, nothing to clean up");
     assert.strictEqual((await apiU("POST", `/v1/ads/usdc/orders/${r.body.orderId}/transaction`, { account: PAYER })).status, 410);
+  });
+
+  await check("admin transactions: crypto orders from the DB + card charges from Stripe", async () => {
+    // Bad key is rejected.
+    assert.strictEqual((await apiU("GET", "/v1/admin/transactions?adminKey=nope")).status, 401);
+
+    // With no real Stripe key, the crypto side still lists (many orders exist from
+    // the checks above) and the card side stays empty without calling out.
+    delete cfgUsdc.stripeSecretKey;
+    const off = await apiU("GET", "/v1/admin/transactions?adminKey=test-admin");
+    assert.strictEqual(off.status, 200);
+    assert.ok(off.body.crypto.length > 0, "crypto orders come from the usdc_orders table");
+    assert.strictEqual(off.body.stripeLive, false);
+    assert.deepStrictEqual(off.body.card, [], "no Stripe call when the key is the dev fallback / unset");
+    const o = off.body.crypto[0];
+    assert.ok(["usdc", "sol", "dwell"].includes(o.rail), "each order carries its pay rail");
+    assert.ok(["awaiting_signature", "confirmed", "expired", "failed"].includes(o.status));
+
+    // A confirmed order surfaces its on-chain signature; anonymous checkouts read null, not the synthetic @wallet.invalid.
+    const confirmed = off.body.crypto.find((x) => x.status === "confirmed");
+    assert.ok(confirmed && confirmed.txSignature, "a confirmed order exposes its tx signature");
+    assert.ok(off.body.crypto.some((x) => x.advertiserEmail === null), "wallet.invalid placeholders are hidden");
+
+    // With a live-looking key, the card side is pulled from Stripe.
+    cfgUsdc.stripeSecretKey = "sk_test_fake";
+    const on = await apiU("GET", "/v1/admin/transactions?adminKey=test-admin");
+    assert.strictEqual(on.body.stripeLive, true);
+    assert.strictEqual(on.body.card.length, 1, "one charge pulled from Stripe");
+    assert.strictEqual(on.body.card[0].amountUsd, 25, "amount is cents ÷ 100");
+    assert.strictEqual(on.body.card[0].brand, "visa");
+    assert.strictEqual(on.body.card[0].last4, "4242");
+    assert.strictEqual(on.body.card[0].email, "card-buyer@example.com");
   });
 
   sU.close();
