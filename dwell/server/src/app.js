@@ -8,7 +8,6 @@ const { verifyWebhookSignature } = require("./stripe");
 const { GIFT_PLANS, GIFT_MONTHS, giftPriceCents } = require("./giftcards");
 const { runPayouts } = require("./payouts");
 const { escapeHtml, isCleanAdLine, normalizeHexColor, normalizeTimescale, resolveChangePct } = require("./util");
-const { WSOL_MINT } = require("./solana");
 
 // Crew = the affiliate "earn with your friends" panel in the extension popup.
 // Ten slots: each is a joined friend, a pending invite, or an open invite form.
@@ -377,16 +376,20 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
   });
 
   // ---------- USDC advertiser checkout (dwell/docs/08) ----------
-  // Non-custodial pay-and-swap: POST /orders prices the campaign and quotes the
-  // swap; POST /orders/:id/transaction builds ONE atomic unsigned transaction
-  // (10% USDC fee -> treasury, 90% Jupiter-swapped into DWELL -> distributor
-  // vault) that the advertiser signs from their own wallet; GET /orders/:id
-  // polls, discovers the payment by its Solana Pay reference key, verifies the
-  // finalized transaction read-only, and activates the campaign. The backend
-  // holds no keys and no funds at any point. The whole surface 404s until the
-  // $DWELL mint exists (DWELL_MINT unset — the launch gate).
+  // Non-custodial and swap-free (tokenomics v2 — docs/01: "No leg of any
+  // payment, on any rail, buys $DWELL"): POST /orders prices the campaign;
+  // POST /orders/:id/transaction builds ONE atomic unsigned transaction — the
+  // protocol-fee leg to the treasury plus the rewards-pool (revenue) leg to
+  // the revenue account — that the advertiser signs from their own wallet;
+  // GET /orders/:id polls, discovers the payment by its Solana Pay reference
+  // key, verifies the finalized transaction read-only, and funds the campaign
+  // exactly like a card payment (viewers earn dollar-denominated dwells on
+  // every rail). The backend holds no keys and no funds at any point. USDC and
+  // SOL are live once the treasury+revenue accounts are configured; the $DWELL
+  // rail (one transfer to the treasury at a spot quote, held there) opens at
+  // token launch.
   const usdcCheckoutOff = () =>
-    !config.tokenMode || !config.dwellMint || !config.treasuryUsdcAta || !config.distributorDwellAta;
+    !config.tokenMode || !config.treasuryUsdcAta || !config.revenueUsdcAta;
   // The reference server has no admin pricing surface (the edge function reads
   // the settings-backed repo.getPricing()); these mirror its defaults.
   const USDC_PRICING = { minCpmCents: 500, maxCpmCents: 10000, minBudgetCents: 10000, maxBudgetCents: 10000000 };
@@ -409,7 +412,6 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       estPayTotalDwell: Number(o.pay_total_units) / 10 ** config.dwellDecimals,
       boostBps: config.dwellPayBoostBps,
     } : {}),
-    minDwellOut: String(o.min_dwell_out),
     reference: o.reference_pubkey,
     txSignature: o.tx_signature || null,
     failReason: o.fail_reason || null,
@@ -419,20 +421,27 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
   route("POST", "/v1/ads/usdc/orders", async (req, res, body) => {
     if (usdcCheckoutOff()) return json(res, 404, { error: "not found" });
     // Same budget+CPM campaign shape as the card checkout — only the rail
-    // differs. currency picks what the wallet pays with: 'usdc' (default) or
-    // 'sol' (native transfer fee leg + wSOL->DWELL swap; needs the treasury's
-    // SOL account configured).
+    // differs. currency picks what the wallet pays with: 'usdc' (default),
+    // 'sol' (two native transfers; needs the SOL account pair), or 'dwell'
+    // (post-launch: one transfer to the treasury at a spot quote).
     const { email, adLine, url, brand, category, color, budget, cpm, showOnLeaderboard, currency, timescale } = body || {};
     const payCurrency = ["sol", "dwell"].includes(currency) ? currency : "usdc";
-    if (payCurrency === "sol" && !config.treasurySolAccount) {
+    if (payCurrency === "sol" && !(config.treasurySolAccount && config.revenueSolAccount)) {
       return json(res, 400, { error: "SOL payments aren't enabled — pay with USDC" });
     }
-    if (payCurrency === "dwell" && !config.treasuryDwellAta) {
-      return json(res, 400, { error: "$DWELL payments aren't enabled — pay with USDC" });
+    if (payCurrency === "dwell" && !(config.dwellMint && config.treasuryDwellAta)) {
+      return json(res, 400, { error: "$DWELL payments open after token launch — pay with USDC or SOL" });
     }
     const budgetCents = Math.round(Number(budget) * 100);
     const cpmCents = Math.round(Number(cpm) * 100);
-    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(res, 400, { error: "valid email required" });
+    // Email is optional on the crypto rails (the wallet is the identity; a
+    // receipt address is Stripe-only). When absent, the advertiser row hangs
+    // off a synthetic per-order address on the reserved .invalid TLD — never
+    // deliverable, never mailed.
+    const advertiserEmail = String(email || "").trim();
+    if (advertiserEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(advertiserEmail)) {
+      return json(res, 400, { error: "that email doesn't look valid — fix it or leave it blank" });
+    }
     if (!isCleanAdLine(adLine)) return json(res, 400, { error: "ad line must be 3-60 printable chars, no < >" });
     if (!/^https:\/\/[^\s]+$/.test(url || "")) return json(res, 400, { error: "https url required" });
     const P = USDC_PRICING;
@@ -442,52 +451,50 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     if (!(budgetCents >= P.minBudgetCents && budgetCents <= P.maxBudgetCents)) {
       return json(res, 400, { error: `budget must be $${(P.minBudgetCents / 100).toFixed(0)}–$${(P.maxBudgetCents / 100).toLocaleString("en-US")}` });
     }
-    // Paying in $DWELL boosts the campaign's impressions (docs/08) — same spend,
-    // +DWELL_PAY_BOOST_BPS more reach. Applied to impressions only; the 90%
-    // rewards pool stays sized to the actual $DWELL paid, so the boost is pure
-    // extra reach, not a subsidy of the viewer pool.
+    // Paying in $DWELL boosts the campaign's impressions (docs/08) — same
+    // spend, +DWELL_PAY_BOOST_BPS more reach. Impressions only; the rewards
+    // pool stays sized to the USD price, so the boost is extra reach, not a
+    // bigger viewer pool.
     const boostBps = payCurrency === "dwell" ? config.dwellPayBoostBps : 0;
     const baseImpressions = Math.floor((budgetCents * 1000) / cpmCents);
     const impressions = Math.floor(baseImpressions * (10000 + boostBps) / 10000);
     if (!(baseImpressions >= 1)) return json(res, 400, { error: "budget too small for this CPM" });
 
-    // 90/10 in micro-USDC, exact: the fee is the 10000-RESERVE_TRANCHE_BPS
-    // remainder, the tranche keeps every leftover micro unit. The USD split is
-    // the pricing truth on every rail; SOL amounts derive from it per quote.
+    // The USD split is the pricing truth on every rail, exact in micro-USDC:
+    // the fee leg is the 10000-RESERVE_TRANCHE_BPS remainder; the rewards-pool
+    // (revenue) leg keeps every leftover micro unit. SOL/$DWELL amounts derive
+    // from it per spot quote — nothing is swapped, no leg buys $DWELL.
     const priceMicro = BigInt(budgetCents) * 10000n;
     const feeMicro = (priceMicro * BigInt(10000 - config.reserveTrancheBps)) / 10000n;
     const trancheMicro = priceMicro - feeMicro;
 
-    let quote, payTotalUnits, payFeeUnits, minDwellOut;
+    let quote = {}, payTotalUnits, payFeeUnits;
     try {
       if (payCurrency === "sol") {
         const sol = await solana.priceOrderInSol(priceMicro.toString(), 10000 - config.reserveTrancheBps);
         payTotalUnits = sol.totalLamports.toString();
         payFeeUnits = sol.feeLamports.toString();
-        quote = await solana.jupiterQuote({ inputMint: WSOL_MINT, outputMint: config.dwellMint, amount: sol.trancheLamports.toString() });
-        minDwellOut = String(quote.otherAmountThreshold || quote.outAmount);
+        quote = sol.quote;
       } else if (payCurrency === "dwell") {
-        // No swap: the advertiser sends $DWELL directly. Price the budget into
-        // $DWELL; 90% to the distributor is the min_dwell_out (exact transfer).
-        const d = await solana.priceOrderInDwell(priceMicro.toString(), 10000 - config.reserveTrancheBps);
+        const d = await solana.priceOrderInDwell(priceMicro.toString());
         payTotalUnits = d.totalDwell.toString();
-        payFeeUnits = d.feeDwell.toString();
+        payFeeUnits = d.totalDwell.toString(); // one leg: the verifier enforces the full payment
         quote = d.quote;
-        minDwellOut = d.trancheDwell.toString();
       } else {
+        // USDC needs no quote at all — the price IS the pay amount.
         payTotalUnits = priceMicro.toString();
         payFeeUnits = feeMicro.toString();
-        quote = await solana.jupiterQuote({ inputMint: config.usdcMint, outputMint: config.dwellMint, amount: trancheMicro.toString() });
-        minDwellOut = String(quote.otherAmountThreshold || quote.outAmount);
       }
     } catch (err) {
-      console.error("[dwell] usdc order quote failed:", err?.message);
-      return json(res, 502, { error: "couldn't quote the swap — try again" });
+      console.error("[dwell] crypto order pricing failed:", err?.message);
+      return json(res, 502, { error: "couldn't price the order — try again" });
     }
 
+    const reference = solana.newReferencePubkey();
     const blocks = Math.max(1, Math.round(impressions / 1000));
     const campaignId = await repo.createPendingCampaign({
-      email, brand, adLine, url, category, color: normalizeHexColor(color),
+      email: advertiserEmail || `${reference.slice(0, 20).toLowerCase()}@wallet.invalid`,
+      brand, adLine, url, category, color: normalizeHexColor(color),
       pricePerBlockCents: cpmCents, blocks, impressionsTotal: impressions, budgetCents, showOnLeaderboard,
       changeTimescale: normalizeTimescale(timescale),
     });
@@ -500,8 +507,8 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       payTotalUnits,
       payFeeUnits,
       quote,
-      minDwellOut,
-      referencePubkey: solana.newReferencePubkey(),
+      minDwellOut: "0", // v2: no swap, no slippage floor (column kept for compatibility)
+      referencePubkey: reference,
       ttlMinutes: config.usdcOrderTtlMinutes,
     });
     json(res, 200, {
@@ -517,8 +524,6 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
         boostBps: config.dwellPayBoostBps,
         boostImpressions: impressions - baseImpressions,
       } : {}),
-      estDwellOut: String(quote.outAmount),
-      minDwellOut,
       expiresAt: order.expires_at,
       // Solana Pay transaction request: wallets GET label/icon then POST
       // {account} to this link and receive the unsigned transaction.
@@ -553,9 +558,9 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
         continue;
       }
       if (!v.ok) {
-        // A landed-but-wrong transaction (fee short, slippage floor breached)
-        // permanently fails the order; not-yet-final ones keep the order open.
-        if (["tx_failed", "fee_short", "no_dwell_out", "slippage_floor", "reference_missing"].includes(v.reason) && !hinted) {
+        // A landed-but-wrong transaction (a short leg) permanently fails the
+        // order; not-yet-final ones keep the order open.
+        if (["tx_failed", "fee_short", "revenue_short", "payment_short", "reference_missing"].includes(v.reason) && !hinted) {
           await repo.failUsdcOrder(order.id, v.reason, signature);
         }
         continue;
@@ -564,11 +569,11 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
         const paid = await repo.confirmUsdcOrder({
           orderId: order.id,
           txSignature: signature,
-          dwellOut: v.dwellOut.toString(),
           tokenSplit,
-          viewerShareBps: config.viewerShareBps,
         });
-        if (paid) {
+        // Receipt only when the advertiser gave a real address — anonymous
+        // wallet checkouts hang off a synthetic @wallet.invalid address.
+        if (paid && !paid.email.endsWith("@wallet.invalid")) {
           try {
             await mailer.sendAdvertiserReceiptEmail(paid.email, {
               campaignId: order.campaign_id,
@@ -601,9 +606,10 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
   });
 
   // Solana Pay transaction request (POST half): build the atomic unsigned
-  // transaction for the paying wallet. Re-quotes on every build — a built
-  // transaction is only ~60s of blockhash validity — and pins the refreshed
-  // slippage floor to the order so the verifier enforces what the wallet saw.
+  // transaction for the paying wallet. SOL/$DWELL re-price on every build —
+  // a built transaction is only ~60s of blockhash validity — and the refreshed
+  // amounts pin to the order so the verifier enforces what the wallet saw.
+  // USDC amounts are the USD price itself: nothing to re-price.
   route("POST", "/v1/ads/usdc/orders/:id/transaction", async (req, res, body, rawBody, query, pathParams) => {
     if (usdcCheckoutOff()) return json(res, 404, { error: "not found" });
     const order = await repo.getUsdcOrder(pathParams.id);
@@ -614,44 +620,36 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     if (!solana.isPubkey(payer)) return json(res, 400, { error: "account must be a Solana pubkey" });
     try {
       let built = { ...order };
-      let transaction, tail = "";
+      let tail = "";
 
       if (order.pay_currency === "dwell") {
-        // $DWELL rail: no swap. Re-price the $DWELL legs (its price floats), pin
-        // them + the 90% floor to the order, then build the two-transfer tx.
-        const d = await solana.priceOrderInDwell(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
+        const d = await solana.priceOrderInDwell(String(order.price_micro_usdc));
         built.pay_total_units = d.totalDwell.toString();
-        built.pay_fee_units = d.feeDwell.toString();
-        const minOut = d.trancheDwell.toString();
-        await repo.refreshUsdcOrderQuote(order.id, d.quote, minOut, {
+        built.pay_fee_units = d.totalDwell.toString();
+        await repo.refreshUsdcOrderQuote(order.id, d.quote, "0", {
           payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units,
         });
-        transaction = await solana.buildOrderTransaction({ order: { ...built, min_dwell_out: minOut }, payer });
-        tail = ` (≈ ${(Number(built.pay_total_units) / 10 ** config.dwellDecimals).toLocaleString("en-US", { maximumFractionDigits: 2 })} $DWELL, +${config.dwellPayBoostBps / 100}% impressions)`;
-      } else {
-        // SOL rail: re-price the lamport legs first (the USD split is fixed;
-        // what that costs in SOL floats), then quote the swap of the tranche.
-        if (order.pay_currency === "sol") {
-          const sol = await solana.priceOrderInSol(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
-          built.pay_total_units = sol.totalLamports.toString();
-          built.pay_fee_units = sol.feeLamports.toString();
-        }
-        const quote = await solana.jupiterQuote(solana.tranchQuoteParams(built));
-        const minOut = String(quote.otherAmountThreshold || quote.outAmount);
-        await repo.refreshUsdcOrderQuote(order.id, quote, minOut, order.pay_currency === "sol"
-          ? { payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units }
-          : {});
-        transaction = await solana.buildOrderTransaction({ order: { ...built, min_dwell_out: minOut }, payer, quoteResponse: quote });
-        if (order.pay_currency === "sol") tail = ` (≈ ${(Number(built.pay_total_units) / 1e9).toFixed(4)} SOL)`;
+        tail = ` (≈ ${(Number(built.pay_total_units) / 10 ** config.dwellDecimals).toLocaleString("en-US", { maximumFractionDigits: 2 })} $DWELL to the company treasury, +${config.dwellPayBoostBps / 100}% impressions)`;
+      } else if (order.pay_currency === "sol") {
+        const sol = await solana.priceOrderInSol(String(order.price_micro_usdc), 10000 - config.reserveTrancheBps);
+        built.pay_total_units = sol.totalLamports.toString();
+        built.pay_fee_units = sol.feeLamports.toString();
+        await repo.refreshUsdcOrderQuote(order.id, sol.quote, "0", {
+          payTotalUnits: built.pay_total_units, payFeeUnits: built.pay_fee_units,
+        });
+        tail = ` (≈ ${(Number(built.pay_total_units) / 1e9).toFixed(4)} SOL)`;
       }
 
+      const transaction = await solana.buildOrderTransaction({ order: built, payer });
       json(res, 200, {
         transaction,
-        message: `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} ${order.pay_currency === "dwell" ? "to the rewards pool" : "DWELL buy to the rewards pool"}${tail}`,
+        message: order.pay_currency === "dwell"
+          ? `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign paid in $DWELL${tail}`
+          : `${config.brandName}: $${microUsd(order.price_micro_usdc).toFixed(2)} ad campaign — $${microUsd(order.fee_micro_usdc).toFixed(2)} protocol fee + $${microUsd(order.tranche_micro_usdc).toFixed(2)} to the rewards pool${tail}`,
       });
     } catch (err) {
       if (err.code === "NO_FUNDS" || err.code === "BAD_ACCOUNT") return json(res, 400, { error: err.message });
-      console.error("[dwell] usdc order build failed:", err?.message);
+      console.error("[dwell] crypto order build failed:", err?.message);
       json(res, 502, { error: "couldn't build the transaction — try again" });
     }
   });

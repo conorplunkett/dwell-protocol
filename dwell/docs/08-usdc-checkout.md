@@ -1,13 +1,22 @@
 # USDC advertiser checkout — plan
 
-> **Tokenomics v2 (July 2026): the swap leg below is retired.** No leg of any
-> payment buys $DWELL. The v2 crypto checkout is two plain USDC transfers —
-> the protocol-fee leg and the revenue leg — with no Jupiter swap and no
-> distributor vault; viewers earn dollar-denominated dwells regardless of the
-> payment rail ([01-tokenomics.md](01-tokenomics.md),
-> [09-securities-framework.md](09-securities-framework.md)). The swap-based
-> flow documented below and its gated code (`DWELL_MINT` unset → routes 404)
-> are retained as reference only and must not be enabled.
+> **Tokenomics v2 — IMPLEMENTED (2026-07-10).** The swap leg below is retired
+> and the v2 flow is now the code: no leg of any payment buys $DWELL. Rails:
+> **USDC** — two plain transfers in one atomic advertiser-signed transaction,
+> the protocol-fee leg to `TREASURY_USDC_ATA` and the rewards-pool leg to
+> `REVENUE_USDC_ATA`; **SOL** — the same two legs as native lamport transfers
+> (`TREASURY_SOL_ACCOUNT`/`REVENUE_SOL_ACCOUNT`), priced from USD by a spot
+> quote re-run per build; **$DWELL (post-launch)** — one transfer of the full
+> payment to `TREASURY_DWELL_ATA` at a spot quote, held there
+> ([01-tokenomics.md](01-tokenomics.md) ▸ What the token does), with a +10%
+> impressions boost (`DWELL_PAY_BOOST_BPS`). USDC/SOL are live with **no
+> dependency on the token existing**; only the $DWELL rail gates on
+> `DWELL_MINT` + `TREASURY_DWELL_ATA` (its lander tab shows disabled with an
+> "after token launch" tag). Email is optional on crypto rails (synthetic
+> `@wallet.invalid` advertiser rows, never mailed). Campaigns fund on the
+> dollar ledger exactly like card payments; viewers earn dollar-denominated
+> dwells on every rail. The v1 swap-based design below is kept for the
+> historical record — the code for it was removed (git history has it).
 
 Crypto-native advertisers buy ad space in **USDC or SOL**, wallet-to-chain,
 with **no funds ever held by our system**. The protocol takes the **same 10%

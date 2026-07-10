@@ -478,18 +478,22 @@
           <div class="paytabs paytabs-3" id="paytabs" role="tablist" aria-label="Payment method" hidden>
             <span class="paytabs-thumb" id="paytabs-thumb" aria-hidden="true"></span>
             <button type="button" class="paytab active" id="paytab-crypto" role="tab" aria-selected="true" data-pane="pay-crypto">Pay with USDC/SOL</button>
-            <button type="button" class="paytab" id="paytab-dwell" role="tab" aria-selected="false" data-pane="pay-dwell">
-              Pay with $DWELL<span class="paytab-badge">+10%</span>
+            <!-- $DWELL rail opens at token launch (tokenomics v2): disabled, not
+                 hidden — the grey tag says why. script.js re-enables it when the
+                 backend accepts currency:"dwell". -->
+            <button type="button" class="paytab" id="paytab-dwell" role="tab" aria-selected="false" data-pane="pay-dwell" disabled>
+              Pay with $DWELL<span class="paytab-badge">+10%</span><span class="paytab-tag">after token launch</span>
             </button>
             <button type="button" class="paytab" id="paytab-card" role="tab" aria-selected="false" data-pane="pay-card">Credit card</button>
           </div>
 
-          <!-- Crypto pane (dwell/docs/08). Fully wired to /v1/ads/usdc/*. One
-               atomic Solana transaction signed from the advertiser's own wallet.
-               HIDDEN by default — script.js reveals the slider and selects this
-               pane only when USDC_CHECKOUT is on. With the flag off the card
-               pane below shows on its own, so the working (Stripe) checkout is
-               never hidden behind a gated crypto button. -->
+          <!-- Crypto pane (dwell/docs/08, tokenomics v2). Fully wired to
+               /v1/ads/usdc/*. One atomic Solana transaction signed from the
+               advertiser's own wallet: the protocol-fee leg to the treasury +
+               the rewards-pool leg to the revenue account. No swap; no leg
+               buys $DWELL. HIDDEN by default — script.js reveals the slider
+               and selects this pane when crypto checkout is enabled; with it
+               off the card pane below shows alone. -->
           <div class="paypane" id="pay-crypto" hidden>
             <button class="usdc-btn" id="usdc-btn" type="button">
               <span class="usdc-btn-label">Pay with</span> <strong>USDC or SOL on Solana</strong>
@@ -497,7 +501,7 @@
             <div class="usdc-panel" id="usdc-panel" hidden>
               <div class="usdc-row"><span>Total</span><strong id="usdc-price">$0.00</strong></div>
               <div class="usdc-row"><span>Protocol fee · 10%</span><strong id="usdc-fee">$0.00</strong></div>
-              <div class="usdc-row"><span>$DWELL buy to the rewards pool · 90%</span><strong id="usdc-tranche">$0.00</strong></div>
+              <div class="usdc-row"><span>To the rewards pool · 90%</span><strong id="usdc-tranche">$0.00</strong></div>
               <div class="usdc-row" id="usdc-sol-row" hidden><span>≈ total in SOL</span><strong id="usdc-sol-total">—</strong></div>
               <a class="usdc-paylink" id="usdc-paylink" href="#" rel="noopener">Open in your Solana wallet</a>
               <button type="button" class="usdc-copy" id="usdc-copy">Copy payment link</button>
@@ -506,10 +510,11 @@
             </div>
           </div>
 
-          <!-- $DWELL pane (dwell/docs/08) — pay the ad budget directly in $DWELL
-               (no swap; it's already the token). Two SPL transfers: 10% fee to
-               the treasury, 90% to the rewards pool. Perk: campaigns paid in
-               $DWELL get +10% impressions for the same spend. -->
+          <!-- $DWELL pane (dwell/docs/08, tokenomics v2) — post-launch: pay the
+               USD campaign price in $DWELL at a spot quote; the full payment
+               goes to the company treasury and is held there (docs/01). Perk:
+               +10% impressions for the same spend. Unreachable while the tab
+               above is disabled. -->
           <div class="paypane" id="pay-dwell" hidden>
             <button class="usdc-btn dwell-btn" id="dwell-btn" type="button">
               <span class="usdc-btn-label">Pay with</span> <strong>$DWELL</strong>
@@ -518,8 +523,6 @@
             <div class="usdc-panel" id="dwell-panel" hidden>
               <div class="usdc-row"><span>Ad budget</span><strong id="dwell-price">$0.00</strong></div>
               <div class="usdc-row usdc-row-boost"><span>$DWELL boost</span><strong id="dwell-boost">+10% impressions</strong></div>
-              <div class="usdc-row"><span>Protocol fee · 10%</span><strong id="dwell-fee">$0.00</strong></div>
-              <div class="usdc-row"><span>To the rewards pool · 90%</span><strong id="dwell-tranche">$0.00</strong></div>
               <div class="usdc-row"><span>≈ pay in $DWELL</span><strong id="dwell-amount">—</strong></div>
               <a class="usdc-paylink" id="dwell-paylink" href="#" rel="noopener">Open in your Solana wallet</a>
               <button type="button" class="usdc-copy" id="dwell-copy">Copy payment link</button>
