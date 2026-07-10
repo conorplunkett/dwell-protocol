@@ -477,6 +477,9 @@ function createSolana({ config, fetchImpl }) {
   // Both paths require TREASURY_SIGNER_SECRET; nothing in checkout does.
 
   function requireSigner() {
+    if (config.cryptoConfigError) {
+      throw Object.assign(new Error(config.cryptoConfigError), { code: "NO_SIGNER" });
+    }
     if (!config.treasurySignerSecret) {
       throw Object.assign(new Error("TREASURY_SIGNER_SECRET is not configured"), { code: "NO_SIGNER" });
     }
