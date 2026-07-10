@@ -364,7 +364,9 @@ html.auth-pending #portal-loading { display: flex; }
 #onboard-step-post[hidden],
 #onboard-step-confirm[hidden] { display: none; }
 
-/* Prebuilt post preview — a quoted card the user is about to share. */
+/* Prebuilt post preview — a quoted card the user is about to share.
+   pre-line preserves the newline in the post text (renders it as an actual line
+   break, mirroring how X lays the post out) while still wrapping long lines. */
 .onboard-tweet-preview {
   font-size: 14px;
   line-height: 1.5;
@@ -375,7 +377,22 @@ html.auth-pending #portal-loading { display: flex; }
   border-radius: var(--radius-sm);
   padding: 12px 14px;
   margin: 0;
+  white-space: pre-line;
 }
+
+/* Official X mark (a third-party brand glyph — the sanctioned color exception,
+   like the favicon): pure black at the top of the post card, white inside the
+   red "Post to X" button (which centers its logo + label). */
+.onboard-x-icon { color: #000; line-height: 0; }
+.onboard-x-icon svg { width: 34px; height: 34px; display: inline-block; }
+.onboard-post-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+}
+.onboard-x-glyph { width: 16px; height: 16px; flex-shrink: 0; }
 
 /* Delayed-payout warning under the post button. */
 .onboard-payout-warn {

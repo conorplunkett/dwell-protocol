@@ -790,8 +790,6 @@ function paintOnboardTweet(link) {
   }
   const nextBtn = $("onboard-next-btn");
   if (nextBtn) nextBtn.addEventListener("click", () => onboardStep("confirm"));
-  const no = $("onboard-confirm-no");
-  if (no) no.addEventListener("click", () => onboardStep("post"));
   const yes = $("onboard-confirm-yes");
   if (yes) yes.addEventListener("click", onboardConfirmPosted);
 })();

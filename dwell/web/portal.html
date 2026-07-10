@@ -274,13 +274,16 @@
 
         <!-- Step 1: compose + post -->
         <div id="onboard-step-post">
-          <div class="auth-sent-icon">𝕏</div>
+          <div class="auth-sent-icon onboard-x-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          </div>
           <h2 class="onboard-title">Post on X to earn USDC</h2>
-          <p class="auth-sent-msg">We've written a post for you. Add it to your X to start earning 10% of all your friends' USDC earnings.</p>
+          <p class="auth-sent-msg">Start earning 10% of all your friends' USDC earnings.</p>
 
           <blockquote class="onboard-tweet-preview" id="onboard-tweet-preview"></blockquote>
 
-          <a class="auth-btn-primary" id="onboard-post-btn" href="#" target="_blank" rel="noopener noreferrer">
+          <a class="auth-btn-primary onboard-post-btn" id="onboard-post-btn" href="#" target="_blank" rel="noopener noreferrer">
+            <svg class="onboard-x-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
             Post to X
           </a>
 
@@ -300,9 +303,6 @@
           </p>
           <button class="auth-btn-primary" id="onboard-confirm-yes" type="button">
             Yes, it's on my timeline
-          </button>
-          <button class="auth-link-btn" id="onboard-confirm-no" type="button">
-            ← Not yet — let me post first
           </button>
         </div>
 
