@@ -1741,6 +1741,48 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     }) });
   });
 
+  // Transactions view: crypto orders (from the DB, every rail + status) merged
+  // with card charges (pulled live from Stripe). The two rails are independent —
+  // a Stripe outage must never blank the crypto side — so the card fetch is
+  // best-effort and surfaces its own error instead of failing the request.
+  route("GET", "/v1/admin/transactions", async (req, res, body, rawBody, query) => {
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    const limit = query.get("limit");
+
+    const orders = await repo.listCryptoOrders({ limit, status: query.get("status") || null });
+    const realEmail = (e) => (e && !e.endsWith("@wallet.invalid") ? e : null);
+    const crypto = orders.map((o) => ({
+      id: o.id, rail: o.pay_currency, status: o.status, failReason: o.fail_reason,
+      priceUsd: Number(o.price_micro_usdc) / 1e6,
+      payTotalUnits: o.pay_total_units, payFeeUnits: o.pay_fee_units,
+      reference: o.reference_pubkey, txSignature: o.tx_signature,
+      brand: o.brand, adLine: o.ad_line, advertiserEmail: realEmail(o.advertiser_email),
+      createdAt: o.created_at, expiresAt: o.expires_at,
+    }));
+
+    // The dev fallback key ("sk_test_devnet") isn't a real account — don't call out to it.
+    const stripeLive = !!config.stripeSecretKey && config.stripeSecretKey !== "sk_test_devnet";
+    let card = [], cardError = null;
+    if (stripeLive) {
+      try {
+        const charges = await stripe.listCharges({ limit: parseInt(limit, 10) || 25 });
+        card = (charges.data || []).map((ch) => ({
+          id: ch.id, amountUsd: (ch.amount || 0) / 100, currency: ch.currency,
+          status: ch.status, refunded: !!ch.refunded,
+          brand: ch.payment_method_details?.card?.brand || null,
+          last4: ch.payment_method_details?.card?.last4 || null,
+          email: ch.billing_details?.email || ch.receipt_email || null,
+          receiptUrl: ch.receipt_url || null,
+          campaignId: ch.metadata?.campaign_id || null,
+          createdAt: ch.created ? new Date(ch.created * 1000).toISOString() : null,
+        }));
+      } catch (err) {
+        cardError = "couldn't reach Stripe: " + (err?.message || "unknown error");
+      }
+    }
+    json(res, 200, { crypto, card, cardError, stripeLive });
+  });
+
   // ---------- completion-receipt preview + manual send ----------
   // Preview renders the exact email the advertiser would get, plus the stats, and
   // does NOT stamp the campaign (so the admin can look before sending).

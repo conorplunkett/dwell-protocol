@@ -1444,6 +1444,31 @@ function createRepo(pool) {
       return rows[0] || null;
     },
 
+    // Crypto orders for the admin transactions view: every rail, every status
+    // (awaiting_signature / confirmed / expired / failed), newest first, joined
+    // to the campaign + advertiser for context. Read-only.
+    async listCryptoOrders({ limit, status } = {}) {
+      const n = Math.max(1, Math.min(200, parseInt(limit, 10) || 100));
+      const params = [];
+      let where = "";
+      if (status) { params.push(status); where = `where o.status = $${params.length}`; }
+      params.push(n); const lim = `$${params.length}`;
+      const { rows } = await pool.query(
+        `select o.id, o.pay_currency, o.status, o.fail_reason,
+                o.price_micro_usdc, o.pay_total_units, o.pay_fee_units,
+                o.reference_pubkey, o.tx_signature, o.created_at, o.expires_at,
+                c.brand, c.ad_line, a.email as advertiser_email
+           from usdc_orders o
+           join campaigns c on c.id = o.campaign_id
+           left join advertisers a on a.id = c.advertiser_id
+           ${where}
+          order by o.created_at desc
+          limit ${lim}`,
+        params
+      );
+      return rows;
+    },
+
     // Each build re-quotes (a built transaction is only ~60s of blockhash
     // validity); the stored quote + slippage floor — and, on the SOL rail, the
     // re-priced lamport amounts — track the latest build so the verifier

@@ -135,6 +135,7 @@ const TABS = [
   { id: "daily", label: "Daily Metrics", render: renderDaily },
   { id: "ads", label: "Ads", render: renderAds },
   { id: "advertisers", label: "Advertisers", render: renderAdvertisers },
+  { id: "transactions", label: "Transactions", render: renderTransactions },
   { id: "redemptions", label: "Redemptions", render: renderRedemptions },
   { id: "income", label: "Income", render: renderIncome },
   { id: "users", label: "Users", render: renderUsers },
@@ -414,6 +415,66 @@ async function renderAdvertisers(view) {
       pct(a.ctr), usdOrDash(a.cpcUsd), usdOrDash(a.ecpmUsd),
       dShort(a.createdAt),
     ])));
+}
+
+// Purchases across every rail: crypto orders from the DB (all statuses, on-chain
+// signature links) + card charges pulled live from Stripe. The two are fetched
+// together but rendered as separate tables — they don't share a schema.
+async function renderTransactions(view) {
+  const d = await api("/v1/admin/transactions?limit=100");
+  view.innerHTML = "";
+  const railBadge = (r) => h("span", { class: "badge " + (r || "") }, r === "dwell" ? "$DWELL" : (r || "—").toUpperCase());
+
+  // ── Crypto orders (USDC / SOL / $DWELL) ──
+  view.append(h("div", { class: "card" },
+    h("div", { class: "card-head" }, h("h2", {}, "Crypto orders"),
+      h("p", { class: "hint" }, d.crypto.length + " order" + (d.crypto.length === 1 ? "" : "s") +
+        " — USDC & SOL settle on-chain into your treasury/rewards wallets. Every attempt is logged: awaiting → confirmed / expired / failed.")),
+    table([
+      { label: "When" }, { label: "Rail" }, { label: "Advertiser" }, { label: "Ad" },
+      { label: "Amount", num: true }, { label: "Status" }, { label: "On-chain" },
+    ], d.crypto, (o) => [
+      dt(o.createdAt),
+      td(railBadge(o.rail)),
+      o.advertiserEmail ? h("span", { class: "mono" }, o.advertiserEmail) : h("span", { class: "muted" }, "anon"),
+      (o.brand ? o.brand + (o.adLine ? " — " : "") : "") + (o.adLine || (o.brand ? "" : "—")),
+      usd(o.priceUsd),
+      td(o.status === "failed" && o.failReason
+        ? h("span", { class: "badge failed", title: o.failReason }, "failed")
+        : badge(o.status)),
+      td(o.txSignature
+        ? h("a", { href: "https://solscan.io/tx/" + encodeURIComponent(o.txSignature), target: "_blank", rel: "noopener", class: "mono" }, short(o.txSignature, 8))
+        : h("span", { class: "muted" }, "—")),
+    ])));
+
+  // ── Card charges (pulled live from Stripe) ──
+  const cardCard = h("div", { class: "card" },
+    h("div", { class: "card-head" }, h("h2", {}, "Card charges"),
+      h("p", { class: "hint" }, d.stripeLive
+        ? d.card.length + " recent charge" + (d.card.length === 1 ? "" : "s") + " — pulled live from Stripe."
+        : "Set STRIPE_SECRET_KEY on the deployment to pull card charges here.")));
+  if (d.cardError) {
+    cardCard.append(h("div", { class: "empty" }, d.cardError));
+  } else if (!d.stripeLive) {
+    cardCard.append(h("div", { class: "empty" }, "Stripe isn’t configured on this deployment."));
+  } else {
+    cardCard.append(table([
+      { label: "When" }, { label: "Email" }, { label: "Card" },
+      { label: "Amount", num: true }, { label: "Status" }, { label: "Receipt" },
+    ], d.card, (ch) => [
+      dt(ch.createdAt),
+      ch.email ? h("span", { class: "mono" }, ch.email) : h("span", { class: "muted" }, "—"),
+      ch.brand ? ch.brand + " ••" + (ch.last4 || "") : "—",
+      usd(ch.amountUsd),
+      td(ch.refunded ? h("span", { class: "badge refunded" }, "refunded")
+        : ch.status === "succeeded" ? h("span", { class: "badge succeeded" }, "succeeded")
+        : badge(ch.status)),
+      td(ch.receiptUrl
+        ? h("a", { href: safeHref(ch.receiptUrl), target: "_blank", rel: "noopener" }, "view")
+        : h("span", { class: "muted" }, "—")),
+    ]));
+  }
+  view.append(cardCard);
 }
 
 async function renderRedemptions(view) {
