@@ -1197,7 +1197,8 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       repo.getOrCreateReferralCode(user.id),
     ]);
     json(res, 200, {
-      email: user.email, balanceUsd: bal.balanceMillicents / 100000,
+      email: user.email, twitterUsername: user.twitter_username || null,
+      balanceUsd: bal.balanceMillicents / 100000,
       needsSurvey: !hasSurvey, needsPost: !posted,
       referralLink: `${config.siteUrl}/portal.html?ref=${code}`,
     });
