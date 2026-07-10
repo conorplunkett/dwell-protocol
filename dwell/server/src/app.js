@@ -416,6 +416,18 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     txSignature: o.tx_signature || null,
     failReason: o.fail_reason || null,
     expiresAt: o.expires_at,
+    // SOL/$DWELL settle at ACCEPTANCE: the payment is held during review, then
+    // swapped to USDC when the ad is approved. The realized USDC at that
+    // moment's rate is the funded dollar amount, so the effective CPM and
+    // impression count may differ from the checkout quote.
+    ...(["sol", "dwell"].includes(o.pay_currency) ? {
+      settlement: "usdc-at-acceptance",
+      settlementNote: "Held during review; swapped to USDC when the ad is accepted. The funded dollar amount is the realized USDC at the acceptance-time rate, so effective CPM/impressions may differ from this quote. Rejected ads are refunded in-kind to the paying wallet.",
+      payerAddress: o.payer_address || null,
+      swapSignature: o.swap_signature || null,
+      realizedUsdc: o.realized_micro_usdc != null ? microUsd(o.realized_micro_usdc) : null,
+      refundSignature: o.refund_signature || null,
+    } : {}),
   });
 
   route("POST", "/v1/ads/usdc/orders", async (req, res, body) => {
@@ -524,6 +536,10 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
         boostBps: config.dwellPayBoostBps,
         boostImpressions: impressions - baseImpressions,
       } : {}),
+      ...(["sol", "dwell"].includes(payCurrency) ? {
+        settlement: "usdc-at-acceptance",
+        settlementNote: "Held during review; swapped to USDC when the ad is accepted. The funded dollar amount is the realized USDC at the acceptance-time rate, so effective CPM/impressions may differ from this quote. Rejected ads are refunded in-kind to the paying wallet.",
+      } : {}),
       expiresAt: order.expires_at,
       // Solana Pay transaction request: wallets GET label/icon then POST
       // {account} to this link and receive the unsigned transaction.
@@ -569,6 +585,8 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
         const paid = await repo.confirmUsdcOrder({
           orderId: order.id,
           txSignature: signature,
+          payerAddress: v.payer,
+          receivedRaw: v.receivedRaw,
           tokenSplit,
         });
         // Receipt only when the advertiser gave a real address — anonymous
@@ -1910,10 +1928,67 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     json(res, 200, { enabled: true, sent, failed, candidates: ids.length });
   });
 
+  // Approve. Card/USDC campaigns activate directly. SOL/$DWELL campaigns held
+  // their crypto during review — approval executes the hedge: swap the held
+  // amount to USDC at the acceptance-time rate and fund the campaign with the
+  // REALIZED USDC (effective CPM/impressions may differ from the checkout
+  // quote). A failed swap leaves the campaign in pending_swap; approving again
+  // retries it.
   route("POST", "/v1/admin/campaigns/approve", async (req, res, body) => {
     if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
-    const ok = await repo.approveCampaign(body.campaignId);
-    json(res, ok ? 200 : 404, { ok });
+    const result = await repo.approveCampaign(body.campaignId);
+    if (!result) return json(res, 404, { ok: false });
+    if (!result.needsSwap) return json(res, 200, { ok: true });
+
+    if (!config.treasurySignerSecret) {
+      return json(res, 409, { ok: false, retryable: true, error: "TREASURY_SIGNER_SECRET isn't configured — the held funds can't be swapped; campaign stays pending_swap" });
+    }
+    let swap;
+    try {
+      swap = await solana.executeTreasurySwap({
+        payCurrency: result.order.pay_currency,
+        amountRaw: String(result.order.received_amount_raw),
+      });
+    } catch (err) {
+      console.error("[dwell] acceptance hedge swap failed:", err?.message);
+      return json(res, 502, { ok: false, retryable: true, error: "swap failed — campaign stays pending_swap; approve again to retry" });
+    }
+    const fin = await repo.finalizeAcceptedSwap({
+      orderId: result.order.id,
+      swapSignature: swap.signature,
+      realizedMicroUsdc: swap.realizedMicroUsdc,
+      tokenSplit,
+      dwellPayBoostBps: config.dwellPayBoostBps,
+    });
+    json(res, 200, {
+      ok: true,
+      settlement: "usdc-at-acceptance",
+      swapSignature: swap.signature,
+      realizedUsdc: Number(swap.realizedMicroUsdc) / 1e6,
+      impressionsTotal: fin ? fin.impressionsTotal : null,
+      budgetCents: fin ? fin.budgetCents : null,
+    });
+  });
+
+  // Retry the on-chain refund for a rejected crypto campaign whose held funds
+  // didn't go back at reject time (RPC hiccup, missing $DWELL account, or the
+  // signer wasn't configured yet).
+  route("POST", "/v1/admin/orders/refund", async (req, res, body) => {
+    if (!adminOk(req, body)) return json(res, 401, { error: "bad admin key" });
+    const order = await repo.getRefundableOrder(body.orderId);
+    if (!order) return json(res, 404, { ok: false, error: "no refundable order (must be a held SOL/$DWELL order on a rejected campaign)" });
+    try {
+      const r = await solana.executeRefund({
+        payCurrency: order.pay_currency,
+        destination: order.payer_address,
+        amountRaw: String(order.received_amount_raw),
+      });
+      await repo.markOrderRefunded(order.id, r.signature);
+      json(res, 200, { ok: true, refundSignature: r.signature });
+    } catch (err) {
+      console.error("[dwell] refund retry failed:", err?.message);
+      json(res, 502, { ok: false, retryable: true, error: err?.message || "refund failed" });
+    }
   });
 
   route("POST", "/v1/admin/campaigns/reject", async (req, res, body) => {
@@ -1923,6 +1998,24 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     if (result.paymentIntentId) {
       try { await stripe.createRefund({ payment_intent: result.paymentIntentId }); }
       catch (err) { console.error("[dwell] refund failed:", err.message); }
+    }
+    // Held SOL/$DWELL goes back in-kind on-chain. Two-phase: the campaign is
+    // already rejected; the order stays 'confirmed' until the refund lands, so
+    // a failure here is visible and retryable via /v1/admin/orders/refund.
+    let cryptoRefundSignature = null, cryptoRefundError = null;
+    if (result.heldOrder) {
+      try {
+        const r = await solana.executeRefund({
+          payCurrency: result.heldOrder.pay_currency,
+          destination: result.heldOrder.payer_address,
+          amountRaw: String(result.heldOrder.received_amount_raw),
+        });
+        await repo.markOrderRefunded(result.heldOrder.id, r.signature);
+        cryptoRefundSignature = r.signature;
+      } catch (err) {
+        console.error("[dwell] crypto refund failed (retry via /v1/admin/orders/refund):", err?.message);
+        cryptoRefundError = err?.message || "refund failed";
+      }
     }
     // Tell the advertiser their campaign was rejected + refunded. Wrapped so a
     // mail failure never fails the moderation action (already committed above).
@@ -1938,7 +2031,15 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     } catch (err) {
       console.error("[dwell] rejection email failed:", err.message);
     }
-    json(res, 200, { ok: true, refunded: !!result.paymentIntentId });
+    json(res, 200, {
+      ok: true,
+      refunded: !!result.paymentIntentId || !!cryptoRefundSignature,
+      ...(result.heldOrder ? {
+        orderId: result.heldOrder.id,
+        refundSignature: cryptoRefundSignature,
+        ...(cryptoRefundError ? { refundError: cryptoRefundError, retryable: true } : {}),
+      } : {}),
+    });
   });
 
   // ---------- affiliate review ----------

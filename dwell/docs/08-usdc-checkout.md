@@ -18,6 +18,49 @@
 > dwells on every rail. The v1 swap-based design below is kept for the
 > historical record — the code for it was removed (git history has it).
 
+> **Treasury hedging — hold → swap-on-accept / refund-on-reject (2026-07-10).**
+> SOL and $DWELL payments expose the treasury to price risk against its
+> USD-denominated campaign liabilities, so those rails now settle in USDC at
+> **ad-acceptance time**:
+>
+> - **Hold.** A verified SOL/$DWELL payment is HELD as-is while the campaign
+>   sits in `pending_review`. The verifier records the payer wallet
+>   (`payer_address`) and the actual on-chain amount received
+>   (`received_amount_raw`); **no ledger funding posts yet** (funding on these
+>   rails is deferred — the funded amount isn't known until the swap).
+> - **Accept → hedge.** Admin approval moves the campaign to `pending_swap`
+>   and the server executes a Jupiter swap (SOL/$DWELL → USDC into
+>   `TREASURY_USDC_ATA`, execution slippage bound `SWAP_SLIPPAGE_BPS`, routes
+>   cross Meteora et al.). The **realized USDC** — read from the finalized
+>   transaction's balance deltas, never the quote — becomes the campaign's
+>   funded dollar amount: `budget_cents`, `impressions_total`, and the ledger
+>   `campaign_credit`/`reserve_allocation` are recomputed from it (the $DWELL
+>   +10% boost applies to the recomputed impressions). **The swap rate at
+>   acceptance time is the settlement rate, so the effective CPM/impressions
+>   may differ from the checkout quote** — the order API says so
+>   (`settlement: "usdc-at-acceptance"` + `settlementNote`). Worked example:
+>   an advertiser pays 0.5 SOL against a $100 order at $15 CPM (6,666 quoted
+>   impressions); SOL slides 20% before approval, the swap realizes $80, and
+>   the campaign activates with $80 funded and 5,333 impressions. A failed
+>   swap parks the campaign in `pending_swap` and loses nothing — approving
+>   again retries it.
+> - **Reject → refund.** Admin rejection sends the held amount back to
+>   `payer_address` in-kind, on-chain (order → `refunded`,
+>   `refund_signature`). Nothing was credited, so there is no ledger reversal.
+>   A failed refund leaves the order `confirmed` and retryable via
+>   `POST /v1/admin/orders/refund`. ($DWELL refunds need the payer to still
+>   hold a $DWELL token account; otherwise the retry surfaces
+>   `NO_DEST_ACCOUNT`.)
+> - **Custody boundary.** This is the ONE exception to "no signing keys":
+>   `TREASURY_SIGNER_SECRET` (base58 64-byte ed25519 keypair) lives on the
+>   server and is used exclusively by `executeTreasurySwap` and
+>   `executeRefund` — never by checkout, order building, or verification. Its
+>   pubkey must equal `TREASURY_SOL_ACCOUNT` and own `TREASURY_DWELL_ATA` /
+>   `TREASURY_USDC_ATA` (and `REVENUE_SOL_ACCOUNT` should be the same key —
+>   swaps/refunds move the full received amount from the signer). The USDC
+>   rail is untouched: already stable, funds at confirm, refunds stay
+>   ledger-reversal-only as before.
+
 Crypto-native advertisers buy ad space in **USDC or SOL**, wallet-to-chain,
 with **no funds ever held by our system**. The protocol takes the **same 10%
 cut** as the card path; the other **90% is market-bought into $DWELL in the

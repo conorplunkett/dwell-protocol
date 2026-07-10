@@ -1930,10 +1930,17 @@ globalThis.fetch = async (url, opts) => {
   // chain object is the test's "blockchain": checks mutate it, then poll.
   // v2: plain transfers, no swap, and no $DWELL involvement on USDC/SOL —
   // the rails work with no token in existence.
-  const { createSolana, base58Encode, WSOL_MINT, SYSTEM_PROGRAM, TOKEN_PROGRAM } = require("../src/solana");
+  const { createSolana, base58Encode, WSOL_MINT, SYSTEM_PROGRAM, TOKEN_PROGRAM, serializeUnsignedTransaction, memoInstruction } = require("../src/solana");
   const pk = () => base58Encode(crypto.randomBytes(32));
-  const DWELL_MINT = pk(), USDC_MINT = pk(), TREASURY_ATA = pk(), REVENUE_ATA = pk(), TREASURY_SOL = pk(), REVENUE_SOL = pk(), TREASURY_DWELL = pk(), PAYER = pk(), PAYER_USDC = pk(), PAYER_DWELL = pk();
+  const DWELL_MINT = pk(), USDC_MINT = pk(), TREASURY_ATA = pk(), REVENUE_ATA = pk(), REVENUE_SOL = pk(), TREASURY_DWELL = pk(), PAYER = pk(), PAYER_USDC = pk(), PAYER_DWELL = pk();
   const BLOCKHASH = base58Encode(crypto.randomBytes(32));
+  // Treasury signer (hedging): a real ed25519 keypair — the swap/refund paths
+  // sign for real, and the SOL treasury account IS the signer's address.
+  const signerKp = crypto.generateKeyPairSync("ed25519");
+  const signerSeed = signerKp.privateKey.export({ format: "der", type: "pkcs8" }).subarray(-32);
+  const signerPub = signerKp.publicKey.export({ format: "der", type: "spki" }).subarray(-32);
+  const TREASURY_SIGNER_SECRET = base58Encode(Buffer.concat([signerSeed, signerPub]));
+  const TREASURY_SOL = base58Encode(signerPub);
 
   const chain = {
     payerUsdc: "100000000000",     // $100k — plenty
@@ -1941,8 +1948,12 @@ globalThis.fetch = async (url, opts) => {
     payerDwell: "999999999999999", // plenty of $DWELL
     signatures: [],                // what getSignaturesForAddress returns
     tx: null,                      // what getTransaction returns
+    txBySig: {},                   // per-signature getTransaction overrides (hedge swaps)
     solPriceLamports: "500000000", // USDC->wSOL spot: $100 ≈ 0.5 SOL ($200/SOL)
     dwellPerMicroUsdc: 500n,       // USDC->DWELL spot: $100 -> 50,000,000,000 raw
+    sendSig: null,                 // signature sendTransaction hands back
+    sentTxs: [],                   // what got broadcast (base64)
+    jupiterSwapDown: false,        // 500 the /swap endpoint (retry path)
   };
 
   // Landed v2 payments: two USDC token deltas (fee -> treasury, revenue ->
@@ -2000,7 +2011,16 @@ globalThis.fetch = async (url, opts) => {
       return reply({ inputMint: inMint, outputMint: outMint, inAmount: q.get("amount"), outAmount, otherAmountThreshold: outAmount, swapMode: "ExactIn" });
     }
     if (u.startsWith("http://jup.test/swap-instructions")) {
-      throw new Error("v2 must never call swap-instructions — nothing is swapped");
+      throw new Error("v2 must never call swap-instructions — checkout never swaps");
+    }
+    if (u.startsWith("http://jup.test/swap")) {
+      // Acceptance-time hedge swap: Jupiter hands back an unsigned legacy tx
+      // whose fee payer is the treasury signer.
+      if (chain.jupiterSwapDown) return { ok: false, status: 500, json: async () => ({}) };
+      const swapTransaction = serializeUnsignedTransaction({
+        feePayer: TREASURY_SOL, recentBlockhash: BLOCKHASH, instructions: [memoInstruction("hedge-swap")],
+      });
+      return reply({ swapTransaction });
     }
     // Solana JSON-RPC
     const { method, params } = JSON.parse(opts.body);
@@ -2015,9 +2035,24 @@ globalThis.fetch = async (url, opts) => {
     if (method === "getLatestBlockhash") return rpcReply({ value: { blockhash: BLOCKHASH, lastValidBlockHeight: 1 } });
     if (method === "getBalance") return rpcReply({ value: Number(chain.payerSol) });
     if (method === "getSignaturesForAddress") return rpcReply(chain.signatures.map((signature) => ({ signature })));
-    if (method === "getTransaction") return rpcReply(chain.tx);
+    if (method === "getTransaction") return rpcReply(chain.txBySig[params[0]] || chain.tx);
+    if (method === "sendTransaction") { chain.sentTxs.push(params[0]); return rpcReply(chain.sendSig); }
+    if (method === "getSignatureStatuses") return rpcReply({ value: [{ confirmationStatus: "finalized", err: null }] });
     throw new Error("unexpected rpc method " + method);
   };
+
+  // A finalized hedge-swap transaction: `realized` micro-USDC landed in the
+  // treasury USDC account (the runtime's own balance deltas — what
+  // executeTreasurySwap reads instead of trusting the quote).
+  const swappedTx = (realized) => ({
+    slot: 2000, blockTime: 1700001000,
+    transaction: { message: { accountKeys: [{ pubkey: TREASURY_SOL }, { pubkey: TREASURY_ATA }] } },
+    meta: {
+      err: null,
+      preTokenBalances: [{ accountIndex: 1, mint: USDC_MINT, uiTokenAmount: { amount: "0" } }],
+      postTokenBalances: [{ accountIndex: 1, mint: USDC_MINT, uiTokenAmount: { amount: realized } }],
+    },
+  });
 
   const cfgUsdc = {
     ...cfgToken,
@@ -2028,6 +2063,7 @@ globalThis.fetch = async (url, opts) => {
     dwellDecimals: 6, dwellPayBoostBps: 1000,
     solanaRpcUrl: "http://solana.test", jupiterBaseUrl: "http://jup.test",
     maxSlippageBps: 100, usdcOrderTtlMinutes: 30, brandName: "DWELL",
+    treasurySignerSecret: TREASURY_SIGNER_SECRET, swapSlippageBps: 100,
   };
   const { server: sU } = createApp({
     repo, stripe, mailer: fakeMailer, rateLimiter: bigLimiter, config: cfgUsdc,
@@ -2168,8 +2204,36 @@ globalThis.fetch = async (url, opts) => {
     chain.tx = paidSolTx({ reference: ord.reference, feeLamports: "50000000", revenueLamports: "450000000" });
     const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
     assert.strictEqual(after.body.status, "confirmed");
-    assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit.sum, 10_000_000, "$100 in millicents");
+    assert.strictEqual(after.body.settlement, "usdc-at-acceptance", "SOL settles at acceptance");
+    assert.strictEqual(after.body.payerAddress, PAYER, "payer recorded for the refund path");
+    assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit, undefined, "HELD — no funding until the acceptance swap");
     chain.signatures = []; chain.tx = null;
+
+    // Approve -> hedge: the held 0.5 SOL swaps to USDC at the ACCEPTANCE-time
+    // rate. SOL slid, so only $80 realizes — the campaign funds at $80 and the
+    // effective CPM/impressions differ from the checkout quote.
+    const swapSig = "swap_" + crypto.randomBytes(8).toString("hex");
+    chain.sendSig = swapSig;
+    chain.txBySig[swapSig] = swappedTx("80000000");
+    const appr = await apiU("POST", "/v1/admin/campaigns/approve", { adminKey: "test-admin", campaignId: r.body.campaignId });
+    assert.strictEqual(appr.status, 200);
+    assert.strictEqual(appr.body.settlement, "usdc-at-acceptance");
+    assert.strictEqual(appr.body.swapSignature, swapSig);
+    assert.strictEqual(appr.body.realizedUsdc, 80, "realized USDC from the on-chain delta, not the quote");
+    assert.strictEqual(appr.body.impressionsTotal, 5333, "impressions recomputed from the realized $80 at $15 CPM");
+    const ledSol = await campLedger(r.body.campaignId);
+    assert.strictEqual(ledSol.campaign_credit.sum, 8_000_000, "funded with the realized $80 in millicents");
+    assert.strictEqual(ledSol.reserve_allocation.sum, 7_200_000, "90% earmark of the realized amount");
+    const solCamp = (await poolNs.query("select status, budget_cents, impressions_total from campaigns where id = $1", [r.body.campaignId])).rows[0];
+    assert.strictEqual(solCamp.status, "active");
+    assert.strictEqual(Number(solCamp.budget_cents), 8000);
+    assert.strictEqual(Number(solCamp.impressions_total), 5333);
+    const solOrd = (await poolNs.query("select status, swap_signature, realized_micro_usdc from usdc_orders where id = $1", [r.body.orderId])).rows[0];
+    assert.strictEqual(solOrd.status, "swapped");
+    assert.strictEqual(solOrd.swap_signature, swapSig);
+    assert.strictEqual(Number(solOrd.realized_micro_usdc), 80000000);
+    // Re-approving is a no-op (nothing held anymore).
+    assert.strictEqual((await apiU("POST", "/v1/admin/campaigns/approve", { adminKey: "test-admin", campaignId: r.body.campaignId })).status, 404);
 
     // Short revenue leg on SOL -> revenue_short.
     const r2 = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" });
@@ -2202,10 +2266,32 @@ globalThis.fetch = async (url, opts) => {
     chain.tx = paidDwellTx({ reference: ord.reference, amount: "50000000000" });
     const after = await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
     assert.strictEqual(after.body.status, "confirmed");
-    const led = await campLedger(r.body.campaignId);
-    assert.strictEqual(led.campaign_credit.sum, 10_000_000, "funded at the USD price (boost is reach, not pool)");
-    assert.strictEqual(led.reserve_allocation.sum, 9_000_000, "rewards pool earmarked in dollars");
+    assert.strictEqual(after.body.settlement, "usdc-at-acceptance", "$DWELL settles at acceptance");
+    assert.strictEqual((await campLedger(r.body.campaignId)).campaign_credit, undefined, "HELD — no funding until the acceptance swap");
     chain.signatures = []; chain.tx = null;
+
+    // A downed Jupiter leaves the campaign retryably parked in pending_swap…
+    chain.jupiterSwapDown = true;
+    const fail = await apiU("POST", "/v1/admin/campaigns/approve", { adminKey: "test-admin", campaignId: r.body.campaignId });
+    assert.strictEqual(fail.status, 502);
+    assert.strictEqual(fail.body.retryable, true);
+    assert.strictEqual(
+      (await poolNs.query("select status from campaigns where id = $1", [r.body.campaignId])).rows[0].status,
+      "pending_swap", "swap failure parks the campaign, loses nothing"
+    );
+    // …and approving again retries the swap. $DWELL rallied: $101 realizes,
+    // and the +10% pay boost applies to the recomputed impressions.
+    chain.jupiterSwapDown = false;
+    const swapSigD = "swap_" + crypto.randomBytes(8).toString("hex");
+    chain.sendSig = swapSigD;
+    chain.txBySig[swapSigD] = swappedTx("101000000");
+    const apprD = await apiU("POST", "/v1/admin/campaigns/approve", { adminKey: "test-admin", campaignId: r.body.campaignId });
+    assert.strictEqual(apprD.status, 200);
+    assert.strictEqual(apprD.body.realizedUsdc, 101);
+    assert.strictEqual(apprD.body.impressionsTotal, 7406, "floor($101 at $15 CPM) +10% boost");
+    const ledD = await campLedger(r.body.campaignId);
+    assert.strictEqual(ledD.campaign_credit.sum, 10_100_000, "funded with the realized $101 (boost is reach, not pool)");
+    assert.strictEqual(ledD.reserve_allocation.sum, 9_090_000, "90% earmark of the realized amount");
 
     // Underpaid -> payment_short.
     const r2 = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });
@@ -2214,6 +2300,38 @@ globalThis.fetch = async (url, opts) => {
     chain.tx = paidDwellTx({ reference: ord2.reference, amount: "49000000000" });
     assert.strictEqual((await apiU("GET", `/v1/ads/usdc/orders/${r2.body.orderId}`)).body.failReason, "payment_short");
     chain.signatures = []; chain.tx = null;
+  });
+
+  await check("crypto hedging: rejecting a held SOL ad refunds the payer on-chain, never funds the ledger", async () => {
+    const r = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "sol" });
+    const ord = (await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`)).body;
+    chain.signatures = ["sig_" + crypto.randomBytes(8).toString("hex")];
+    chain.tx = paidSolTx({ reference: ord.reference, feeLamports: "50000000", revenueLamports: "450000000" });
+    await apiU("GET", `/v1/ads/usdc/orders/${r.body.orderId}`);
+    chain.signatures = []; chain.tx = null;
+
+    const refundSig = "refund_" + crypto.randomBytes(8).toString("hex");
+    chain.sendSig = refundSig;
+    const sentBefore = chain.sentTxs.length;
+    const rej = await apiU("POST", "/v1/admin/campaigns/reject", { adminKey: "test-admin", campaignId: r.body.campaignId, note: "nope" });
+    assert.strictEqual(rej.status, 200);
+    assert.strictEqual(rej.body.refunded, true);
+    assert.strictEqual(rej.body.refundSignature, refundSig);
+    assert.strictEqual(chain.sentTxs.length, sentBefore + 1, "one refund transaction broadcast");
+    const refunded = (await poolNs.query("select status, refund_signature from usdc_orders where id = $1", [r.body.orderId])).rows[0];
+    assert.strictEqual(refunded.status, "refunded");
+    assert.strictEqual(refunded.refund_signature, refundSig);
+    assert.strictEqual(
+      (await poolNs.query("select status from campaigns where id = $1", [r.body.campaignId])).rows[0].status,
+      "rejected"
+    );
+    const led = await campLedger(r.body.campaignId);
+    assert.strictEqual(led.campaign_credit, undefined, "held funds never touched the ledger");
+    assert.strictEqual(led.campaign_refund, undefined, "nothing was credited, so nothing reverses");
+
+    // The refund transaction really is signed by the treasury key (slot 0 non-zero).
+    const refundTx = Buffer.from(chain.sentTxs.at(-1), "base64");
+    assert.ok(!refundTx.subarray(1, 65).every((b) => b === 0), "refund carries a real signature");
   });
 
   await check("crypto v2: orders expire; expired orders can't build", async () => {
@@ -2238,7 +2356,7 @@ globalThis.fetch = async (url, opts) => {
     assert.deepStrictEqual(off.body.card, [], "no Stripe call when the key is the dev fallback / unset");
     const o = off.body.crypto[0];
     assert.ok(["usdc", "sol", "dwell"].includes(o.rail), "each order carries its pay rail");
-    assert.ok(["awaiting_signature", "confirmed", "expired", "failed"].includes(o.status));
+    assert.ok(["awaiting_signature", "confirmed", "swapped", "refunded", "expired", "failed"].includes(o.status));
 
     // A confirmed order surfaces its on-chain signature; anonymous checkouts read null, not the synthetic @wallet.invalid.
     const confirmed = off.body.crypto.find((x) => x.status === "confirmed");

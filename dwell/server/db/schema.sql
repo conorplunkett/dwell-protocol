@@ -588,3 +588,25 @@ alter table payouts add column if not exists method text not null default 'strip
   check (method in ('stripe', 'usdc'));
 alter table payouts add column if not exists destination text;      -- Solana address for method = 'usdc'
 alter table payouts add column if not exists tx_signature text;     -- partner transfer signature (usdc)
+
+
+-- Treasury hedging (hold -> swap-on-accept / refund-on-reject). SOL/$DWELL
+-- payments are HELD while the campaign is in review: on admin accept they are
+-- swapped to USDC (the realized output at the acceptance-time rate becomes the
+-- campaign's funded dollar amount), on admin reject they are refunded in-kind
+-- on-chain to the paying wallet. USDC-rail orders are unaffected.
+alter table usdc_orders add column if not exists payer_address text;               -- fee-payer wallet, recorded at verify time (refund destination)
+alter table usdc_orders add column if not exists received_amount_raw numeric(78, 0); -- actual on-chain delta received (lamports / raw DWELL), from the verifier
+alter table usdc_orders add column if not exists swap_signature text;              -- acceptance-time Jupiter swap transaction
+alter table usdc_orders add column if not exists realized_micro_usdc bigint;       -- USDC actually received from that swap
+alter table usdc_orders add column if not exists refund_signature text;            -- in-kind refund transaction on reject
+alter table usdc_orders drop constraint if exists usdc_orders_status_check;
+alter table usdc_orders add constraint usdc_orders_status_check
+  check (status in ('awaiting_signature', 'confirmed', 'swapped', 'refunded', 'expired', 'failed'));
+
+-- Campaign lifecycle gains pending_swap: an accepted SOL/$DWELL campaign sits
+-- there until the treasury swap lands (retryable), then flips to active with
+-- funding recomputed from the realized USDC.
+alter table campaigns drop constraint if exists campaigns_status_check;
+alter table campaigns add constraint campaigns_status_check
+  check (status in ('pending_payment', 'pending_review', 'pending_swap', 'active', 'exhausted', 'rejected', 'cancelled'));

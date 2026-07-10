@@ -27,12 +27,17 @@ Advertisers pay a fixed dollar CPM. Per $100 of card spend:
 |---|---|---|
 | Card processing (Stripe) | ~$2.50 | Stripe |
 | Rewards pool | $87.75 | The campaign pool, split 60/10/30 below |
-| Business margin | remainder (~$9.75) | The operating company, in USD |
+| Buffer for slippage | ~$2.50 | Jupiter/Meteora exchange slippage on SOL/$DWELL settlement |
+| Advertiser fee | remainder | Protocol operations, in USD |
 
 Advertisers paying in USDC (the non-custodial crypto checkout) skip the card
-leg; the split is otherwise identical. The company converts revenue to USDC
-as needed to fund payouts through licensed partners. **No leg of any payment,
-on any rail, buys $DWELL.**
+leg; the split is otherwise identical. Payments made in SOL or $DWELL are
+held while the campaign is in review, then swapped to USDC at acceptance:
+the campaign's funded dollar amount is the **realized USDC at acceptance
+time**, so the effective CPM/impressions may differ from the checkout quote
+(see [08-usdc-checkout.md](08-usdc-checkout.md)); a rejected campaign's held
+SOL/$DWELL is refunded on-chain to the paying wallet. **No leg of any
+payment, on any rail, buys $DWELL.**
 
 ### The pool split — 60 / 10 / 30
 
