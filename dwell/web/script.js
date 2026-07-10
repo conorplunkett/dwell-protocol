@@ -186,7 +186,7 @@ const iconThumb = document.getElementById("dropzone-thumb");
 const iconName = document.getElementById("dropzone-name");
 const iconRemove = document.getElementById("dropzone-remove");
 if (iconDropzone && iconInput) {
-  const MAX_ICON_BYTES = 64 * 1024;
+  const MAX_ICON_BYTES = 2 * 1024 * 1024;
   const ICON_TYPES = ["image/png", "image/jpeg", "image/webp"];
   const showIconError = (msg) => {
     iconMsg.textContent = msg;
@@ -196,7 +196,7 @@ if (iconDropzone && iconInput) {
   const acceptIconFile = (file) => {
     if (!file) return;
     if (!ICON_TYPES.includes(file.type)) return showIconError("PNG, JPG, or WebP only — try again.");
-    if (file.size > MAX_ICON_BYTES) return showIconError(`That's ${Math.ceil(file.size / 1024)} KB — 64 KB max. Try a smaller image.`);
+    if (file.size > MAX_ICON_BYTES) return showIconError(`That's ${(file.size / (1024 * 1024)).toFixed(1)} MB — 2 MB max. Try a smaller image.`);
     const reader = new FileReader();
     reader.onload = () => {
       iconThumb.src = reader.result;
