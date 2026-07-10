@@ -147,31 +147,50 @@ if (config.viewerShareBps + config.referrerShareBps > 10000) {
 }
 if (config.reserveTrancheBps > 10000) throw new Error("RESERVE_TRANCHE_BPS must be <= 10000");
 // Crypto checkout (dwell/docs/08 v2): half-configured rails would build
-// transactions that can never verify — require account pairs together.
+// transactions that can never verify. The Node server refuses to boot in that
+// state — a failed process start is loud at deploy time. Here a module-load
+// throw is the opposite of loud: secrets are edited in the dashboard with no
+// deploy, and the platform then answers WORKER_ERROR 500 on EVERY route
+// (device register, ads, auth — not just checkout) until someone notices. So
+// instead: disable the affected rail, complain on every boot, keep serving.
+// The per-request rail gates (payCurrency checks, treasury signer lookups)
+// already treat cleared config as "rail not live".
+const configError = (msg: string) => console.error(`[dwell] BOOT CONFIG ERROR — ${msg}`);
 if ((config.treasuryUsdcAta || config.revenueUsdcAta) && !(config.treasuryUsdcAta && config.revenueUsdcAta)) {
-  throw new Error("crypto checkout needs BOTH TREASURY_USDC_ATA and REVENUE_USDC_ATA");
+  configError("crypto checkout needs BOTH TREASURY_USDC_ATA and REVENUE_USDC_ATA — USDC rail disabled until both are set");
+  config.treasuryUsdcAta = "";
+  config.revenueUsdcAta = "";
 }
 if ((config.treasurySolAccount || config.revenueSolAccount) && !(config.treasurySolAccount && config.revenueSolAccount)) {
-  throw new Error("the SOL rail needs BOTH TREASURY_SOL_ACCOUNT and REVENUE_SOL_ACCOUNT");
+  configError("the SOL rail needs BOTH TREASURY_SOL_ACCOUNT and REVENUE_SOL_ACCOUNT — SOL rail disabled until both are set");
+  config.treasurySolAccount = "";
+  config.revenueSolAccount = "";
 }
 if (config.dwellMint && !config.treasuryDwellAta) {
-  throw new Error("DWELL_MINT is set — TREASURY_DWELL_ATA is required for the $DWELL rail");
+  configError("DWELL_MINT is set without TREASURY_DWELL_ATA — $DWELL rail disabled until it is set");
+  config.dwellMint = "";
 }
 // Treasury signer (hedging): swaps/refunds move funds FROM the treasury
 // accounts, so the signer must own them. On the SOL rail both legs land in
 // system accounts we can check offline; the ATA ownership (DWELL/USDC) is a
 // documented going-live requirement (dwell/docs/10).
 if (config.treasurySignerSecret) {
-  const signerPub = signerPubkeyFromSecret(config.treasurySignerSecret); // throws on a malformed secret
-  if (config.treasurySolAccount && signerPub !== config.treasurySolAccount) {
-    throw new Error("TREASURY_SIGNER_SECRET's pubkey must equal TREASURY_SOL_ACCOUNT (swaps/refunds spend from it)");
+  try {
+    const signerPub = signerPubkeyFromSecret(config.treasurySignerSecret); // throws on a malformed secret
+    if (config.treasurySolAccount && signerPub !== config.treasurySolAccount) {
+      configError("TREASURY_SIGNER_SECRET's pubkey must equal TREASURY_SOL_ACCOUNT (swaps/refunds spend from it) — signer disabled");
+      config.treasurySignerSecret = "";
+    } else if (config.revenueSolAccount && signerPub !== config.revenueSolAccount) {
+      // A SOL payment splits across both accounts but swaps/refunds move the
+      // FULL received amount from the signer — keep both legs on its key.
+      console.warn("[dwell] REVENUE_SOL_ACCOUNT differs from the treasury signer — SOL swaps/refunds spend the full received amount from the signer account; sweep the revenue leg to it or set both to the signer's pubkey.");
+    }
+  } catch (_err) {
+    configError("TREASURY_SIGNER_SECRET is malformed (need the base58 64-byte ed25519 keypair solana-keygen exports) — signer disabled");
+    config.treasurySignerSecret = "";
   }
-  if (config.revenueSolAccount && signerPub !== config.revenueSolAccount) {
-    // A SOL payment splits across both accounts but swaps/refunds move the
-    // FULL received amount from the signer — keep both legs on its key.
-    console.warn("[dwell] REVENUE_SOL_ACCOUNT differs from the treasury signer — SOL swaps/refunds spend the full received amount from the signer account; sweep the revenue leg to it or set both to the signer's pubkey.");
-  }
-} else if (config.treasurySolAccount || config.treasuryDwellAta) {
+}
+if (!config.treasurySignerSecret && (config.treasurySolAccount || config.treasuryDwellAta)) {
   console.warn("[dwell] SOL/$DWELL rails are configured without TREASURY_SIGNER_SECRET — campaign accepts (hedge swap) and rejects (on-chain refund) on those rails will fail until it is set.");
 }
 // When TOKEN_MODE is set, impressions split three ways into points entries

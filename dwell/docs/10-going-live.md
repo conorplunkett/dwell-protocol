@@ -162,8 +162,7 @@ checkout) returns `401`.
 
 ## 4. Boot-time safety rails
 
-`server/src/boot.js` will refuse to start half-configured, so you can't leave
-the rail in a broken partial state:
+A half-configured rail can't go live:
 
 - `TREASURY_USDC_ATA` and `REVENUE_USDC_ATA` must be set **together** (or neither).
 - `TREASURY_SOL_ACCOUNT` and `REVENUE_SOL_ACCOUNT` must be set **together**.
@@ -171,6 +170,18 @@ the rail in a broken partial state:
 - `TREASURY_SIGNER_SECRET`'s pubkey must equal `TREASURY_SOL_ACCOUNT`; SOL or
   $DWELL rails configured without a signer boot with a loud warning (accepts
   and rejects on those rails will fail until it's set).
+
+The two deployments enforce this differently:
+
+- `server/src/boot.js` (Node) **refuses to start** — a failed process start is
+  loud at deploy time.
+- The `dwell-api` edge function **disables the offending rail and keeps
+  serving**, logging `BOOT CONFIG ERROR` on every cold start. Edge secrets are
+  edited in the dashboard with no deploy step, and a module-load throw there
+  turns into `WORKER_ERROR` 500 on *every* route (device register, ads, auth)
+  — which is how setting `DWELL_MINT` without `TREASURY_DWELL_ATA` once took
+  down terminal sign-in for all new users. Check the function logs for
+  `BOOT CONFIG ERROR` after editing secrets.
 
 Until the USDC pair is set, the lander's crypto button says "not live here yet"
 and falls back to card. The moment both are set and deployed, it goes live.
