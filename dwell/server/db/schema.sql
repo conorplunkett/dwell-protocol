@@ -610,3 +610,41 @@ alter table usdc_orders add constraint usdc_orders_status_check
 alter table campaigns drop constraint if exists campaigns_status_check;
 alter table campaigns add constraint campaigns_status_check
   check (status in ('pending_payment', 'pending_review', 'pending_swap', 'active', 'exhausted', 'rejected', 'cancelled'));
+
+-- Row Level Security: every table above is otherwise fully exposed to
+-- Supabase's anon/authenticated roles (what PostgREST and the client-side
+-- Supabase SDKs use) — anyone with the anon key could read or write any row.
+-- This app never uses those roles: the server and the dwell-api edge function
+-- both connect over DATABASE_URL as a role with BYPASSRLS (postgres /
+-- service_role on Supabase), so enabling RLS with zero policies blocks only
+-- the anon/authenticated paths this app never takes and changes nothing for
+-- the app itself. No policies are added on purpose — nothing should ever
+-- reach these tables except through the API.
+alter table users enable row level security;
+alter table devices enable row level security;
+alter table email_tokens enable row level security;
+alter table advertisers enable row level security;
+alter table campaigns enable row level security;
+alter table event_batches enable row level security;
+alter table ledger enable row level security;
+alter table settings enable row level security;
+alter table payouts enable row level security;
+alter table gift_redemptions enable row level security;
+alter table web_sessions enable row level security;
+alter table processed_webhook_events enable row level security;
+alter table diag_errors enable row level security;
+alter table click_tokens enable row level security;
+alter table impression_tokens enable row level security;
+alter table referrals enable row level security;
+alter table referral_invites enable row level security;
+alter table affiliates enable row level security;
+alter table affiliate_attributions enable row level security;
+alter table waitlist_surfaces enable row level security;
+alter table waitlist_signups enable row level security;
+alter table onboarding_surveys enable row level security;
+alter table email_leads enable row level security;
+alter table usdc_reserve_entries enable row level security;
+alter table token_campaign_pools enable row level security;
+alter table token_rewards enable row level security;
+alter table token_claims enable row level security;
+alter table usdc_orders enable row level security;
