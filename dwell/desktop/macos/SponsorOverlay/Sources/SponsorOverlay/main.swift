@@ -73,6 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var linkedEmail: String?
     private var pollTimer: Timer?
     private var adsPaused = false
+    /// Admin killswitch for the non-billable house ad (mirrors /v1/config →
+    /// houseAdEnabled). Defaults on; refreshed alongside ads.
+    private var houseAdEnabled = true
     /// Last assistant-window bounds the overlay was positioned over, for
     /// move/resize deduplication (spec `lastBounds`).
     private var lastShownBounds: CGRect?
@@ -180,13 +183,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func didSignIn() {
+        refreshConfig()
         refreshAds()
         refreshBalance()
         refreshLinkStatus()
         Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            self?.refreshConfig()
             self?.refreshAds()
             self?.refreshBalance()
             self?.refreshLinkStatus()
+        }
+    }
+
+    /// Refresh the house-ad killswitch from /v1/config. If it flips off while the
+    /// house ad is on screen, drop it immediately so the card can't linger.
+    private func refreshConfig() {
+        client.fetchConfig { [weak self] houseAdEnabled in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.houseAdEnabled = houseAdEnabled
+                if !houseAdEnabled, self.currentAd?.isHouse == true { self.currentAd = nil }
+            }
         }
     }
 
@@ -238,7 +255,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // network blip shouldn't tear down a working rotation.
                 if let ads { self.ads = ads }
                 self.refreshCampaignsRow()
-                if self.currentAd == nil { self.rotateAd() }
+                // Rotate when nothing is shown yet, or to swap the house ad out
+                // for a real campaign the moment funded inventory arrives.
+                if self.currentAd == nil || self.currentAd?.isHouse == true { self.rotateAd() }
             }
         }
     }
@@ -254,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         campaignsItem.title = adsFetchFailed == true
             ? "⚠ Can't reach DWELL — retrying…"
-            : "No live campaigns yet — the card appears when one launches"
+            : "No live campaigns yet — showing DWELL's own message (earns nothing)"
         campaignsItem.isHidden = false
     }
 
@@ -284,7 +303,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func rotateAd() {
-        currentAd = ads.randomElement()
+        // No funded inventory ⇒ fall back to the non-billable house ad so the
+        // card promotes DWELL instead of never appearing (unless the admin turned
+        // it off via /v1/config). It never serves or redeems an impression (see
+        // serveImpressionIfNeeded / handleQualified), so the user earns nothing.
+        currentAd = ads.randomElement() ?? (houseAdEnabled ? Ad.house : nil)
         if let ad = currentAd {
             // Route through the https guard so the card never carries a non-https
             // destination (see Ad.destinationURLOrFallback).
@@ -372,7 +395,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// so the on-screen dwell sits between serve and redeem. Guarded so a window
     /// serves at most one token (servedImpressionToken is cleared in rotateAd).
     private func serveImpressionIfNeeded() {
-        guard !demoMode, let credentials, servedImpressionToken == nil, !servingImpression else { return }
+        // The house/default ad is filler: never serve a token for it, so it can
+        // never be redeemed and never bills. This is the earning guarantee.
+        guard !demoMode, currentAd?.isHouse != true,
+              let credentials, servedImpressionToken == nil, !servingImpression else { return }
         servingImpression = true
         client.serveImpression(credentials: credentials) { [weak self] token in
             DispatchQueue.main.async {
@@ -414,6 +440,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleQualifiedImpression(visibilityMs: UInt64) {
         guard let ad = currentAd else { return }
+        // Never bill the house ad. No token is served for it, so the redeem below
+        // would no-op anyway — but bail explicitly so the intent stays obvious.
+        if ad.isHouse { return }
         if demoMode {
             NSLog("[dwell] qualified impression: campaign=%@ visible=%dms", ad.id, Int(visibilityMs))
             return
@@ -432,6 +461,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // be credited.
         guard !adsPaused else { return }
         guard let ad = currentAd, ad.id == campaignId else { return }
+        // House ad has no campaign — just open the advertise page. No click
+        // intent is minted, so nothing is recorded or billed for it.
+        if ad.isHouse {
+            NSWorkspace.shared.open(ad.destinationURLOrFallback)
+            return
+        }
         if demoMode {
             NSLog("[dwell] click: campaign=%@", campaignId)
             NSWorkspace.shared.open(ad.destinationURLOrFallback)

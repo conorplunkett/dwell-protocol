@@ -61,6 +61,22 @@ export function isPlainObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// The house / default ad. Shown ONLY when the auction is empty (no funded
+// inventory) so the spinner promotes DWELL itself instead of running plain.
+// It is filler, not a campaign: run.js starts NO impression monitor for it, so
+// it can never serve or redeem an impression and the user earns nothing from
+// it. `house: true` is the flag run.js keys off. Mirrors BB_DEFAULT_AD in the
+// Chrome extension. Terminal is text-only, so there is no image/chip here.
+export const HOUSE_AD = {
+  id: null,
+  brand: "$empty",
+  line: "promote your token now",
+  url: "https://dwellprotocol.com/#advertisers",
+  color: "",       // no advertiser color → the default DWELL accent
+  change: 999,     // renders as (+999%)
+  house: true,
+};
+
 // "Brand — slogan" like the Chrome extension, but only when the brand is not
 // already how the line starts (live inventory sometimes bakes the brand into
 // the line). Control chars are stripped so the text is safe to style.

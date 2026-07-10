@@ -3000,6 +3000,10 @@ let liveTopCpm = false;
 // Whether the portal shows the "Not serving ads until after launch." banner.
 // Off by default; flipped from the admin dashboard and surfaced via /v1/config.
 let adNoticeVisible = false;
+// Whether clients show the non-billable house/default ad ("$empty — promote your
+// token now") when the auction is empty. ON by default; flipped from the admin
+// dashboard and surfaced via /v1/config so every client can gate the filler.
+let houseAdEnabled = true;
 let servingSyncedAt = 0;
 async function syncServing() {
   if (Date.now() - servingSyncedAt < 15000) return;
@@ -3021,6 +3025,10 @@ async function syncServing() {
   try {
     adNoticeVisible = (await repo.getSetting("ad_notice_visible")) === true;
   } catch { /* settings absent — keep default (hidden) */ }
+  try {
+    // Default ON: only an explicit `false` disables the house ad.
+    houseAdEnabled = (await repo.getSetting("house_ad_enabled")) !== false;
+  } catch { /* settings absent — keep default (on) */ }
 }
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -3136,7 +3144,7 @@ function parseAffiliateSocials(body: any): { socials?: any; error?: string } {
 
 // ── health & catalog ──
 route("GET", "/healthz", async () => json(200, { ok: true }));
-route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) }); });
+route("GET", "/v1/config", async () => { await syncServing(); return json(200, { serving, revenueShare: displayRevenueShare, leaderboardPublic, liveTopCpm, adNoticeVisible, houseAdEnabled, ...(config.tokenMode ? { tokenMode: config.tokenMode } : {}) }); });
 
 // Advertiser pricing for the lander (min / suggested / top). Kept off /v1/config
 // so the extension's frequent config polls stay query-free. top = max(anchor,
@@ -5214,6 +5222,21 @@ route("POST", "/v1/admin/ad-notice", async (ctx: any) => {
   adNoticeVisible = ctx.body.visible;
   servingSyncedAt = Date.now(); // reflect immediately in /v1/config without waiting on the sync window
   return json(200, { ok: true, visible: ctx.body.visible });
+});
+// Whether clients show the non-billable house ad when the auction is empty (ON by default).
+route("GET", "/v1/admin/house-ad", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  let enabled = true;
+  try { enabled = (await repo.getSetting("house_ad_enabled")) !== false; } catch { /* settings absent → default on */ }
+  return json(200, { enabled });
+});
+route("POST", "/v1/admin/house-ad", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  if (typeof ctx.body?.enabled !== "boolean") return json(400, { error: "enabled (boolean) required" });
+  await repo.setSetting("house_ad_enabled", ctx.body.enabled);
+  houseAdEnabled = ctx.body.enabled;
+  servingSyncedAt = Date.now(); // reflect immediately in /v1/config without waiting on the sync window
+  return json(200, { ok: true, enabled: ctx.body.enabled });
 });
 route("GET", "/v1/admin/campaigns/receipts-auto", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });

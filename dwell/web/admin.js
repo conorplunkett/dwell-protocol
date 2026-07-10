@@ -843,7 +843,7 @@ function switchRow({ title, on, onLabel = "On", offLabel = "Off", desc, confirmO
 async function renderSettings(view) {
   // Everything the page needs in ONE parallel round-trip, then paint once.
   // (This was 7 sequential fetches — the whole tab felt laggy.)
-  const [d, ra, lb, ltc, an, cfg, errs, p] = await Promise.all([
+  const [d, ra, lb, ltc, an, cfg, errs, p, ha] = await Promise.all([
     api("/v1/admin/overview"),
     tryApi("/v1/admin/campaigns/receipts-auto"),
     tryApi("/v1/admin/leaderboard-visibility"),
@@ -852,6 +852,7 @@ async function renderSettings(view) {
     tryApi("/v1/admin/config"),
     tryApi("/v1/admin/errors"),
     tryApi("/v1/admin/pricing"),
+    tryApi("/v1/admin/house-ad"),
   ]);
   setServePill(d.serving);
   view.innerHTML = "";
@@ -900,6 +901,16 @@ async function renderSettings(view) {
       action: async (next) => {
         await api("/v1/admin/ad-notice", { method: "POST", body: { visible: next } });
         toast(next ? "Ad notice shown" : "Ad notice hidden");
+      },
+    }),
+    switchRow({
+      title: "House ad", on: !ha || ha.enabled !== false, offLabel: "Off", onLabel: "On",
+      desc: (on) => on
+        ? "When the auction is empty, clients show the non-billable “$empty — promote your token now” house ad. It never earns (no impression is logged)."
+        : "When the auction is empty, clients show nothing (every surface reads this from /v1/config).",
+      action: async (next) => {
+        await api("/v1/admin/house-ad", { method: "POST", body: { enabled: next } });
+        toast(next ? "House ad on" : "House ad off");
       },
     }),
     switchRow({
