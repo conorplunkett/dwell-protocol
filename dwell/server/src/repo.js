@@ -1104,7 +1104,7 @@ function createRepo(pool) {
     // Find or create a user from a Google/Apple OAuth callback, then open a
     // web session. Looks up by provider ID first, then by email. Patches any
     // missing fields on an existing account.
-    async upsertUserByOAuth({ email, googleId, appleId, twitterId, referralCode, emailVerified }, sessionTtlMs) {
+    async upsertUserByOAuth({ email, googleId, appleId, twitterId, twitterUsername, referralCode, emailVerified }, sessionTtlMs) {
       return tx(async (c) => {
         // Only a provider-verified email may match or merge into an existing
         // account — otherwise an attacker who controls an OAuth identity with an
@@ -1140,13 +1140,15 @@ function createRepo(pool) {
           if (googleId && !found.google_id)   { sets.push(`google_id = $${vals.length + 1}`);  vals.push(googleId); }
           if (appleId && !found.apple_id)     { sets.push(`apple_id = $${vals.length + 1}`);   vals.push(appleId); }
           if (twitterId && !found.twitter_id) { sets.push(`twitter_id = $${vals.length + 1}`); vals.push(twitterId); }
+          // Keep the X handle fresh (it can change), but only when we have one.
+          if (twitterUsername)                { sets.push(`twitter_username = $${vals.length + 1}`); vals.push(twitterUsername); }
           await c.query(`update users set ${sets.join(", ")} where id = $1`, vals);
           userId = found.id;
         } else {
           const r = await c.query(
-            `insert into users (email, email_verified, google_id, apple_id, twitter_id)
-             values ($1, true, $2, $3, $4) returning id`,
-            [matchEmail || null, googleId || null, appleId || null, twitterId || null]
+            `insert into users (email, email_verified, google_id, apple_id, twitter_id, twitter_username)
+             values ($1, true, $2, $3, $4, $5) returning id`,
+            [matchEmail || null, googleId || null, appleId || null, twitterId || null, twitterUsername || null]
           );
           userId = r.rows[0].id;
           await applyCode(c, userId, referralCode); // first sign-in only; affiliate or referral
@@ -2118,7 +2120,7 @@ function createRepo(pool) {
         `select p.id, p.user_id, p.amount_cents as net_cents, p.created_at,
                 (l.meta->>'grossCents')::int as gross_cents,
                 (l.meta->>'feeCents')::int as fee_cents,
-                u.email, u.twitter_id, u.stripe_account_id, u.payouts_enabled,
+                u.email, u.twitter_id, u.twitter_username, u.stripe_account_id, u.payouts_enabled,
                 u.onboarding_posted_at, u.onboarding_post_verified_at,
                 u.onboarding_post_url, u.onboarding_post_checked_at
            from payouts p

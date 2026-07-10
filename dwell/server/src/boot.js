@@ -50,6 +50,9 @@ function loadConfig(env = process.env) {
     appleTeamId: env.APPLE_TEAM_ID || "",
     appleKeyId: env.APPLE_KEY_ID || "",
     applePrivateKey: (env.APPLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    // X sign-in uses OAuth 2.0 Authorization Code + PKCE. These are the OAuth 2.0
+    // Client ID and Client Secret from the X developer portal's "User
+    // authentication settings" (NOT the OAuth 1.0a API key/secret pair).
     twitterClientId: env.TWITTER_CLIENT_ID || "",
     twitterClientSecret: env.TWITTER_CLIENT_SECRET || "",
     // App-only bearer token used to verify a user's onboarding post is live on

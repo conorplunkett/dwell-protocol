@@ -189,6 +189,10 @@ alter table gift_redemptions alter column device_id drop not null;
 alter table users add column if not exists google_id text unique;
 alter table users add column if not exists apple_id text unique;
 alter table users add column if not exists twitter_id text unique;
+-- X handle captured at sign-in (from GET /2/users/me). Display only — the
+-- numeric twitter_id is the identity key. Shown in the admin payout review
+-- next to the onboarding-post verification.
+alter table users add column if not exists twitter_username text;
 -- First-login onboarding: the user posts a prebuilt DWELL note to their X
 -- timeline (replacing the old refer-a-friend email gate). Self-attested — set
 -- when the user confirms they posted. Accounts without it may not be paid out.

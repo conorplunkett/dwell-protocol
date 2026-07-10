@@ -917,16 +917,19 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
 // Mechanical-counter style: one dark cell per digit (the last cell red, like a
 // flip counter), each cell a vertical reel of 0–9 that rolls UPWARD to the new
 // digit. There's no public network-total endpoint yet, so the figure is an
-// optimistic projection: a fixed base plus steady time-based growth (so it's
-// consistent across visits and always climbing), plus a gentle live tick.
+// optimistic projection: a real snapshot base (SUM(impressions) from
+// event_batches as of the date below) plus steady time-based growth at
+// roughly the network's recent daily pace, plus a gentle live tick so it's
+// always climbing. Re-snapshot IMP_BASE/IMP_EPOCH from the DB periodically —
+// they drift from the true total the longer this goes un-refreshed.
 (function impOdometer() {
   const el = document.getElementById("imp-counter");
   if (!el) return;
   const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const IMP_BASE = 21_437_615;                       // network total at the epoch
-  const IMP_EPOCH = Date.parse("2026-07-01T00:00:00Z");
-  const IMP_RATE = 2.7;                              // impressions/second, network-wide
+  const IMP_BASE = 4_164;                             // real SUM(impressions), event_batches, 2026-07-10
+  const IMP_EPOCH = Date.parse("2026-07-10T01:36:50Z"); // snapshot time for the base above
+  const IMP_RATE = 0.0037;                            // impressions/second — recent 7-day network average (~320/day)
   const projected = () => IMP_BASE + Math.floor(((Date.now() - IMP_EPOCH) / 1000) * IMP_RATE);
 
   let value = projected();
@@ -1004,6 +1007,79 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
     value = Math.max(value + 1, projected());
     render();
   }, 1200);
+})();
+
+// --- USDC "up for grabs" LCD counter ("Start earning $N USDC…") -------------
+// A physical seven-segment tally in the section label. The figure is the live
+// USDC pool available to earners — i.e. the earner share of sold ad inventory
+// (advertiser sales minus the protocol take). There's no public inventory
+// endpoint yet, so it's hardcoded to a $1,500 base and climbs optimistically
+// during the visit so it reads live. When the endpoint ships, replace `base`
+// with the fetched pool:  poolUsd = advertiserSalesUsd * (1 - PROTOCOL_TAKE).
+(function usdcCounter() {
+  const root = document.getElementById("usdc-counter");
+  const wrap = root && root.querySelector(".usdc-digits");
+  if (!wrap) return;
+  const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Which of the 7 bars light per digit (a top, b/c right, d bottom, e/f left, g mid).
+  const SEG = {
+    0: "abcdef", 1: "bc", 2: "abged", 3: "abgcd", 4: "fgbc",
+    5: "afgcd", 6: "afgecd", 7: "abc", 8: "abcdefg", 9: "abcdfg",
+  };
+  const NAMES = ["a", "b", "c", "d", "e", "f", "g"];
+
+  const USDC_BASE = 1500;   // hardcoded pool (≈ earner share of ad inventory)
+  let value = USDC_BASE;
+  let cells = [];           // [{ segs: {a:<i>,…} }] most-significant first
+
+  // Build one seven-segment digit and track its segment elements.
+  function makeDigit() {
+    const d = document.createElement("span");
+    d.className = "seg7";
+    const segs = {};
+    for (const n of NAMES) {
+      const i = document.createElement("i");
+      i.className = "s" + n;
+      d.appendChild(i);
+      segs[n] = i;
+    }
+    return { el: d, segs };
+  }
+
+  // Rebuild the strip to hold exactly `n` digits (grows as the pool grows).
+  function build(n) {
+    wrap.innerHTML = "";
+    cells = [];
+    for (let k = 0; k < n; k++) {
+      const c = makeDigit();
+      wrap.appendChild(c.el);
+      cells.push(c);
+    }
+  }
+
+  function render() {
+    const str = String(Math.floor(value)); // significant digits only, no leading zeros
+    if (str.length !== cells.length) build(str.length);
+    for (let k = 0; k < str.length; k++) {
+      const lit = SEG[Number(str[k])] || "";
+      const segs = cells[k].segs;
+      for (const n of NAMES) segs[n].classList.toggle("on", lit.includes(n));
+    }
+    root.setAttribute(
+      "aria-label",
+      "$" + Math.floor(value).toLocaleString("en-US") + " USDC available to earn"
+    );
+  }
+
+  render();
+  if (reduced) return; // hold at the base; no live climb
+  // Optimistic climb: nudge up a little every 3s so a trailing digit keeps
+  // ticking and the device reads live, anchored near the $1,500 base.
+  setInterval(() => {
+    value += 1 + Math.floor(Math.random() * 2); // +$1–2 per tick
+    render();
+  }, 3000);
 })();
 
 // --- Boost fold: the hero "Boost your token" button folds the advertiser card

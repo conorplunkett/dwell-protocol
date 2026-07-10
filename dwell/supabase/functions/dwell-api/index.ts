@@ -76,6 +76,8 @@ function loadConfig() {
     appleTeamId: env("APPLE_TEAM_ID"),
     appleKeyId: env("APPLE_KEY_ID"),
     applePrivateKey: env("APPLE_PRIVATE_KEY").replace(/\\n/g, "\n"),
+    // X sign-in uses OAuth 2.0 Authorization Code + PKCE (the OAuth 2.0 Client
+    // ID/Secret from the X developer portal, not the OAuth 1.0a API key pair).
     twitterClientId: env("TWITTER_CLIENT_ID"),
     twitterClientSecret: env("TWITTER_CLIENT_SECRET"),
     twitterBearerToken: env("TWITTER_BEARER_TOKEN"),
@@ -1426,7 +1428,7 @@ function createRepo(pool: any) {
       );
       return rows.map((r: any) => ({ ...r, balance: Number(r.balance) }));
     },
-    async upsertUserByOAuth({ email, googleId, appleId, twitterId, referralCode, emailVerified }: any, sessionTtlMs: number) {
+    async upsertUserByOAuth({ email, googleId, appleId, twitterId, twitterUsername, referralCode, emailVerified }: any, sessionTtlMs: number) {
       return tx(async (c: any) => {
         const matchEmail = emailVerified ? (email || null) : null;
         let found: any = null;
@@ -1454,13 +1456,14 @@ function createRepo(pool: any) {
           if (googleId && !found.google_id) { sets.push(`google_id = $${vals.length + 1}`); vals.push(googleId); }
           if (appleId && !found.apple_id) { sets.push(`apple_id = $${vals.length + 1}`); vals.push(appleId); }
           if (twitterId && !found.twitter_id) { sets.push(`twitter_id = $${vals.length + 1}`); vals.push(twitterId); }
+          if (twitterUsername)                { sets.push(`twitter_username = $${vals.length + 1}`); vals.push(twitterUsername); }
           await c.query(`update users set ${sets.join(", ")} where id = $1`, vals);
           userId = found.id;
         } else {
           const r = await c.query(
-            `insert into users (email, email_verified, google_id, apple_id, twitter_id)
-             values ($1, true, $2, $3, $4) returning id`,
-            [matchEmail || null, googleId || null, appleId || null, twitterId || null]
+            `insert into users (email, email_verified, google_id, apple_id, twitter_id, twitter_username)
+             values ($1, true, $2, $3, $4, $5) returning id`,
+            [matchEmail || null, googleId || null, appleId || null, twitterId || null, twitterUsername || null]
           );
           userId = r.rows[0].id;
           await applyCode(c, userId, referralCode);
@@ -2292,7 +2295,7 @@ function createRepo(pool: any) {
         `select p.id, p.user_id, p.amount_cents as net_cents, p.created_at,
                 (l.meta->>'grossCents')::int as gross_cents,
                 (l.meta->>'feeCents')::int as fee_cents,
-                u.email, u.twitter_id, u.stripe_account_id, u.payouts_enabled,
+                u.email, u.twitter_id, u.twitter_username, u.stripe_account_id, u.payouts_enabled,
                 u.onboarding_posted_at, u.onboarding_post_verified_at,
                 u.onboarding_post_url, u.onboarding_post_checked_at
            from payouts p
@@ -2966,6 +2969,7 @@ function payoutRequestView(r: any) {
   return {
     payoutId: r.id, userId: r.user_id, email: r.email,
     twitterId: r.twitter_id || null,
+    twitterUsername: r.twitter_username || null,
     grossUsd: (r.gross_cents || 0) / 100,
     feeUsd: (r.fee_cents || 0) / 100,
     netUsd: (r.net_cents || 0) / 100,
@@ -4192,10 +4196,10 @@ function verifyOAuthState(state: string | null) {
   if (!Number.isFinite(ts) || Date.now() - ts >= 10 * 60 * 1000) return null;
   return { ref: parts[2] || "", nonce: parts[1] || "" };
 }
-// X (Twitter) OAuth 2.0 mandates PKCE even for confidential clients. We stay
-// stateless by deriving the verifier from the signed state's nonce with a server
-// secret — only its S256 hash (the challenge) travels through the browser, and
-// the callback recomputes the verifier from the returned state.
+// X's OAuth 2.0 Authorization Code flow mandates PKCE. We stay stateless by
+// deriving the code_verifier from the signed state's nonce with a server secret
+// — only its S256 hash (the challenge) travels through the browser, and the
+// callback recomputes the verifier from the returned state.
 function pkceVerifier(nonce: string) {
   return crypto.createHmac("sha256", config.adminKey || "fallback").update(`pkce:${nonce}`).digest("hex");
 }
@@ -4299,9 +4303,12 @@ route("GET", "/v1/auth/apple/callback", async (ctx: any) => {
   }
 });
 
-// ── X (Twitter) OAuth 2.0 (PKCE) ──
-// X returns no email, so accounts are keyed on the numeric X user id alone. The
-// confidential client authenticates the token exchange with HTTP Basic.
+// ── X (Twitter) sign-in — OAuth 2.0 Authorization Code + PKCE ──
+// Endpoints per docs.x.com: authorize at x.com/i/oauth2/authorize, token at
+// api.x.com/2/oauth2/token, identity via GET /2/users/me (tweet.read +
+// users.read scopes). X returns no email, so accounts are keyed on the numeric
+// X user id; the handle is display-only. The confidential client authenticates
+// the token exchange with HTTP Basic.
 route("GET", "/v1/auth/twitter", async (ctx: any) => {
   if (!config.twitterClientId) return redirect(`${config.siteUrl}/portal.html?login=no-twitter`);
   const state = makeOAuthState(ctx.query.get("ref"));
@@ -4309,10 +4316,10 @@ route("GET", "/v1/auth/twitter", async (ctx: any) => {
   const params = new URLSearchParams({
     response_type: "code", client_id: config.twitterClientId,
     redirect_uri: `${config.apiBaseUrl}/v1/auth/twitter/callback`,
-    scope: "tweet.read users.read offline.access", state,
+    scope: "tweet.read users.read", state,
     code_challenge: pkceChallenge(pkceVerifier(st!.nonce)), code_challenge_method: "S256",
   });
-  return redirect(`https://twitter.com/i/oauth2/authorize?${params}`);
+  return redirect(`https://x.com/i/oauth2/authorize?${params}`);
 });
 route("GET", "/v1/auth/twitter/callback", async (ctx: any) => {
   const query = ctx.query;
@@ -4321,18 +4328,18 @@ route("GET", "/v1/auth/twitter/callback", async (ctx: any) => {
   if (!oauthState) return redirect(`${config.siteUrl}/portal.html?login=error`);
   try {
     const basic = Buffer.from(`${config.twitterClientId}:${config.twitterClientSecret}`).toString("base64");
-    const tokRes = await fetch("https://api.twitter.com/2/oauth2/token", {
+    const tokRes = await fetch("https://api.x.com/2/oauth2/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${basic}` },
       body: new URLSearchParams({ code: query.get("code"), grant_type: "authorization_code", client_id: config.twitterClientId, redirect_uri: `${config.apiBaseUrl}/v1/auth/twitter/callback`, code_verifier: pkceVerifier(oauthState.nonce) }).toString(),
     });
     const tokens = await tokRes.json();
-    if (!tokens.access_token) throw new Error("no access_token from X");
-    const uiRes = await fetch("https://api.twitter.com/2/users/me", { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+    if (!tokens.access_token) throw new Error(`no access_token from X (${tokRes.status}: ${JSON.stringify(tokens).slice(0, 200)})`);
+    const uiRes = await fetch("https://api.x.com/2/users/me", { headers: { Authorization: `Bearer ${tokens.access_token}` } });
     const tu = await uiRes.json();
     if (!tu?.data?.id) throw new Error("no user id from X");
     const { sessionToken } = await repo.upsertUserByOAuth(
-      { twitterId: String(tu.data.id), referralCode: oauthState.ref, emailVerified: false },
+      { twitterId: String(tu.data.id), twitterUsername: tu.data.username || null, referralCode: oauthState.ref, emailVerified: false },
       config.webSessionTtlMs
     );
     return redirect(`${config.siteUrl}/portal.html#session=${sessionToken}`);
