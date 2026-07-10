@@ -1,6 +1,6 @@
 // DWELL — signed-in portal (portal.html). Email magic-link or OAuth sign-in,
-// then the dashboard: earnings, the activity ledger, the redeem tab (gift
-// cards + cash payouts live, $DWELL claim previewed), referrals, and install
+// then the dashboard: earnings, the activity ledger, the redeem tab (Claude
+// credits live, USDC-to-wallet previewed), referrals, and install
 // status. Dwells are the unit everywhere: dollar-denominated (1,000 dwells =
 // $1.00 of earned ad value), redeemable for USDC or Claude credits — never
 // $DWELL. USD figures next to dwells are earn-basis (what advertisers paid) —
@@ -67,23 +67,13 @@ function buildMock() {
     "Arcline Robotics", "Helio Energy", "Bridgeport Labs", "Quillworks",
   ];
 
-  // Ledger — ~3 weeks of entries, newest first. Mostly sponsored-line credits,
-  // a referral share every few rows, and one token-claim debit kept as a
-  // future-state example of what launch-day conversion looks like.
+  // Ledger — ~3 weeks of entries, newest first. Sponsored-line credits with a
+  // referral share every few rows — credits only, mirroring what the real
+  // /v1/web/activity endpoint returns (redemptions/payouts are excluded).
   const rows = [];
   const now = Date.now();
   for (let i = 0; i < 56; i++) {
     const t = new Date(now - Math.round(i * 9 + rand() * 6) * 3600e3);
-    if (i === 4) {
-      rows.push({
-        id: "lg_claim_0001",
-        type: "token_claim_debit",
-        advertiser: "Future-state example",
-        createdAt: t.toISOString(),
-        points: -2000,
-      });
-      continue;
-    }
     const referral = i % 7 === 3;
     rows.push({
       id: "lg_" + String(1000 + i),
@@ -118,7 +108,7 @@ function buildMock() {
     points: 12450,             // = $12.45 of earned ad value
     todayPoints: 380,
     monthPoints: 5240,
-    lifetimePoints: 14450,     // balance = lifetime − the 2,000-point claim
+    lifetimePoints: 14450,     // all-time credited dwells
     rows, series, friends,
     affiliate: {
       code: "DWELL7F3K", rewardPct: 15, capPeople: 1000, attributedCount: 4,
@@ -177,6 +167,7 @@ function mockGet(path) {
       ],
       months: [1, 3, 6, 12],
       redemptionFeeBps: 1000,
+      redemptionBoostBps: 1000,
       deliveryWindowHours: 48,
     };
   }
@@ -195,19 +186,19 @@ function mockGet(path) {
 }
 
 // Dev-mode responses for the POST paths the redeem tab writes. The math
-// mirrors the server exactly (fee = ceil(face × bps/10000), net = gross − fee)
-// so screenshots and manual QA show real numbers.
+// mirrors the server exactly (boost: total = ceil(face × 10000 / (10000 +
+// boostBps)), no fee row) so screenshots and manual QA show real numbers.
 function mockPost(path, payload) {
   const p = path.split("?")[0];
   if (p === "/v1/web/redemptions") {
     const monthly = { pro: 20, max5x: 100, max20x: 200 }[payload?.plan] || 20;
     const faceCents = monthly * 100 * (parseInt(payload?.months, 10) || 1);
-    const feeCents = Math.ceil(faceCents / 10);
-    const spentPoints = (faceCents + feeCents) * 10;
+    const totalCents = Math.ceil((faceCents * 10000) / 11000); // 10% boost
+    const spentPoints = totalCents * 10;
     MOCK.summary.balancePoints = Math.max(0, MOCK.summary.balancePoints - spentPoints);
     return {
       ok: true, redemptionId: "mock-redemption", plan: payload?.plan, months: payload?.months,
-      amountUsd: faceCents / 100, feeUsd: feeCents / 100, totalUsd: (faceCents + feeCents) / 100,
+      amountUsd: faceCents / 100, feeUsd: 0, totalUsd: totalCents / 100,
       balanceUsd: MOCK.summary.balancePoints / 1000, deliveryWindowHours: 48,
     };
   }
@@ -857,13 +848,22 @@ async function loadPointsSummary() {
 let giftCatalog = null;
 let giftSelected = null;
 
-// Server math, replicated: fee = ceil(face × bps/10000) in cents; a cent is
-// ten dwells. Keeping the exact integer arithmetic here means the grid can
-// never advertise a price the server would refuse.
-function giftCost(monthlyUsd, months, feeBps) {
+// Server math, replicated (tokenomics v2): Claude credits redeem at a BOOST —
+// total = ceil(face × 10000 / (10000 + boostBps)) in cents, so a $22 credit
+// costs $20.00 of balance at a 10% boost. When boostBps is 0 the legacy
+// fee-on-top pricing applies. A cent is ten dwells. Keeping the exact integer
+// arithmetic here means the grid can never advertise a price the server
+// would refuse.
+function giftCost(monthlyUsd, months, pricing) {
   const faceCents = Math.round(monthlyUsd * 100) * months;
-  const feeCents = Math.ceil((faceCents * feeBps) / 10000);
-  const totalCents = faceCents + feeCents;
+  let feeCents, totalCents;
+  if (pricing.boostBps > 0) {
+    feeCents = 0;
+    totalCents = Math.ceil((faceCents * 10000) / (10000 + pricing.boostBps));
+  } else {
+    feeCents = Math.ceil((faceCents * pricing.feeBps) / 10000);
+    totalCents = faceCents + feeCents;
+  }
   return { faceCents, feeCents, totalCents, dwells: totalCents * 10 };
 }
 
@@ -872,7 +872,10 @@ async function loadGiftCatalog() {
   if (status !== 200 || !Array.isArray(body.plans)) return;
   giftCatalog = body;
   const badge = $("gift-fee-badge");
-  if (badge && body.redemptionFeeBps != null) {
+  const boostBps = body.redemptionBoostBps ?? 0;
+  if (badge && boostBps > 0) {
+    badge.textContent = `${Math.round(boostBps / 100)}% boost — your dwells buy ${100 + Math.round(boostBps / 100)}% of face value`;
+  } else if (badge && body.redemptionFeeBps != null) {
     badge.textContent = `includes ${Math.round(body.redemptionFeeBps / 100)}% protocol fee`;
   }
   renderGiftMenu();
@@ -882,12 +885,15 @@ async function loadGiftCatalog() {
 function renderGiftMenu() {
   const menu = $("gift-menu");
   if (!menu || !giftCatalog) return;
-  const feeBps = giftCatalog.redemptionFeeBps ?? 1000;
+  const pricing = {
+    boostBps: giftCatalog.redemptionBoostBps ?? 0,
+    feeBps: giftCatalog.redemptionFeeBps ?? 1000,
+  };
   menu.innerHTML = giftCatalog.plans
     .map((p) => {
       const cells = giftCatalog.months
         .map((m) => {
-          const cost = giftCost(p.monthlyUsd, m, feeBps);
+          const cost = giftCost(p.monthlyUsd, m, pricing);
           const afford = balancePoints >= cost.dwells;
           const isSel = giftSelected && giftSelected.plan === p.id && giftSelected.months === m;
           return (
@@ -1204,7 +1210,6 @@ let activityRows = null;
 const ACT_LABEL = {
   points_credit: "Watched a sponsored line",
   referral_points_credit: "Referral share — 10%",
-  token_claim_debit: "Converted at token launch",
 };
 
 function setActStatus(text, ok) {

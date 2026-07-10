@@ -184,7 +184,7 @@
     </a>
     <nav class="nav-btns" aria-label="Primary">
       <a href="/products" class="navbtn is-active" aria-current="page">Products</a>
-      <a href="/tokenomics" class="navbtn">Tokenomics</a>
+      <a href="/tokenomics" class="navbtn navbtn-opt">Tokenomics</a>
       <a href="/portal" class="navbtn"><span class="nav-txt-opt">User </span>Portal</a>
       <a href="/#advertisers" class="navbtn navbtn-cta">Advertise</a>
     </nav>
@@ -416,7 +416,7 @@
       <details class="faq-item">
         <summary class="faq-q">Is DWELL really free?</summary>
         <div class="faq-a">
-          <p class="faq-lead">Yes. There is no subscription and nothing to pay to start earning. You install once, keep using the AI tools you already use, and earn dwells while they think. The protocol only charges a fee when you redeem for Claude credits or cash — see the fees question below.</p>
+          <p class="faq-lead">Yes. There is no subscription and nothing to pay to start earning. You install once, keep using the AI tools you already use, and earn dwells while they think. The protocol only takes its cut when you redeem — see the fees question below.</p>
         </div>
       </details>
 
@@ -430,24 +430,24 @@
       <details class="faq-item">
         <summary class="faq-q">How do I redeem dwells?</summary>
         <div class="faq-a">
-          <p class="faq-lead">Three ways, all in your <a href="/portal">portal</a>:</p>
-          <p class="faq-lead"><strong>1 · $DWELL tokens</strong> — at token launch, dwells become claimable as $DWELL. The claim is free.<br />
-          <strong>2 · Claude credits</strong> — a 10% protocol fee applies on top of the credit's face value.<br />
-          <strong>3 · Cash via Stripe</strong> — a 10% protocol fee applies, with a $10 payout minimum.</p>
+          <p class="faq-lead">Two ways, both in your <a href="/portal">portal</a>:</p>
+          <p class="faq-lead"><strong>1 · USDC to your wallet</strong> — face value less the 10% protocol fee, with a $100 minimum.<br />
+          <strong>2 · Claude credits</strong> — redeemed at a 10% boost: your dwells buy Claude subscription time at 110% of their face value.</p>
+          <p class="faq-lead">Dwells never convert to $DWELL — the points ledger and the token are separate systems.</p>
         </div>
       </details>
 
       <details class="faq-item">
         <summary class="faq-q">What is the $DWELL token?</summary>
         <div class="faq-a">
-          <p class="faq-lead">$DWELL is the protocol's token. At launch, the dwells you've earned become claimable as $DWELL under the published rules — supply, allocation, and mechanics are documented on the <a href="/tokenomics">tokenomics page</a>.</p>
+          <p class="faq-lead">$DWELL is the protocol's token — a separate system from dwells. It carries no equity rights, receives no ad-revenue flows, and dwells never convert to $DWELL. Supply, allocation, and mechanics are documented on the <a href="/tokenomics">tokenomics page</a>.</p>
         </div>
       </details>
 
       <details class="faq-item">
         <summary class="faq-q">What fees does the protocol charge?</summary>
         <div class="faq-a">
-          <p class="faq-lead">Nothing to start earning, and nothing to claim $DWELL at launch. A <strong>10% protocol fee</strong> applies to Claude-credit and cash redemptions (cash payouts also have a $10 minimum).</p>
+          <p class="faq-lead">Nothing to start earning. USDC payouts to your wallet carry a <strong>10% protocol fee</strong> and a $100 minimum; Claude credits redeem at a <strong>10% boost</strong> — your dwells are worth 110% of face value on that path.</p>
         </div>
       </details>
 
@@ -541,11 +541,11 @@
     "@context": "https://schema.org",
     "@type": "FAQPage",
     "mainEntity": [
-      { "@type": "Question", "name": "Is DWELL really free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. There is no subscription and nothing to pay to start earning. You install once, keep using the AI tools you already use, and earn dwells while they think. The protocol only charges a fee when you redeem for Claude credits or cash." } },
+      { "@type": "Question", "name": "Is DWELL really free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. There is no subscription and nothing to pay to start earning. You install once, keep using the AI tools you already use, and earn dwells while they think. The protocol only takes its cut when you redeem." } },
       { "@type": "Question", "name": "How much can I earn?", "acceptedAnswer": { "@type": "Answer", "text": "It depends on how much you use AI. The published split: advertisers pay fixed dollar CPMs, the token-side tranche (currently ~90% of each ad dollar) goes to the campaign pool, and 60% of that pool goes to the viewer — credited as dwells. 10% of the pool goes to your referrer (to the protocol treasury when unreferred) and 30% to the protocol treasury." } },
-      { "@type": "Question", "name": "How do I redeem dwells?", "acceptedAnswer": { "@type": "Answer", "text": "Three ways in the portal: (1) $DWELL tokens at token launch — the claim is free; (2) Claude credits, with a 10% protocol fee on top of face value; (3) cash via Stripe, with a 10% protocol fee and a $10 payout minimum." } },
-      { "@type": "Question", "name": "What is the $DWELL token?", "acceptedAnswer": { "@type": "Answer", "text": "$DWELL is the protocol's token. At launch, the dwells you've earned become claimable as $DWELL under the published rules — supply, allocation, and mechanics are documented on the tokenomics page at dwellprotocol.com/tokenomics." } },
-      { "@type": "Question", "name": "What fees does the protocol charge?", "acceptedAnswer": { "@type": "Answer", "text": "Nothing to start earning, and nothing to claim $DWELL at launch. A 10% protocol fee applies to Claude-credit and cash redemptions; cash payouts also have a $10 minimum." } },
+      { "@type": "Question", "name": "How do I redeem dwells?", "acceptedAnswer": { "@type": "Answer", "text": "Two ways in the portal: (1) USDC to your wallet — face value less the 10% protocol fee, $100 minimum; (2) Claude credits — redeemed at a 10% boost, so dwells buy Claude subscription time at 110% of their face value. Dwells never convert to $DWELL." } },
+      { "@type": "Question", "name": "What is the $DWELL token?", "acceptedAnswer": { "@type": "Answer", "text": "$DWELL is the protocol's token — a separate system from dwells. It carries no equity rights, receives no ad-revenue flows, and dwells never convert to $DWELL. Supply, allocation, and mechanics are documented on the tokenomics page at dwellprotocol.com/tokenomics." } },
+      { "@type": "Question", "name": "What fees does the protocol charge?", "acceptedAnswer": { "@type": "Answer", "text": "Nothing to start earning. USDC payouts to your wallet carry a 10% protocol fee and a $100 minimum; Claude credits redeem at a 10% boost — dwells are worth 110% of face value on that path." } },
       { "@type": "Question", "name": "How does the split work — can I trust it?", "acceptedAnswer": { "@type": "Answer", "text": "The split is published and auditable: the token-side tranche (currently ~90% of each ad dollar) goes to the campaign pool, and that pool divides 60% to the viewer, 10% to their referrer (to the protocol treasury when unreferred), and 30% to the protocol treasury. Balances live on an open, append-only ledger recomputed from every credit and debit, stored at millicent precision." } },
       { "@type": "Question", "name": "Does DWELL read my prompts or conversations?", "acceptedAnswer": { "@type": "Answer", "text": "No. It reads none of your prompts or the model's output. It only detects whether the assistant is currently thinking so it knows when to show the sponsored line. The terminal client reads only structural transcript metadata needed to tell active from idle." } },
       { "@type": "Question", "name": "Which AI tools does it work with?", "acceptedAnswer": { "@type": "Answer", "text": "ChatGPT, Claude and Gemini in your browser via the Chrome extension, Claude Code in your terminal, and the native Claude and ChatGPT desktop apps on macOS. The sponsored line is styled to look native on each surface and only appears while the AI is working." } },
