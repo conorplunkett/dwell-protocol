@@ -1148,10 +1148,12 @@ button.wl-adv { cursor: pointer; }
   background: var(--accent); color: var(--accent-ink); font-weight: 600; text-decoration: none;
 }
 .usdc-paylink:hover { filter: brightness(1.06); }
-.usdc-copy {
-  background: none; border: none; color: var(--link); font-family: var(--sans);
-  font-size: var(--type-body-size); cursor: pointer; padding: 2px;
-}
+/* "Pay from your Solana wallet" is a real button now (Wallet Standard connect
+   + sign, not a dead solana: link) — same look, button chrome reset. */
+button.usdc-paylink { width: 100%; border: none; cursor: pointer; font-family: var(--sans); font-size: var(--type-body-size); }
+button.usdc-paylink:disabled { filter: saturate(.4) brightness(.92); cursor: default; }
+/* USDC ↔ SOL rail slider — reuses the .paytabs 2-segment geometry. */
+.railtabs { margin: 10px 0 0; }
 .usdc-status { margin: 2px 0 0; font-size: var(--type-body-size); color: var(--gray); text-align: center; }
 .usdc-status.ok { color: var(--ink); font-weight: 600; }
 .usdc-status.err { color: var(--accent-d); font-weight: 600; }
