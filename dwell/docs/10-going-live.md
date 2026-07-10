@@ -102,6 +102,44 @@ non-custodial; the server has no place to put a key and never asks for one.
 
 ---
 
+## 3b. Database migration (don't skip — this one bites)
+
+The edge function reads/writes the app's tables in the **`dwell` schema** (there is
+a legacy `public` copy — ignore it). The crypto checkout needs the
+`usdc_orders` table, and it must live in `dwell`. If it's missing, the code
+deploys fine but **every order 500s** with `relation "usdc_orders" does not
+exist`. Apply the table from `server/db/schema.sql` to the `dwell` schema:
+
+```sql
+create table if not exists dwell.usdc_orders (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid not null references dwell.campaigns(id),
+  price_micro_usdc bigint not null,
+  fee_micro_usdc bigint not null,
+  tranche_micro_usdc bigint not null,
+  pay_currency text not null default 'usdc' check (pay_currency in ('usdc','sol','dwell')),
+  pay_total_units bigint not null,
+  pay_fee_units bigint not null,
+  quote jsonb not null,
+  min_dwell_out numeric(78,0) not null,
+  reference_pubkey text unique not null,
+  tx_signature text unique,
+  status text not null default 'awaiting_signature'
+    check (status in ('awaiting_signature','confirmed','expired','failed')),
+  fail_reason text,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists usdc_orders_campaign_idx on dwell.usdc_orders (campaign_id);
+```
+
+## 3c. Make the function public
+
+`dwell-api` must be deployed with `verify_jwt = false` — the lander calls it
+with no auth key. Deploy with the flag: `supabase functions deploy dwell-api
+--no-verify-jwt`. If it's `true`, every endpoint (leaderboard, pricing,
+checkout) returns `401`.
+
 ## 4. Boot-time safety rails
 
 `server/src/boot.js` will refuse to start half-configured, so you can't leave
