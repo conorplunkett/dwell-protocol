@@ -1040,6 +1040,7 @@ button.wl-adv { cursor: pointer; }
 
 .stripe-btn {
   display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: 100%; box-sizing: border-box;
   background: var(--stripe); color: #fff; border: none; border-radius: 12px;
   padding: 16px; font-family: var(--sans); font-size: 16px; font-weight: 600; cursor: pointer;
   box-shadow: 0 12px 30px -12px rgba(99,91,255,.55); transition: filter .15s, transform .12s;
