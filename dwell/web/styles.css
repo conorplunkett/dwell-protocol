@@ -11,6 +11,10 @@ body {
     linear-gradient(180deg, var(--bg-tint) 0%, var(--bg-cream) 24%, #ffffff 48%);
   -webkit-font-smoothing: antialiased;
   line-height: 1.5;
+  /* Safety net: absolutely-positioned strays (hero mascot wander, tilted 3D
+     cards) can never extend the document width. Clipping HERE — not on the
+     sections themselves — leaves the 3D tilt free at each card's own edges. */
+  overflow-x: clip;
 }
 a { color: inherit; text-decoration: none; }
 
@@ -142,10 +146,9 @@ a { color: inherit; text-decoration: none; }
 .demo {
   text-align: left; margin: 0 auto 52px; position: relative;
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 22px;
-  /* Safety net: the absolutely-positioned mascot (and its JS wander) can never
-     extend the document width. overflow-x:clip keeps overflow-y visible so the
-     mascot's top:-20px perch is not clipped. */
-  overflow-x: clip;
+  /* No overflow clip here: the 3D-tilted cards swing past the grid edges and a
+     clip would shear them off mid-tilt (the "hidden behind a white sheet" bug).
+     The document-width safety net for the wandering mascot lives on body. */
 }
 .demo-card {
   /* The dark sponsor-overlay surface (--ov-*), NOT --card-dark: cards are white
@@ -1781,9 +1784,9 @@ button.usdc-paylink:disabled { filter: saturate(.4) brightness(.92); cursor: def
   }
 }
 
-/* Safety net: a floating block's hover tilt/scale must never extend the
-   document width. overflow-x:clip keeps vertical overflow visible — same trick
-   as .demo above. */
-.downloads, .advertisers { overflow-x: clip; }
+/* The advertisers sheet stays flat (no 3D target inside), so it can keep its
+   own horizontal clip. .downloads holds tilting .dl-btn cards — clipping it
+   would shear the tilt, so its safety net is the body-level overflow-x:clip. */
+.advertisers { overflow-x: clip; }
 
 /* deploy-trigger: 2026-07-07 rebrand cutover — safe to remove */
