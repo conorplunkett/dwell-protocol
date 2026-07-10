@@ -97,28 +97,28 @@ const logo = (size, font) => `<div class="logo" style="width:${size}px;height:${
   font-family:'JetBrains Mono',monospace;font-weight:700;font-size:${font}px;color:#fff;
   box-shadow:0 10px 24px rgba(${C.rgb},0.34)">D$</div>`;
 
-// ── the marquee (1400×560): copy + a REAL captured product screenshot ────────
-const marqueeHtml = (demoB64) => `<!doctype html><html><head><meta charset="utf-8">${FONTS}<style>
+// ── the marquee (1400×560): deliberately spare — wordmark + one big line ─────
+const marqueeHtml = () => `<!doctype html><html><head><meta charset="utf-8">${FONTS}<style>
   *{margin:0;padding:0;box-sizing:border-box} html,body{width:1400px;height:560px}
   ${brandBg(20, 26)}
   .pad{position:relative;height:100%;padding:46px 58px;display:flex;flex-direction:column}
   .top{display:flex;align-items:center;gap:15px}
   .wordmark{font-weight:800;font-size:27px;letter-spacing:-0.02em}
-  .domain{margin-left:auto;font-family:"JetBrains Mono",monospace;font-weight:500;font-size:18px;color:${C.accentD};letter-spacing:.02em}
-  .eyebrow{margin-top:34px;font-family:"JetBrains Mono",monospace;font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:${C.accentD}}
-  h1{font-weight:900;letter-spacing:-0.035em;line-height:1.0;font-size:60px;margin-top:14px}
+  .mid{margin:auto 0;display:flex;flex-direction:column;align-items:flex-start;gap:34px}
+  h1{font-weight:900;letter-spacing:-0.035em;line-height:1.0;font-size:88px}
   h1 .pop{color:${C.accentD}}
-  .sub{margin-top:16px;font-size:22px;line-height:1.4;color:${C.ink2};font-weight:500;max-width:1180px}
-  .sub b{color:${C.ink};font-weight:800}
-  .demoWrap{margin-top:auto}
-  .shot{width:100%;border-radius:16px;border:1px solid ${C.line};background:${C.tint};padding:14px 16px;box-shadow:0 18px 44px rgba(20,23,28,.12)}
-  .shot img{width:100%;display:block;border-radius:8px}
+  .pill{display:inline-flex;align-items:center;gap:14px;white-space:nowrap;
+    background:${C.ovBg};color:${C.ovText};border:1px solid rgba(255,255,255,0.06);border-radius:16px;
+    padding:16px 22px;font-size:21px;font-weight:600;box-shadow:0 16px 36px rgba(20,23,28,.20)}
+  .pill .chip{width:34px;height:34px;border-radius:9px;flex:none;background:${C.ovChipBg};color:${C.ovChipInk};
+    display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px}
+  .pill .line{color:${C.ovLine}} .pill .name{font-weight:700}
 </style></head><body><div class="frame"></div><div class="pad">
-  <div class="top">${logo(58, 31)}<div class="wordmark">Dwell Protocol</div><div class="domain">dwellprotocol.com</div></div>
-  <div class="eyebrow">Chrome extension</div>
-  <h1>Earn dwells <span class="pop">while AI thinks.</span></h1>
-  <p class="sub">One sponsored line shows while <b>ChatGPT, Claude &amp; Gemini</b> think. The dwells you earn redeem for <b>$DWELL at launch, Claude credits, or cash</b>.</p>
-  <div class="demoWrap"><div class="shot"><img src="data:image/png;base64,${demoB64}" alt="before/after"></div></div>
+  <div class="top">${logo(58, 31)}<div class="wordmark">Dwell Protocol</div></div>
+  <div class="mid">
+    <h1>Earn USDC <span class="pop">while AI thinks.</span></h1>
+    <div class="pill"><span class="chip">L</span> <span class="name">Linear</span> <span class="line">· Plan your next sprint faster</span></div>
+  </div>
 </div></body></html>`;
 
 // ── the small promo tile (440×280): compact, legible at thumbnail size ───────
@@ -140,8 +140,7 @@ const smallHtml = () => `<!doctype html><html><head><meta charset="utf-8">${FONT
   .pill .line{color:${C.ovLine}} .pill .name{font-weight:700}
 </style></head><body><div class="frame"></div><div class="pad">
   <div class="top">${logo(34, 19)}<div class="wordmark">Dwell Protocol</div></div>
-  <h1>Earn dwells <span class="pop">while AI thinks.</span></h1>
-  <p class="sub"><b>Dwells</b> redeem for $DWELL, Claude credits, or cash.</p>
+  <h1>Earn USDC <span class="pop">while AI thinks.</span></h1>
   <div class="pill"><span class="chip">L</span> <span class="name">Linear</span> <span class="line">· Plan your next sprint faster</span></div>
 </div></body></html>`;
 
@@ -260,10 +259,9 @@ try {
   const heroPath = join(tmp, "hero.png");
   await hero.screenshot({ path: heroPath });
 
-  // promo tiles rendered at exact size (1×) with embedded real demo screenshot
-  const demoB64 = readFileSync(demoPath).toString("base64");
+  // promo tiles rendered at exact size (1×)
   const marquee = await browser.newPage({ viewport: { width: 1400, height: 560 }, deviceScaleFactor: 1 });
-  await marquee.setContent(marqueeHtml(demoB64), { waitUntil: "networkidle" });
+  await marquee.setContent(marqueeHtml(), { waitUntil: "networkidle" });
   await marquee.evaluate(() => document.fonts.ready);
   const marqueePath = join(tmp, "marquee.png");
   await marquee.screenshot({ path: marqueePath, clip: { x: 0, y: 0, width: 1400, height: 560 } });
