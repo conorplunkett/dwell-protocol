@@ -1,9 +1,9 @@
 // DWELL — signed-in portal (portal.html). Email magic-link or OAuth sign-in,
 // then the dashboard: earnings, the activity ledger, the redeem tab (gift
 // cards + cash payouts live, $DWELL claim previewed), referrals, and install
-// status. Dwells are the unit everywhere: 1,000 dwells convert to 12,000
-// $DWELL at token launch; value floats with the market. USD figures shown
-// next to dwells are earn-basis (what advertisers paid), not a cash balance —
+// status. Dwells are the unit everywhere: dollar-denominated (1,000 dwells =
+// $1.00 of earned ad value), redeemable for USDC or Claude credits — never
+// $DWELL. USD figures next to dwells are earn-basis (what advertisers paid) —
 // the backend still speaks USD (balanceUsd etc.) and the conversion happens
 // at the display edge only.
 //
@@ -843,12 +843,12 @@ async function loadPointsSummary() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// REDEEM TAB — gift cards + cash payouts (the $DWELL claim card is
+// REDEEM TAB — Claude credits + cash payouts (the $DWELL claim card is
 // static until token launch). Prices are shown in dwells at face value
 // plus the protocol fee, mirroring exactly what the server charges.
 // ═══════════════════════════════════════════════════════════════════
 
-// ---- Claude gift cards ----
+// ---- Claude credits ----
 let giftCatalog = null;
 let giftSelected = null;
 
@@ -950,7 +950,7 @@ $("redeem-btn")?.addEventListener("click", async () => {
   if (status === 200) {
     result.className = "redeem-result ok";
     result.innerHTML =
-      `Done. Your <strong>${giftSelected.planName}</strong> gift card ` +
+      `Done. Your <strong>${giftSelected.planName}</strong> Claude credit ` +
       `(${giftSelected.months} month${giftSelected.months > 1 ? "s" : ""}) ` +
       `is on its way to <strong>${accountEmail}</strong> within <strong>48 hours</strong>. ` +
       `${pts(Math.round((body.totalUsd ?? 0) * 1000))} dwells spent.`;

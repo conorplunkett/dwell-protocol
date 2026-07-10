@@ -1801,8 +1801,13 @@ globalThis.fetch = async (url, opts) => {
     assert.strictEqual((await api("GET", "/v1/web/points/summary")).status, 404);
     assert.strictEqual((await apiT("GET", "/v1/token/pools")).body.pools.length, 0, "pools empty during the points phase");
     const viewerSess = await loginVia("dwell-viewer@example.com");
-    assert.strictEqual((await apiT("POST", "/v1/web/wallet", {}, { Authorization: `Bearer ${viewerSess}` })).status, 409, "wallet linking is live-mode only");
-    assert.strictEqual((await apiT("GET", "/v1/web/token/claim-proof", undefined, { Authorization: `Bearer ${viewerSess}` })).status, 409);
+    // v2: wallet linking is live in points mode (it's the USDC payout destination)
+    assert.strictEqual((await apiT("POST", "/v1/web/wallet", {}, { Authorization: `Bearer ${viewerSess}` })).status, 400, "wallet linking requires a Solana address");
+    const linked = await apiT("POST", "/v1/web/wallet", { address: "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T" }, { Authorization: `Bearer ${viewerSess}` });
+    assert.strictEqual(linked.status, 200);
+    assert.strictEqual(linked.body.wallet, "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T");
+    // v2: the earner token claim is a tombstone — dwells never convert to $DWELL
+    assert.strictEqual((await apiT("GET", "/v1/web/token/claim-proof", undefined, { Authorization: `Bearer ${viewerSess}` })).status, 410);
     assert.strictEqual((await apiT("POST", "/v1/admin/epochs/publish-root", { adminKey: "test-admin" })).status, 409);
     assert.strictEqual((await apiT("POST", "/v1/admin/epochs/publish-root", { adminKey: "wrong" })).status, 401);
   });

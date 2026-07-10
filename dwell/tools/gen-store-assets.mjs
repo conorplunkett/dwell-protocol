@@ -107,7 +107,7 @@ const marqueeHtml = (demoB64) => `<!doctype html><html><head><meta charset="utf-
   <div class="top">${logo(58, 31)}<div class="wordmark">Dwell Protocol</div><div class="domain">dwellprotocol.com</div></div>
   <div class="eyebrow">Chrome extension</div>
   <h1>Earn dwells <span class="pop">while AI thinks.</span></h1>
-  <p class="sub">One sponsored line shows while <b>ChatGPT, Claude &amp; Gemini</b> think. The dwells you earn redeem for <b>$DWELL at launch, Claude gift cards, or cash</b>.</p>
+  <p class="sub">One sponsored line shows while <b>ChatGPT, Claude &amp; Gemini</b> think. The dwells you earn redeem for <b>$DWELL at launch, Claude credits, or cash</b>.</p>
   <div class="demoWrap"><div class="shot"><img src="data:image/png;base64,${demoB64}" alt="before/after"></div></div>
 </div></body></html>`;
 
@@ -131,7 +131,7 @@ const smallHtml = () => `<!doctype html><html><head><meta charset="utf-8">${FONT
 </style></head><body><div class="frame"></div><div class="pad">
   <div class="top">${logo(34, 19)}<div class="wordmark">Dwell Protocol</div></div>
   <h1>Earn dwells <span class="pop">while AI thinks.</span></h1>
-  <p class="sub"><b>Dwells</b> redeem for $DWELL, Claude gift cards, or cash.</p>
+  <p class="sub"><b>Dwells</b> redeem for $DWELL, Claude credits, or cash.</p>
   <div class="pill"><span class="chip">L</span> <span class="name">Linear</span> <span class="line">· Plan your next sprint faster</span></div>
 </div></body></html>`;
 

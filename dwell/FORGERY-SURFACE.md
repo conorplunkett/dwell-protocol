@@ -44,8 +44,8 @@ credited on purpose, and the forgery surface stays open with it.
 - **Per-device daily cap** — `DAILY_IMPRESSION_CAP` (default 5000).
 - **Per-IP daily cap** — `IP_DAILY_IMPRESSION_CAP`, hashed source IP; bounds
   farming across many anonymous devices behind one host.
-- **Manual gift-card fulfillment** — a human reviews before any credit becomes a
-  real gift card (48h window). Forged credit does not auto-convert to value.
+- **Manual Claude-credit fulfillment** — a human reviews before any credit becomes a
+  real Claude credit (48h window). Forged credit does not auto-convert to value.
 - **Capability guard** — `/v1/events` refuses a batch from a client that
   advertises `capabilities: ["impression_tokens"]`. This prevents an *updated
   client* from double-crediting; it does **not** stop a forger, who simply omits

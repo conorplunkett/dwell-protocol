@@ -8,7 +8,7 @@
 Rough-out of the PRD: a menu bar companion app that floats a small sponsor
 card over a supported AI desktop app — **Claude Desktop** or the **ChatGPT
 (OpenAI) desktop app** — while it's generating, and credits the user in
-**dwells** (1,000 dwells = $1.00 of earned ad value) for qualified impressions. It never injects code into the app, never modifies its
+**dwells** (token-denominated; value floats with the market) for qualified impressions. It never injects code into the app, never modifies its
 files, and never reads prompts/responses.
 
 Both apps are Electron/Chromium shells, so the same Accessibility-tree walk
@@ -320,5 +320,5 @@ them, but verify with `codesign --verify --deep --strict` before notarizing.
    is done (`packaging/bundle.sh`); Developer ID signing + notarization still
    needs the paid Apple cert.
 5. In-app redemption UI. Redemption today happens in the web portal
-   (`dwellprotocol.com/portal`): $DWELL tokens at launch, Claude gift cards, or
-   cash via Stripe (10% protocol fee on gift cards and cash).
+   (`dwellprotocol.com/portal`): $DWELL tokens at launch, Claude credits, or
+   cash via Stripe (10% protocol fee on Claude credits and cash).

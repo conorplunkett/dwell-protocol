@@ -122,7 +122,9 @@ both brands.
       separate from the points reserve.
 - [ ] Securities + tax counsel engaged; sign-off on entity structure (issuer
       subsidiary formed), token allocations, vesting docs, and every public
-      copy surface.
+      copy surface — **including the [09-securities-framework.md](09-securities-framework.md)
+      counsel gate: Bedrock constitutional-document diligence and the raise
+      geofence/KYC decision (recommended: exclude US persons from the raise).**
 - [ ] Contract audit booked (see below) — budget $30–80K.
 
 ## Phase 2 — TGE runbook (ordered)
@@ -145,13 +147,14 @@ both brands.
        verified on BaseScan; `setSwapTarget` + `setKeeper` from the Safe;
        Distributor funded for epoch 1 only.
 6. [ ] **Liquidity seed**: DWELL/USDC pool on Aerodrome; depth published.
-7. [ ] **Points conversion**: snapshot taken when the raise opens; points
-       convert at the fixed $1M-valuation rate (1,000 points = 12,000 DWELL)
-       from the 10% airdrop bucket; conversion math published before it runs;
-       outstanding points at snapshot verified under the 8.33M-point cap.
-8. [ ] First cumulative root published (includes converted points + the
-       treasury shortfall leaf); spot-check N wallets' proofs against the
-       contract before announcing.
+7. [ ] **(v2 — no points conversion.)** dwells are dollar-denominated and do
+       not convert at the raise. Instead: USDC payout rail live (licensed
+       partner as counterparty of record), Claude-credit boost configured,
+       reserve attestation (earmarked dollars vs outstanding dwells) public,
+       and the grandfathering notice shipped (face-value settlement; no
+       token claim).
+8. [ ] **(v2 — retired.)** No Merkle claim for earners exists; there is no
+       converted-points root. (The distributor remains reference code only.)
 9. [ ] **Geofences live and tested**: NY + Canada blocked for wallet linking
        and claims; sanctioned-country screening via the wallet/offramp
        partners.
@@ -196,8 +199,10 @@ millicent balance *is* the points number).
       notarized under DWELL's own Apple Developer account; DMG on DWELL's
       own GitHub releases; wire `/download/mac` in the DWELL site's
       `vercel.json` when it exists.
-- [ ] All DWELL clients display "points" with the 1,000 points = 12,000
-      $DWELL legend (value floats with the market — no dollar peg anywhere).
+- [ ] All DWELL clients display dwells with the factual dollar legend
+      (1,000 dwells = $1.00 of earned ad value) and the two redemption paths
+      (USDC / Claude credits). No client, store listing, or README may state
+      or imply that dwells convert to $DWELL.
 
 ## Standing rules after launch
 

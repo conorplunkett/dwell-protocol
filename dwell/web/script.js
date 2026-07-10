@@ -822,15 +822,9 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
   });
 });
 
-// --- Earnings figures gently tick up (the surface-card pills; currently inside
-// hidden CTAs, live again the moment those are un-hidden) ---
-const earnEls = document.querySelectorAll(".earn-amt");
-let earn = 76.71;
-setInterval(() => {
-  earn += Math.random() * 0.14;
-  const html = "$" + earn.toFixed(2) + '<span class="per">/mo</span>';
-  earnEls.forEach((el) => { el.innerHTML = html; });
-}, 1400);
+// (Removed: the animated "$/mo" earnings ticker. Quantified earnings claims
+// are banned copy — see docs/05-legal-structure.md and
+// docs/08-securities-framework.md. The .earn-amt pills are static copy now.)
 
 // --- Protocol-hero mesh: the drifting node/line constellation behind the
 // DWELL PROTOCOL lockup. Plain canvas 2D — nodes wander slowly, lines fade in

@@ -348,19 +348,26 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     });
   });
 
-  // Live-mode surfaces, staged: linking a wallet, fetching a claim proof, and
-  // triggering the root publisher all arrive with the TGE keeper tooling.
+  // Tokenomics v2: wallet linking is live in points mode — it's the payout
+  // destination for USDC redemptions, not a token-claim surface. Accepts a
+  // Solana address (base58, 32–44 chars); one wallet per account, one account
+  // per wallet.
+  const SOLANA_ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
   route("POST", "/v1/web/wallet", async (req, res, body, rawBody, query) => {
-    if (!config.tokenMode) return tokenModeOff(res);
     const user = await repo.userForSession(sessionFrom(req, body, query));
     if (!user) return json(res, 401, { error: "not signed in" });
-    return liveOnly(res);
+    const address = String((body && body.address) || "").trim();
+    if (!SOLANA_ADDR.test(address)) return json(res, 400, { error: "address must be a Solana public key" });
+    const result = await repo.linkWallet(user.id, address);
+    if (!result.ok) return json(res, 409, { error: "that wallet is already linked to another account" });
+    json(res, 200, { ok: true, wallet: address });
   });
+  // v2 retired the earner token claim: dwells never convert to $DWELL, so
+  // there is no claim proof. Kept as an explicit tombstone for old clients.
   route("GET", "/v1/web/token/claim-proof", async (req, res, body, rawBody, query) => {
-    if (!config.tokenMode) return tokenModeOff(res);
     const user = await repo.userForSession(sessionFrom(req, body, query));
     if (!user) return json(res, 401, { error: "not signed in" });
-    return liveOnly(res);
+    return json(res, 410, { error: "dwells do not convert to $DWELL; redeem as USDC or Claude credits" });
   });
   route("POST", "/v1/admin/epochs/publish-root", async (req, res, body, rawBody, query) => {
     if (!config.tokenMode) return tokenModeOff(res);
@@ -887,6 +894,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       })),
       months: GIFT_MONTHS,
       redemptionFeeBps: config.redemptionFeeBps,
+      redemptionBoostBps: config.redemptionBoostBps || 0,
       deliveryWindowHours: 48,
     });
   });
@@ -1460,10 +1468,20 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const months = parseInt(body.months, 10);
     const amountCents = plan ? giftPriceCents(plan.id, months) : null;
     if (!amountCents) return json(res, 400, { error: "plan must be pro/max5x/max20x and months 1/3/6/12" });
-    // The protocol's cut is charged on top of face value: a $60 gift card costs
-    // $66 of balance, and the $6 fee lands platform-side in the ledger.
-    const feeCents = Math.ceil((amountCents * config.redemptionFeeBps) / 10000);
-    const totalCents = amountCents + feeCents;
+    // Tokenomics v2: Claude credits redeem at a BOOST — the user's dwells are
+    // worth (1 + boost) of face value on this path, so a $22 credit costs
+    // $20.00 of balance at a 10% boost. No fee row: the boost is the
+    // platform's cost, borne on fulfillment. When redemptionBoostBps is
+    // unset/0, the legacy fee-on-top pricing applies (a $60 credit costs $66).
+    const boostBps = config.redemptionBoostBps || 0;
+    let feeCents, totalCents;
+    if (boostBps > 0) {
+      feeCents = 0;
+      totalCents = Math.ceil((amountCents * 10000) / (10000 + boostBps));
+    } else {
+      feeCents = Math.ceil((amountCents * config.redemptionFeeBps) / 10000);
+      totalCents = amountCents + feeCents;
+    }
 
     // Gift cards are delivered only to the account's own email — never an
     // address supplied in the request. This caps the blast radius of a stolen
@@ -1491,7 +1509,8 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       redemptionId, planName: plan.name, months, amountUsd: amountCents / 100, recipientEmail,
     });
     const recorded = await repo.recordGiftRedemptionForUser({
-      id: redemptionId, userId: user.id, plan: plan.id, months, amountCents, feeCents, recipientEmail,
+      id: redemptionId, userId: user.id, plan: plan.id, months, amountCents, feeCents,
+      debitCents: totalCents, recipientEmail,
     });
     if (!recorded) return json(res, 409, { error: "insufficient credits" });
 
@@ -1511,6 +1530,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       ok: true, redemptionId, plan: plan.id, months,
       amountUsd: amountCents / 100,
       feeUsd: feeCents / 100,
+      boostBps,
       totalUsd: totalCents / 100,
       balanceUsd: after.balanceMillicents / 100000,
       deliveryWindowHours: 48,
@@ -1551,6 +1571,8 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     json(res, 200, {
       payoutsEnabled: !!user.payouts_enabled,
       hasStripeAccount: !!user.stripe_account_id,
+      stripePayoutsEnabled: config.stripePayoutsEnabled !== false,
+      wallet: user.wallet_address || null,
       thresholdUsd: config.payoutThresholdCents / 100,
       payoutFeeBps: config.payoutFeeBps,
       balanceUsd: balance.balanceMillicents / 100000,
@@ -1558,12 +1580,76 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     });
   });
 
+  // Tokenomics v2: the payout rail. Debit-first (same double-spend guard as
+  // the Stripe path), 10% fee, $10 minimum; the payouts row is queued
+  // 'pending' with the user's linked wallet as destination, and a licensed
+  // partner executes the USDC transfer (ops marks it paid with the transfer
+  // signature via /v1/admin/payouts/usdc/:id/paid). The company never holds
+  // or transmits the funds itself.
+  const lastUsdcPayoutAttempt = new Map();
+  route("POST", "/v1/web/payouts/usdc", async (req, res, body) => {
+    const user = await repo.userForSession(sessionFrom(req, body));
+    if (!user) return json(res, 401, { error: "not signed in" });
+    if (!user.wallet_address) return json(res, 403, { error: "link a Solana wallet first" });
+    const last = lastUsdcPayoutAttempt.get(user.id) || 0;
+    if (Date.now() - last < 60000) return json(res, 429, { error: "try again in a minute" });
+    lastUsdcPayoutAttempt.set(user.id, Date.now());
+
+    const balance = await repo.balanceForUser(user.id);
+    const grossCents = Math.floor(balance.balanceMillicents / 1000); // pay whole cents only
+    if (grossCents < config.payoutThresholdCents) {
+      return json(res, 403, {
+        error: "balance below payout threshold",
+        thresholdUsd: config.payoutThresholdCents / 100,
+        balanceUsd: balance.balanceMillicents / 100000,
+      });
+    }
+    const feeCents = Math.ceil((grossCents * config.payoutFeeBps) / 10000);
+    const netCents = grossCents - feeCents;
+    if (netCents <= 0) return json(res, 403, { error: "balance too small to pay out" });
+
+    const requested = await repo.recordPayoutRequest({
+      userId: user.id, grossCents, feeCents, method: "usdc", destination: user.wallet_address,
+    });
+    if (!requested) return json(res, 409, { error: "insufficient credits" });
+
+    const after = await repo.balanceForUser(user.id);
+    json(res, 200, {
+      ok: true,
+      queued: true,
+      grossUsd: grossCents / 100,
+      feeUsd: feeCents / 100,
+      netUsd: netCents / 100,
+      destination: user.wallet_address,
+      balanceUsd: after.balanceMillicents / 100000,
+    });
+  });
+
+  // Ops queue for the partner-executed transfers.
+  route("GET", "/v1/admin/payouts/usdc", async (req, res, body, rawBody, query) => {
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    json(res, 200, { payouts: await repo.pendingUsdcPayouts() });
+  });
+  route("POST", "/v1/admin/payouts/usdc/:id/paid", async (req, res, body, rawBody, query, pathParams) => {
+    if (!adminOk(req, body, query)) return json(res, 401, { error: "bad admin key" });
+    const sig = String((body && body.txSignature) || "").trim();
+    if (!sig) return json(res, 400, { error: "txSignature required" });
+    const ok = await repo.markUsdcPayoutPaid(pathParams.id, sig);
+    if (!ok) return json(res, 404, { error: "no pending usdc payout with that id" });
+    json(res, 200, { ok: true });
+  });
+
   // One attempt per user per minute, in-process. Belt-and-braces only — the
   // debit-first transaction in recordPayoutRequest is the real double-spend guard.
+  // Legacy Stripe rail: retired under tokenomics v2 (all payouts settle in
+  // USDC); re-enabled only by explicit config for deployments that need it.
   const lastPayoutAttempt = new Map();
   route("POST", "/v1/web/payouts/request", async (req, res, body) => {
     const user = await repo.userForSession(sessionFrom(req, body));
     if (!user) return json(res, 401, { error: "not signed in" });
+    if (config.stripePayoutsEnabled === false) {
+      return json(res, 410, { error: "cash payouts moved to USDC — link a wallet and use the USDC payout" });
+    }
     if (!user.stripe_account_id || !user.payouts_enabled) {
       return json(res, 403, { error: "set up payouts with Stripe first" });
     }

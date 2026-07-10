@@ -13,17 +13,30 @@ merged (by review or by the user) before treating the change as shipped.
 ## What DWELL is
 
 DWELL shows **one sponsored line** while an AI assistant (ChatGPT, Claude,
-Gemini) is thinking, and **pays the person watching**. Earnings accrue as
-**DWELL points** (1,000 points = $1.00 of earned ad value) and convert to the
-**$DWELL token** at launch (venue: star.fun, Solana — see
-`docs/07-starfun-launch.md`). Advertisers pay fixed dollar CPMs by card;
-**90% of every ad dollar** goes to the earn side, splitting
-**60% viewer / 10% referrer / 30% protocol treasury (held, never sold)**.
-Canonical domain: **dwellprotocol.com**.
+Gemini) is thinking, and **pays the person watching**. Two systems, no
+bridge (`docs/01-tokenomics.md`):
+
+1. **dwells (points)** — dollar-denominated earned credits (**1,000 dwells =
+   $1.00 of earned ad value, fixed**), redeemable for **USDC to a linked
+   wallet** (10% protocol fee) or **Claude credits** (10% boost). dwells
+   never convert to $DWELL.
+2. **$DWELL (token)** — separate SPL token (star.fun × Bedrock, Solana —
+   `docs/07-starfun-launch.md`, `docs/09-securities-framework.md`). Zero
+   equity rights; receives no ad-revenue flows; no buybacks/burns; trades
+   and can pay for ad campaigns at a spot quote (received tokens are held
+   in treasury).
+
+Advertisers pay fixed dollar CPMs by card or USDC; each campaign's rewards
+pool splits **60% viewer / 10% referrer / 30% company** (40% when
+unreferred), all in dollars. Canonical domain: **dwellprotocol.com**.
 
 State mechanics as facts. No price talk, ever — the banned-language grep in CI
 (`moon|price will|appreciat|going up|invest` over `dwell/web`) enforces the
-copy rules in `docs/05-legal-structure.md`. **Never claim points are "backed"
+copy rules in `docs/05-legal-structure.md`; also banned: "buyback"/"price
+support"/"value accrual"/forward-looking buy statements, quantified earnings
+claims ("earn up to $X/mo"), any ownership/equity framing of the token, and
+any statement that dwells convert to $DWELL. (The dwells dollar legend is
+factual again under the v2 model — dwells are dollar-denominated credits.) **Never claim points are "backed"
 or "escrowed" until the USDC reserve actually exists** — say points are
 recorded on the ledger / earmarked, not guaranteed. CI for this tree runs from
 the **root** `.github/workflows/dwell-ci.yml`; `dwell/` must stay free of any
@@ -113,4 +126,4 @@ red (#FF0000) on pure white, near-black ink, broadcast-blue links, Sora type,
 The product is **one sponsored line** shown while an assistant is thinking.
 Never hedge it with a diminutive ("subtle", "tiny"). "While the AI thinks /
 is thinking" is fine — that wait is the moment the product owns. Points copy
-always carries the legend: **1,000 points = $1.00 of earned ad value**.
+states the fixed dollar legend as fact (1,000 dwells = $1.00 of earned ad value) and never mentions the $DWELL token as a redemption or conversion path — dwells are reward credits, not the token.

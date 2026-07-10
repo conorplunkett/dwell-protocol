@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 const setText = (id, val) => { const el = $(id); if (el) el.textContent = val; };
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-// Viewers earn dwells: 1,000 dwells = $1.00 of earned ad value. The backend
+// Viewers earn dwells (token-denominated; dollar figures shown are estimates). The backend
 // stays dollar-denominated (balanceUsd etc.); we convert at the display edge
 // only.
 
@@ -49,7 +49,7 @@ function paintHero() {
   const earnings = lastLinked ? (s.earnings || 0) : 0;
 
   // Hero ring — dwells earned. No invented goal: the arc stays full as a brand
-  // ring, and the subtitle keeps the published legend visible: 1,000 dwells = $1.00.
+  // ring, and the subtitle shows the estimated earned value (an estimate, not a peg).
   setText("earnings", dwells(earnings));
   setRing(1);
   const progress = $("progress");
@@ -57,7 +57,7 @@ function paintHero() {
     if (!lastLinked) {
       progress.innerHTML = "<b>Connect your account</b> to start earning";
     } else {
-      progress.innerHTML = `<b>1,000 dwells</b> = $1.00 · ≈ ${money(earnings)} earned`;
+      progress.innerHTML = `≈ ${money(earnings)} of earned ad value <span class="muted">(estimate)</span>`;
     }
   }
 

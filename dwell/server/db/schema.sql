@@ -561,3 +561,13 @@ create table if not exists usdc_orders (
 );
 create index if not exists usdc_orders_campaign_idx on usdc_orders (campaign_id);
 
+
+-- Tokenomics v2: payouts settle in USDC to the user's linked wallet, executed
+-- through licensed partners. The payouts table gains a rail column: 'stripe'
+-- rows are the legacy Connect transfers; 'usdc' rows are queued on request
+-- (debit-first, status 'pending'), then marked 'paid' by ops with the transfer
+-- signature once the partner executes.
+alter table payouts add column if not exists method text not null default 'stripe'
+  check (method in ('stripe', 'usdc'));
+alter table payouts add column if not exists destination text;      -- Solana address for method = 'usdc'
+alter table payouts add column if not exists tx_signature text;     -- partner transfer signature (usdc)

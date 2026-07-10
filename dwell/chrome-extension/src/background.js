@@ -1,7 +1,7 @@
 // Dwell Protocol — service worker
 // Holds earnings state and the revenue math. The viewer's share of each
 // campaign's pool (the server-provided revenueShare) accrues as dwells:
-// 1,000 dwells = $1.00 of earned ad value. State stays USD-denominated to
+// Dwells are token-denominated (no dollar peg). State stays USD-denominated internally to
 // match the API; the popup converts to dwells for display.
 //
 // Talks to the production backend (Supabase Edge Function):

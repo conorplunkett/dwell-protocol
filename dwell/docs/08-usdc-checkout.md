@@ -1,5 +1,14 @@
 # USDC advertiser checkout — plan
 
+> **Tokenomics v2 (July 2026): the swap leg below is retired.** No leg of any
+> payment buys $DWELL. The v2 crypto checkout is two plain USDC transfers —
+> the protocol-fee leg and the revenue leg — with no Jupiter swap and no
+> distributor vault; viewers earn dollar-denominated dwells regardless of the
+> payment rail ([01-tokenomics.md](01-tokenomics.md),
+> [09-securities-framework.md](09-securities-framework.md)). The swap-based
+> flow documented below and its gated code (`DWELL_MINT` unset → routes 404)
+> are retained as reference only and must not be enabled.
+
 Crypto-native advertisers buy ad space in **USDC or SOL**, wallet-to-chain,
 with **no funds ever held by our system**. The protocol takes the **same 10%
 cut** as the card path; the other **90% is market-bought into $DWELL in the
