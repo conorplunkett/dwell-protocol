@@ -23,6 +23,11 @@ function loadConfig(env = process.env) {
     grossCpmCents: parseInt(env.GROSS_CPM_CENTS || "1200", 10),
     dailyImpressionCap: parseInt(env.DAILY_IMPRESSION_CAP || "5000", 10),
     ipDailyImpressionCap: parseInt(env.IP_DAILY_IMPRESSION_CAP || "5000", 10), // per source IP per UTC day; 0 disables (for shared-NAT/CGNAT audiences)
+    // Killswitch for the legacy self-reported /v1/events credit path (the open
+    // forgery surface — see FORGERY-SURFACE.md). Default on during the client
+    // transition; set LEGACY_EVENTS_CREDIT=0 once token-path adoption is high
+    // and forged batches credit nothing.
+    legacyEventsCredit: env.LEGACY_EVENTS_CREDIT !== "0",
     dailyClickCap: parseInt(env.DAILY_CLICK_CAP || "100", 10), // verified clicks per device per UTC day
     leadDailyCap: parseInt(env.LEAD_IP_DAILY_CAP || "100", 10), // bare-email waitlist captures per source IP per UTC day; 0 disables
     payoutThresholdCents: parseInt(env.PAYOUT_THRESHOLD_CENTS || "1000", 10), // $10

@@ -412,6 +412,34 @@ globalThis.fetch = async (url, opts) => {
     assert.strictEqual(r.status, 409, "migrated client must not also post self-reported batches");
   });
 
+  await check("LEGACY_EVENTS_CREDIT=0 closes the forgery surface: /v1/events batches credit nothing", async () => {
+    // The FORGERY-SURFACE.md killswitch: once flipped, a self-reported batch —
+    // exactly what a forger would post — is acknowledged but mints no credit
+    // and spends no campaign budget. The token path stays the only way to earn.
+    const cfgOff = { ...config, legacyEventsCredit: false };
+    const { server: sL } = createApp({ repo, stripe, mailer: fakeMailer, rateLimiter: bigLimiter, config: cfgOff });
+    await new Promise((r) => sL.listen(0, r));
+    const bL = `http://127.0.0.1:${sL.address().port}`;
+    const postL = (p, b) => fetch(bL + p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+    const dev = (await api("POST", "/v1/devices/register")).body;
+    const before = (await poolNs.query("select impressions_remaining from campaigns where id = $1", [campA])).rows[0].impressions_remaining;
+    const r = await postL("/v1/events", { ...dev, batchKey: "forged-batch", events: [{ campaignId: campA, impressions: 10, clicks: 0 }] });
+    assert.strictEqual(r.status, 200, "the batch is acknowledged, not errored (old clients keep working)");
+    assert.strictEqual(r.body.creditedMillicents, 0, "a forged batch mints nothing");
+    assert.strictEqual(r.body.legacyCreditDisabled, true);
+    const after = (await poolNs.query("select impressions_remaining from campaigns where id = $1", [campA])).rows[0].impressions_remaining;
+    assert.strictEqual(after, before, "no campaign budget is spent");
+    const led = await poolNs.query("select count(*)::int as n from ledger where device_id = $1", [dev.deviceId]);
+    assert.strictEqual(led.rows[0].n, 0, "no ledger entries for the forger's device");
+    // the batch is still recorded for idempotency + adoption telemetry
+    const dup = await postL("/v1/events", { ...dev, batchKey: "forged-batch", events: [{ campaignId: campA, impressions: 10, clicks: 0 }] });
+    assert.strictEqual(dup.body.duplicate, true);
+    // and the token path on the same server still credits normally
+    const serve = await postL("/v1/impressions/serve", { ...dev });
+    assert.ok(serve.body.token, "token path unaffected by the legacy killswitch");
+    sL.close();
+  });
+
   await check("an unpaid 'active' campaign never serves and never mints credits", async () => {
     // A campaign forced straight to 'active' without payment (paid_at null) —
     // e.g. a bad seed row — must be invisible to the auction and worthless to

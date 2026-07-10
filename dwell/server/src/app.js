@@ -236,7 +236,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
         source: ["chrome", "claude_code", "desktop"].includes(body.source) ? body.source : null,
         revenueShare: config.revenueShare, dailyCap: config.dailyImpressionCap,
         ipHash: hashIp(req), ipDailyCap: config.ipDailyImpressionCap,
-        tokenSplit,
+        tokenSplit, credit: config.legacyEventsCredit,
       });
       json(res, 200, { ok: true, ...result });
     } catch (err) {

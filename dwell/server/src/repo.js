@@ -793,7 +793,11 @@ function createRepo(pool) {
     // Only impressions bill: the user's share (revenueShare, 0.5 by default)
     // credits the device, the rest is the platform fee. Self-reported clicks in
     // the batch are ignored — verified clicks go through the token path and are free.
-    async ingestBatch({ deviceId, batchKey, events, source, revenueShare, dailyCap, ipHash, ipDailyCap, tokenSplit }) {
+    // `credit: false` is the FORGERY-SURFACE.md killswitch: the batch is still
+    // recorded (idempotency, fraud-cap accounting, adoption telemetry) but no
+    // campaign budget is spent and no ledger credit is issued — a forged batch
+    // mints nothing once the flag is flipped.
+    async ingestBatch({ deviceId, batchKey, events, source, revenueShare, dailyCap, ipHash, ipDailyCap, tokenSplit, credit = true }) {
       return tx(async (c) => {
         const claimedImpressions = events.reduce((n, e) => n + (e.impressions || 0), 0);
         const claimedClicks = events.reduce((n, e) => n + (e.clicks || 0), 0);
@@ -835,6 +839,8 @@ function createRepo(pool) {
             throw err;
           }
         }
+
+        if (!credit) return { duplicate: false, creditedMillicents: 0, legacyCreditDisabled: true };
 
         let credited = 0n;
         for (const ev of events) {
