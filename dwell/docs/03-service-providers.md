@@ -99,4 +99,7 @@ straight to the distributor vault, no funds ever held by our system. Same 90/10 
 the card path (this supersedes the earlier ~97.5%-to-token-side sketch). Card
 checkout remains the default; this is an additive option, not a migration.
 Providers: Jupiter Swap API, Solana Pay, Helius, deBridge (cross-chain),
-TRM (screening) — see the plan doc's table.
+TRM (screening) — see the plan doc's table. MetaMask needs no special rail:
+it now ships native Solana accounts over the Wallet Standard, so it signs the
+same checkout as Phantom; EVM-chain funds enter via deBridge (Relay fallback)
+— see the plan doc's "MetaMask & cross-chain entry" section.
