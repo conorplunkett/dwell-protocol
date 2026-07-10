@@ -912,16 +912,19 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
 // Mechanical-counter style: one dark cell per digit (the last cell red, like a
 // flip counter), each cell a vertical reel of 0–9 that rolls UPWARD to the new
 // digit. There's no public network-total endpoint yet, so the figure is an
-// optimistic projection: a fixed base plus steady time-based growth (so it's
-// consistent across visits and always climbing), plus a gentle live tick.
+// optimistic projection: a real snapshot base (SUM(impressions) from
+// event_batches as of the date below) plus steady time-based growth at
+// roughly the network's recent daily pace, plus a gentle live tick so it's
+// always climbing. Re-snapshot IMP_BASE/IMP_EPOCH from the DB periodically —
+// they drift from the true total the longer this goes un-refreshed.
 (function impOdometer() {
   const el = document.getElementById("imp-counter");
   if (!el) return;
   const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const IMP_BASE = 21_437_615;                       // network total at the epoch
-  const IMP_EPOCH = Date.parse("2026-07-01T00:00:00Z");
-  const IMP_RATE = 2.7;                              // impressions/second, network-wide
+  const IMP_BASE = 4_164;                             // real SUM(impressions), event_batches, 2026-07-10
+  const IMP_EPOCH = Date.parse("2026-07-10T01:36:50Z"); // snapshot time for the base above
+  const IMP_RATE = 0.0037;                            // impressions/second — recent 7-day network average (~320/day)
   const projected = () => IMP_BASE + Math.floor(((Date.now() - IMP_EPOCH) / 1000) * IMP_RATE);
 
   let value = projected();
