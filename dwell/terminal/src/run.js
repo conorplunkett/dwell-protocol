@@ -10,7 +10,7 @@ import { sessionDir } from "./paths.js";
 import { buildDwellStatusLine, effectiveStatusLine, extractSettingsArg,
   readSettingsValue, writeSessionSettings } from "./settings.js";
 import { initialState, updateState, writeState } from "./state.js";
-import { composeAdText, delay, removePath, safeHttpUrl, randomId } from "./util.js";
+import { composeAdText, delay, removePath, safeHttpUrl, randomId, HOUSE_AD } from "./util.js";
 
 // Opt-in stderr tracing. The ad path is intentionally silent in normal use, so
 // when "doctor" is green but no ad shows, `DWELL_DEBUG=1 claude` reveals which
@@ -111,18 +111,30 @@ async function prepareDwellSession({
     return null;
   }
   const ads = await backend.ads();
-  const ad = ads[0];
-  if (!ad) {
-    debug(env, "backend returned no active ads");
-    return null;
+  let ad = ads[0];
+  // No funded inventory ⇒ fall back to the non-billable house ad. It promotes
+  // DWELL itself; critically, we start NO monitor for it (below), so it never
+  // serves or redeems an impression and the user earns nothing from it.
+  const house = !ad;
+  if (house) ad = HOUSE_AD;
+
+  let device = null;
+  let trackingUrl = "";
+  if (house) {
+    // House ad has no campaign, so there is no click-intent to mint. Link
+    // straight to the advertise page (first-party — records/bills nothing) and
+    // skip the device entirely so nothing about this run is attributable.
+    trackingUrl = safeHttpUrl(ad.url) ? ad.url : "";
+    debug(env, "backend returned no active ads; serving the house ad (no billing)");
+  } else {
+    device = await ensureDevice(home, backend);
+    trackingUrl = await backend.createClickIntent(device, ad.id);
+    if (!safeHttpUrl(trackingUrl)) {
+      debug(env, `click-intent returned no usable tracking URL (${trackingUrl})`);
+      return null;
+    }
+    debug(env, `serving ad "${ad.line}" (${ad.id})`);
   }
-  const device = await ensureDevice(home, backend);
-  const trackingUrl = await backend.createClickIntent(device, ad.id);
-  if (!safeHttpUrl(trackingUrl)) {
-    debug(env, `click-intent returned no usable tracking URL (${trackingUrl})`);
-    return null;
-  }
-  debug(env, `serving ad "${ad.line}" (${ad.id})`);
 
   const { cleanArgv, settingsValue } = extractSettingsArg(argv);
   let userSettings = {};
@@ -148,10 +160,13 @@ async function prepareDwellSession({
     : undefined;
   writeSessionSettings({ path: settingsPath, userSettings, statusLine, spinnerVerbs });
 
-  const monitor = startSessionMonitor({
+  // The house ad is filler: NO monitor and NO click-intent refresh. Without the
+  // monitor there is no serve/redeem cycle, so it can never bill an impression —
+  // this is the guarantee that the user earns nothing while it's on screen.
+  const monitor = house ? null : startSessionMonitor({
     statePath, home, backend, device, ad, ...monitorOptions,
   });
-  const refreshTimer = setInterval(() => {
+  const refreshTimer = house ? null : setInterval(() => {
     void backend.createClickIntent(device, ad.id).then((nextUrl) => {
       if (!safeHttpUrl(nextUrl)) return;
       updateState(statePath, (next) => {
@@ -160,7 +175,7 @@ async function prepareDwellSession({
       });
     }).catch(() => {});
   }, 60_000);
-  try { refreshTimer.unref?.(); } catch { /* ignore */ }
+  if (refreshTimer) { try { refreshTimer.unref?.(); } catch { /* ignore */ } }
 
   return {
     finalArgv: ["--settings", settingsPath, ...cleanArgv],

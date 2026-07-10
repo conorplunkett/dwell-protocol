@@ -80,6 +80,46 @@ process.exit(0);
   assert.deepEqual(JSON.parse(readFileSync(argsPath, "utf8")), ["--settings", "user.json", "fix"]);
 });
 
+test("empty inventory serves the non-billable house ad and never bills", async () => {
+  const home = tempDir();
+  const cwd = tempDir();
+  const fakeClaude = join(cwd, "claude-fake.js");
+  writeFileSync(fakeClaude, `#!/usr/bin/env node
+if (process.argv.includes('--version')) { console.log('2.1.143 (Claude Code)'); process.exit(0); }
+process.exit(0);
+`, "utf8");
+  chmodSync(fakeClaude, 0o755);
+
+  // Any call into a device/serve/redeem/click path would mean the user could be
+  // billed for the house ad — the whole point is that none of these ever fire.
+  let billed = false;
+  const backend = {
+    async config() { return { serving: true }; },
+    async ads() { return []; },                                       // no funded inventory
+    async registerDevice() { billed = true; return { deviceId: "dev", deviceKey: "key" }; },
+    async createClickIntent() { billed = true; return "https://api.example/v1/go/tok"; },
+    async serveImpression() { billed = true; return "tok"; },
+    async redeemImpression() { billed = true; return { ok: true }; },
+  };
+
+  const code = await runClaude(["fix"], {
+    home, cwd, env: process.env, realClaudePath: fakeClaude,
+    cliPath: "/opt/dwell/bin/dwell.js", backend, keepSession: true,
+    monitorOptions: { intervalMs: 1000 },
+  });
+  assert.equal(code, 0);
+  const sessions = readdirSync(join(home, ".dwell", "claude", "sessions"));
+  assert.equal(sessions.length, 1, "house ad session not created");
+  const dir = join(home, ".dwell", "claude", "sessions", sessions[0]);
+  const settings = JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"));
+  assert.deepEqual(settings.spinnerVerbs, { mode: "replace", verbs: ["$empty — promote your token now"] });
+  const state = JSON.parse(readFileSync(join(dir, "state.json"), "utf8"));
+  assert.equal(state.ad.brand, "$empty");
+  assert.equal(state.ad.change, 999);
+  assert.equal(state.trackingUrl, "https://dwellprotocol.com/#advertisers");
+  assert.equal(billed, false, "house ad must never touch a device/serve/redeem/click path");
+});
+
 test("spinner verbs are still written when `claude --version` detection fails", async () => {
   const home = tempDir();
   const cwd = tempDir();
