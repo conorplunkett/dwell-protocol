@@ -164,18 +164,6 @@ icon + at least one screenshot):
 | Small promo tile | 440×280 PNG | ⚠️ optional but recommended for featuring |
 | Marquee promo tile | 1400×560 PNG | ⚠️ optional |
 
-> **Policy gotcha — no ranking/status/promo keywords in assets.** The v0.8.0
-> submission was rejected (routing ID FZSL, "Impersonation and IP") because the
-> generated install screenshot carried a `Free` label, an `01 · Browser` rank
-> badge, and a `v0.8.0 · In review` / "In Chrome Web Store review" status line —
-> Google forbids assets that mimic ranking, performance, or current Web Store
-> status (`free`, `#1`, `new`, `premium`, `recommended`, "in review", etc.). These
-> assets are generated from the live site by `make store-assets`, so keep that
-> language **out of the captured sections** — `#chrome` on `web/products.html`
-> (→ install screenshot) and `#surfaces` on `web/index.html` (→ marquee). After
-> any copy change there, re-run `make store-assets` and eyeball the tiles before
-> re-uploading.
-
 **Screenshot ideas** (capture from a real session — flip on **Test mode** so the
 labelled mock ad renders on demand, see `README.md`):
 
