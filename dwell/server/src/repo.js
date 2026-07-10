@@ -330,6 +330,18 @@ function createRepo(pool) {
   }
 
   return {
+    // ---------- diagnostics ----------
+    // Durable record of errors the request otherwise swallows (OAuth callbacks
+    // redirect on failure). Never throws — diagnostics must not break the caller.
+    async recordDiagError(method, path, err) {
+      try {
+        await pool.query(
+          "insert into diag_errors (method, path, message, stack) values ($1,$2,$3,$4)",
+          [method, path, String(err?.message || err), String(err?.stack || "")]
+        );
+      } catch (_e) { /* ignore */ }
+    },
+
     // ---------- devices ----------
     async registerDevice() {
       const secret = crypto.randomBytes(32).toString("hex");

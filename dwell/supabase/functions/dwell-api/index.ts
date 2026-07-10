@@ -4378,7 +4378,7 @@ route("GET", "/v1/auth/twitter/callback", async (ctx: any) => {
     if (!tokens.access_token) throw new Error(`no access_token from X (${tokRes.status}: ${JSON.stringify(tokens).slice(0, 200)})`);
     const uiRes = await fetch("https://api.x.com/2/users/me", { headers: { Authorization: `Bearer ${tokens.access_token}` } });
     const tu = await uiRes.json();
-    if (!tu?.data?.id) throw new Error("no user id from X");
+    if (!tu?.data?.id) throw new Error(`no user id from X (${uiRes.status}: ${JSON.stringify(tu).slice(0, 200)})`);
     const { sessionToken } = await repo.upsertUserByOAuth(
       { twitterId: String(tu.data.id), twitterUsername: tu.data.username || null, referralCode: oauthState.ref, emailVerified: false },
       config.webSessionTtlMs
@@ -4386,6 +4386,14 @@ route("GET", "/v1/auth/twitter/callback", async (ctx: any) => {
     return redirect(`${config.siteUrl}/portal.html#session=${sessionToken}`);
   } catch (err: any) {
     console.error("[dwell] twitter oauth:", err.message);
+    // Record the failure durably — the redirect swallows it from the caller, and
+    // console output alone has proven easy to miss when debugging sign-in.
+    try {
+      await pool.query(
+        "insert into diag_errors (method, path, message, stack) values ($1,$2,$3,$4)",
+        ["GET", "/v1/auth/twitter/callback", String(err?.message || err), String(err?.stack || "")]
+      );
+    } catch (_e) { /* diagnostics must never break the redirect */ }
     return redirect(`${config.siteUrl}/portal.html?login=error`);
   }
 });

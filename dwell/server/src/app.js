@@ -1144,7 +1144,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       const tu = await uiRes.json();
-      if (!tu?.data?.id) throw new Error("no user id from X");
+      if (!tu?.data?.id) throw new Error(`no user id from X (${uiRes.status}: ${JSON.stringify(tu).slice(0, 200)})`);
       const { sessionToken } = await repo.upsertUserByOAuth(
         { twitterId: String(tu.data.id), twitterUsername: tu.data.username || null,
           referralCode: oauthState.ref, emailVerified: false },
@@ -1153,6 +1153,9 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       redirect(res, `${config.siteUrl}/portal.html#session=${sessionToken}`);
     } catch (err) {
       console.error("[dwell] twitter oauth:", err.message);
+      // Record durably — the redirect swallows the failure from the caller, and
+      // console output alone has proven easy to miss when debugging sign-in.
+      await repo.recordDiagError("GET", "/v1/auth/twitter/callback", err);
       redirect(res, `${config.siteUrl}/portal.html?login=error`);
     }
   });
