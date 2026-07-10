@@ -424,7 +424,7 @@
           </label>
 
           <label class="field">
-            <span class="flabel">Performance window <em>(optional — the timeframe your change % is measured over)</em></span>
+            <span class="flabel">Performance window <em>(defaults to Auto — the timeframe your change % is measured over)</em></span>
             <div class="tsgroup" id="tsgroup" role="group" aria-label="Performance window">
               <button type="button" class="tsbtn" data-ts="5m">5m</button>
               <button type="button" class="tsbtn" data-ts="15m">15m</button>
@@ -479,10 +479,11 @@
             <span class="paytabs-thumb" id="paytabs-thumb" aria-hidden="true"></span>
             <button type="button" class="paytab active" id="paytab-crypto" role="tab" aria-selected="true" data-pane="pay-crypto">Pay with USDC/SOL</button>
             <!-- $DWELL rail opens at token launch (tokenomics v2): disabled, not
-                 hidden — the grey tag says why. script.js re-enables it when the
-                 backend accepts currency:"dwell". -->
-            <button type="button" class="paytab" id="paytab-dwell" role="tab" aria-selected="false" data-pane="pay-dwell" disabled>
-              Pay with $DWELL<span class="paytab-badge">+10%</span><span class="paytab-tag">after token launch</span>
+                 hidden — greyed out and inert, with the reason surfaced only on
+                 hover/focus (data-tip tooltip) instead of a permanent tag.
+                 script.js re-enables it when the backend accepts currency:"dwell". -->
+            <button type="button" class="paytab" id="paytab-dwell" role="tab" aria-selected="false" data-pane="pay-dwell" disabled data-tip="Opens after token launch">
+              Pay with $DWELL<span class="paytab-badge">+10%</span>
             </button>
             <button type="button" class="paytab" id="paytab-card" role="tab" aria-selected="false" data-pane="pay-card">Credit card</button>
           </div>

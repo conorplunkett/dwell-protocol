@@ -802,7 +802,7 @@ button.wl-adv { cursor: pointer; }
 .tsbtn:hover { border-color: var(--gray); }
 .tsbtn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(var(--accent-rgb),.12); }
 .tsbtn.is-active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.tsbtn-auto { margin-left: auto; } /* Auto sits at the far right of the group */
+.tsbtn-auto { margin-left: 0; } /* Auto sits right after 1d, not pinned to the row's far edge */
 /* The little "?" helper pinned to the Auto button's top-right corner. */
 .tshelp {
   position: absolute; top: -7px; right: -7px; width: 16px; height: 16px;
@@ -900,7 +900,7 @@ button.wl-adv { cursor: pointer; }
 .est-head { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray); }
 .est-sub { font-size: 13px; color: var(--gray-2); }
 /* The budget is the big editable number in this box. */
-.est-budget { display: flex; align-items: baseline; gap: 3px; margin: 2px 0; }
+.est-budget { display: flex; align-items: baseline; gap: 8px; margin: 2px 0; }
 .est-budget-prefix { font-size: 30px; font-weight: 800; letter-spacing: -.03em; color: var(--ink); }
 .est-budget input {
   font-size: 34px; font-weight: 800; letter-spacing: -.03em; color: var(--ink);
@@ -955,7 +955,7 @@ button.wl-adv { cursor: pointer; }
 .adpreview-dots { display: inline-flex; gap: 5px; flex: none; }
 .adpreview-dots i {
   width: 5px; height: 5px; border-radius: 50%;
-  background: var(--prev-accent, var(--accent)); opacity: .18;
+  background: var(--gray-2); opacity: .18;
 }
 /* Cumulative "thinking" sequence: 1 dot → 2 dots → 3 dots → reset. */
 .adpreview-dots i:nth-child(1) { animation: adprev-d1 1.5s linear infinite; }
@@ -1003,7 +1003,9 @@ button.wl-adv { cursor: pointer; }
   font-weight: 600; color: var(--gray); transition: color .15s; white-space: nowrap;
 }
 .paytab.active { color: var(--ink); }
-/* A not-yet-open rail: visible but inert, faded label, no pointer. */
+/* A not-yet-open rail: visible but inert, faded label, no pointer — the same
+   "flat, no hover feedback" treatment as the Chrome-extension download CTA
+   (.dl-btn.dl-soon) uses for not-shipped-yet actions. */
 .paytab:disabled { color: var(--gray-2); cursor: default; }
 /* "+10%" boost marker on the $DWELL tab — a small green (functional-success)
    chip inline right after the label. The tab's own flex centering (gap +
@@ -1014,16 +1016,23 @@ button.wl-adv { cursor: pointer; }
   line-height: 1; padding: 2px 4px; border-radius: 5px;
   color: var(--ok-fg); background: var(--ok-bg); border: 1px solid var(--ok-line);
 }
-/* Grey "after token launch" tag after the boost badge on the disabled rail. */
-.paytab-tag {
-  margin-left: 4px;
-  font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .02em;
-  line-height: 1; padding: 2px 4px; border-radius: 5px;
-  color: var(--gray); background: var(--bg-tint); border: 1px solid var(--line);
+/* Why the $DWELL tab is disabled surfaces on hover/focus only (data-tip on
+   the button itself), reusing the .tshelp dark-tooltip look instead of a
+   permanent tag. Hover styling still applies to disabled buttons even though
+   click/focus-by-tab is blocked by the `disabled` attribute. */
+.paytab[data-tip]::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%;
+  transform: translateX(-50%) translateY(3px); width: 170px; background: #1b1e25; color: #fff;
+  font-size: 12px; font-weight: 500; line-height: 1.4; text-align: center; padding: 8px 10px;
+  border-radius: 9px; box-shadow: 0 8px 24px -10px rgba(0,0,0,.5); opacity: 0; pointer-events: none;
+  transition: opacity .14s, transform .14s; z-index: 6;
+}
+.paytab[data-tip]:hover::after, .paytab[data-tip]:focus-visible::after {
+  opacity: 1; transform: translateX(-50%) translateY(0);
 }
 @media (max-width: 560px) {
   .paytab { flex-direction: column; gap: 3px; font-size: 12px; padding: 8px 4px; }
-  .paytab-badge, .paytab-tag { margin-left: 0; font-size: 9px; padding: 2px 4px; }
+  .paytab-badge { margin-left: 0; font-size: 9px; padding: 2px 4px; }
 }
 
 /* USDC checkout (dwell/docs/08) — hidden until $DWELL mints (script.js flag).
