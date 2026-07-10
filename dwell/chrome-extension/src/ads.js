@@ -39,12 +39,25 @@
     const s = g.BB_formatChange(v);
     return s == null ? null : { text: s, dir: v < 0 ? "down" : "up" };
   };
+  // Resolve a demo ad's bundled `img` (a path relative to the extension root) to
+  // a loadable chrome-extension:// URL — works in the popup and, via
+  // web_accessible_resources, in the injected bar. Null when the ad has no logo
+  // (real served ads) or chrome.runtime isn't available (tests) — callers then
+  // fall back to the letter/emoji chip.
+  g.BB_chipImg = function (ad) {
+    if (!ad || !ad.img) return null;
+    try {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL) return chrome.runtime.getURL(ad.img);
+    } catch (_) { /* not in an extension context */ }
+    return null;
+  };
 
   g.BB_ADS = [
-    { brand: "$ansem", chip: "🐂", color: "#0a0a0a", ink: "#fff", line: "the black bull", url: "https://dwellprotocol.com/go/ansem", cat: "crypto", timescale: "auto", changes: { "5m": 4.2, "15m": 12, "1h": 38, "4h": 96, "1d": 235 } },
-    { brand: "$troll", chip: "🧌", color: "#3f6212", ink: "#fff", line: "troll szn is upon us", url: "https://dwellprotocol.com/go/troll", cat: "crypto", timescale: "auto", changes: { "5m": 2.1, "15m": 9, "1h": 21, "4h": -7, "1d": 64 } },
-    { brand: "$pepe", chip: "🐸", color: "#4c9a2a", ink: "#fff", line: "the most memeable memecoin", url: "https://dwellprotocol.com/go/pepe", cat: "crypto", timescale: "5m", changes: { "5m": 1.3, "15m": 3, "1h": 8, "4h": 19, "1d": 47 } },
-    { brand: "$chillguy", chip: "😎", color: "#d2a679", ink: "#1b1e25", line: "just a chill guy", url: "https://dwellprotocol.com/go/chillguy", cat: "crypto", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } }
+    { brand: "$ansem", chip: "🐂", img: "assets/tokens/ansem.png", color: "#0a0a0a", ink: "#fff", line: "the black bull", url: "https://dwellprotocol.com/go/ansem", cat: "crypto", timescale: "auto", changes: { "5m": 4.2, "15m": 12, "1h": 38, "4h": 96, "1d": 235 } },
+    { brand: "$troll", chip: "🧌", img: "assets/tokens/troll.png", color: "#f2f2f2", ink: "#1b1e25", line: "troll szn is upon us", url: "https://dwellprotocol.com/go/troll", cat: "crypto", timescale: "auto", changes: { "5m": 2.1, "15m": 9, "1h": 21, "4h": -7, "1d": 64 } },
+    { brand: "$pepe", chip: "🐸", img: "assets/tokens/pepe.png", color: "#4c9a2a", ink: "#fff", line: "the most memeable memecoin", url: "https://dwellprotocol.com/go/pepe", cat: "crypto", timescale: "5m", changes: { "5m": 1.3, "15m": 3, "1h": 8, "4h": 19, "1d": 47 } },
+    { brand: "$fwog", chip: "🐸", img: "assets/tokens/fwog.png", color: "#7fae6e", ink: "#1b1e25", line: "just a little fwog", url: "https://dwellprotocol.com/go/fwog", cat: "crypto", timescale: "auto", changes: { "5m": 3, "15m": 7, "1h": 15, "4h": 33, "1d": 88 } },
+    { brand: "$chillguy", chip: "😎", img: "assets/tokens/chillguy.png", color: "#d2a679", ink: "#1b1e25", line: "just a chill guy", url: "https://dwellprotocol.com/go/chillguy", cat: "crypto", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } }
   ];
 
   // The mock ad shown in Test Mode. Deliberately obvious so it can never be
