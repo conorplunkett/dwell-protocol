@@ -1013,9 +1013,10 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
 // A physical seven-segment tally in the section label. The figure is the live
 // USDC pool available to earners — i.e. the earner share of sold ad inventory
 // (advertiser sales minus the protocol take). There's no public inventory
-// endpoint yet, so it's hardcoded to a $1,500 base and climbs optimistically
-// during the visit so it reads live. When the endpoint ships, replace `base`
-// with the fetched pool:  poolUsd = advertiserSalesUsd * (1 - PROTOCOL_TAKE).
+// endpoint yet, so it's hardcoded to a $1,285 base and climbs optimistically
+// during the visit (bursty +$50/$75/$125 jumps, occasional -$1 correction) so
+// it reads live. When the endpoint ships, replace `base` with the fetched
+// pool:  poolUsd = advertiserSalesUsd * (1 - PROTOCOL_TAKE).
 (function usdcCounter() {
   const root = document.getElementById("usdc-counter");
   const wrap = root && root.querySelector(".usdc-digits");
@@ -1029,7 +1030,7 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
   };
   const NAMES = ["a", "b", "c", "d", "e", "f", "g"];
 
-  const USDC_BASE = 1500;   // hardcoded pool (≈ earner share of ad inventory)
+  const USDC_BASE = 1285;   // hardcoded pool (≈ earner share of ad inventory)
   let value = USDC_BASE;
   let cells = [];           // [{ segs: {a:<i>,…} }] most-significant first
 
@@ -1074,12 +1075,24 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
 
   render();
   if (reduced) return; // hold at the base; no live climb
-  // Optimistic climb: nudge up a little every 3s so a trailing digit keeps
-  // ticking and the device reads live, anchored near the $1,500 base.
-  setInterval(() => {
-    value += 1 + Math.floor(Math.random() * 2); // +$1–2 per tick
-    render();
-  }, 3000);
+  // Optimistic climb: jump up by $50/$75/$125 on an irregular 3/6/8s beat, so
+  // the device reads live and bursty rather than a steady metronome. Every so
+  // often it ticks back down by a token $1, like a real live tally correcting.
+  const UP_STEPS = [50, 75, 125];
+  const TICK_DELAYS = [3000, 6000, 8000];
+  const DOWNTICK_CHANCE = 0.15; // ~1 in ~7 ticks nudges down instead of up
+  (function scheduleTick() {
+    const delay = TICK_DELAYS[Math.floor(Math.random() * TICK_DELAYS.length)];
+    setTimeout(() => {
+      if (Math.random() < DOWNTICK_CHANCE) {
+        value = Math.max(USDC_BASE, value - 1);
+      } else {
+        value += UP_STEPS[Math.floor(Math.random() * UP_STEPS.length)];
+      }
+      render();
+      scheduleTick();
+    }, delay);
+  })();
 })();
 
 // --- Boost fold: the hero "Boost your token" button folds the advertiser card
