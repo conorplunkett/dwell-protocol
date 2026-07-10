@@ -7,17 +7,17 @@ reference + rollback (the Edge port mirrors its routes and SQL verbatim).
 
 ## Functions
 
-- **`api/`** — the whole API, ported from `server/src/*` into one function.
-  Served under the slug `api`, so the public base is
-  `https://<ref>.supabase.co/functions/v1/api` and routes arrive as `/api/v1/…`
-  (the slug prefix is stripped, then the original paths are matched). Uses
-  `npm:pg` against `SUPABASE_DB_URL` (the Supavisor pooler) so the data layer is
-  a near-verbatim copy of `server/src/repo.js` — same transactions, same
-  `pg_advisory_xact_lock` redemption guard, same integer BigInt math.
-- **`web-referrals/`** — the original single-route proof-of-concept. Superseded
-  by `api/`; kept for reference and safe to delete.
+- **`dwell-api/`** — the whole API, ported from `server/src/*` into one
+  function. Served under the slug `dwell-api`, so the public base is
+  `https://<ref>.supabase.co/functions/v1/dwell-api` and routes arrive as
+  `/dwell-api/v1/…` (the slug prefix is stripped, then the original paths are
+  matched). Uses `npm:pg` against `SUPABASE_DB_URL` (the Supavisor pooler) so
+  the data layer is a near-verbatim copy of `server/src/repo.js` — same
+  transactions, same `pg_advisory_xact_lock` redemption guard, same integer
+  BigInt math. Runs `TOKEN_MODE=points` and its own Postgres schema
+  (`DB_SCHEMA=dwell`); deployed by `.github/workflows/deploy-dwell-functions.yml`.
 
-Both deploy with `verify_jwt=false`: the API does its own auth (web-session
+It deploys with `verify_jwt=false`: the API does its own auth (web-session
 tokens, device keys, admin key, OAuth, Stripe webhook signatures), not Supabase
 JWTs.
 

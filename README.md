@@ -1,14 +1,17 @@
 # Dwell Protocol
 
 **Get paid for your attention.** DWELL shows one sponsored line while an AI
-assistant is thinking and pays the person watching in **dwells**
-(1,000 dwells = $1.00 of earned ad value), redeemable for **USDC to your
-wallet** (10% protocol fee) or **Claude credits** (at a 10% boost). dwells are
-reward credits, not the $DWELL token, and do not convert to it.
+assistant is thinking and pays the person watching.
 
 **The product lives in [`dwell/`](dwell/)** — site, docs, contracts, backend,
 and the earning clients (Chrome extension, terminal, macOS desktop). Start
-with [`dwell/README.md`](dwell/README.md) and [`dwell/AGENTS.md`](dwell/AGENTS.md).
+there:
+
+- [`dwell/README.md`](dwell/README.md) — product overview, repo layout, how to run it
+- [`dwell/AGENTS.md`](dwell/AGENTS.md) — conventions for contributors and agents
+- [`dwell/docs/01-tokenomics.md`](dwell/docs/01-tokenomics.md) — **the single
+  source of truth for how dwells and $DWELL work.** Every other doc and README
+  defers to it and does not restate the economics.
 
 - Site: [dwellprotocol.com](https://www.dwellprotocol.com) · portal at
   [/portal](https://www.dwellprotocol.com/portal) · install guides at

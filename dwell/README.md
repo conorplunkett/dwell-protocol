@@ -27,8 +27,8 @@ pre-v2 design.
 | Path | What it is |
 |---|---|
 | [`web/`](web/) | Landing page + portal. Static HTML/CSS/vanilla JS, no build step. **`web/theme.css` is the central theme file** ([docs/brand.md](docs/brand.md)) |
-| [`docs/`](docs/) | Tokenomics, architecture, providers, backend spec, legal, launch checklist, star.fun assessment, brand |
-| [`contracts/`](contracts/) | Solidity (Foundry + pinned OpenZeppelin v5.6.1): the DWELL token, CampaignFunder, MerkleRewardsDistributor |
+| [`docs/`](docs/) | **`01-tokenomics.md` is the source of truth.** Plus architecture, providers, backend spec, legal, launch checklist, star.fun assessment, USDC checkout, securities framework, brand |
+| [`contracts/`](contracts/) | Solidity (Foundry + pinned OpenZeppelin v5.6.1): the DWELL token, CampaignFunder, MerkleRewardsDistributor — **retired pre-v2 reference**, kept CI-verified |
 | [`server/`](server/) | Reference Node + Postgres backend (CI-tested) |
 | [`supabase/functions/dwell-api/`](supabase/functions/) | Production edge function — a verbatim mirror of `server/` |
 | [`chrome-extension/`](chrome-extension/) · [`terminal/`](terminal/) · [`desktop/`](desktop/) | The earning clients |
