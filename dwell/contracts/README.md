@@ -1,11 +1,15 @@
 # DWELL contracts
 
-> **Venue note:** these contracts implement the self-directed **Base/EVM**
-> launch path. If the token launches on star.fun (Solana), the token is an SPL
-> mint created by the platform and this folder becomes the reference
-> implementation of the mechanics — the Solana equivalents are an offchain
-> Jupiter-API buy keeper and an established Solana Merkle-distributor program.
-> See [`../docs/07-starfun-launch.md`](../docs/07-starfun-launch.md).
+> **Retired under tokenomics v2 — reference only.** These contracts implement
+> the pre-v2 design in which ad revenue market-bought $DWELL and distributed it
+> to earners. That model is gone: dwells are dollar-denominated and settle in
+> USDC or Claude credits, ad revenue never buys $DWELL, and $DWELL launches on
+> star.fun as an SPL mint (not from this Solidity). See
+> [`../docs/01-tokenomics.md`](../docs/01-tokenomics.md) (source of truth) and
+> [`../docs/07-starfun-launch.md`](../docs/07-starfun-launch.md). This folder
+> is kept as a CI-verified reference implementation of the mechanics; the
+> CampaignFunder / market-buy / campaign-locked-rate descriptions below
+> describe that retired design, not the live one.
 
 Three contracts, standard Foundry layout, built on **unmodified OpenZeppelin
 Contracts v5.6.1** pinned as a git submodule at `lib/openzeppelin-contracts`

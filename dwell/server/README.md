@@ -8,22 +8,26 @@
 > historical. See `supabase/functions/README.md`.
 
 Node + Postgres backend that makes the revenue split real: a live ad auction,
-an append-only ledger, Stripe Checkout for money **in**, and Claude gift-card
-redemption for credits **out**.
+an append-only ledger, card/USDC checkout for money **in**, and dwell
+redemption — **USDC to a linked wallet** or **Claude credits** — for value
+**out**. (How dwells are valued and redeemed is defined once, in
+[`../docs/01-tokenomics.md`](../docs/01-tokenomics.md); this README covers the
+mechanics, not the economics.)
 
 ```
   ADVERTISER                          USER (extension · terminal · macOS)
       │                                        │
-      │ POST /v1/checkout                      │ POST /v1/devices/register
+      │ POST /v1/checkout (card / USDC)        │ POST /v1/devices/register
       ▼                                        │ GET  /v1/ads  (auction-ranked)
-  Stripe Checkout ──(webhook)──► campaign      │ POST /v1/events (batched, idempotent)
-  pays $blocks×price            activated      ▼
+  Checkout ──(webhook)──► campaign             │ POST /v1/events (batched, idempotent)
+  pays $blocks×price       activated           ▼
                                      └──► LEDGER (append-only, exact integer math)
-                                              credits → device   fee → platform
+                                              dwells → user      fee → company
                                                     │
-                                          POST /v1/admin/payouts (weekly sweep)
-                                                    ▼
-                                          Stripe Connect transfer → dev's bank
+                        redeem: Claude credits (10% boost)  ·  USDC payout
+                                                    │  (POST /v1/web/payouts/usdc,
+                                                    ▼   admin-approved → partner transfer)
+                                          USDC to the user's linked wallet
 ```
 
 ## Why these pieces
