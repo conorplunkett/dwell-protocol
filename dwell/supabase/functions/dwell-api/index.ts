@@ -103,17 +103,21 @@ function loadConfig() {
     reserveTrancheBps: parseInt(env("RESERVE_TRANCHE_BPS", "9000"), 10), // slice of gross routed to the token side
 
     // ---- Crypto advertiser checkout (dwell/docs/08, tokenomics v2) ----
-    // Non-custodial, swap-free: no leg of any payment buys $DWELL (docs/01).
-    // USDC/SOL rails are live once the treasury + revenue accounts are set —
-    // no dependency on the token existing. The $DWELL rail (a single transfer
-    // to the treasury at a spot quote, held there) opens at token launch:
-    // DWELL_MINT + TREASURY_DWELL_ATA gate that one rail only. No signing keys
-    // here or anywhere — the backend only builds unsigned transactions and
-    // verifies finalized ones read-only.
+    // Checkout is non-custodial: no leg of any payment buys $DWELL (docs/01),
+    // the backend builds unsigned transactions and verifies finalized ones
+    // read-only. USDC/SOL rails are live once the treasury + revenue accounts
+    // are set — no dependency on the token existing. The $DWELL rail (a single
+    // transfer to the treasury at a spot quote) opens at token launch:
+    // DWELL_MINT + TREASURY_DWELL_ATA gate that one rail only.
+    // SOL/$DWELL payments are HELD during review, then hedged: on admin accept
+    // the treasury signer swaps them to USDC at the acceptance-time rate (the
+    // realized USDC funds the campaign); on reject it refunds the payer
+    // in-kind on-chain. That signer is the only key the backend holds, and it
+    // is used exclusively by those two paths.
     dwellMint: env("DWELL_MINT"),
     usdcMint: env("USDC_MINT", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // canonical USDC on Solana mainnet (6 dp)
     solanaRpcUrl: env("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
-    jupiterBaseUrl: env("JUPITER_BASE_URL", "https://lite-api.jup.ag/swap/v1"), // spot PRICING quotes only (SOL/$DWELL rails) — nothing is ever swapped
+    jupiterBaseUrl: env("JUPITER_BASE_URL", "https://lite-api.jup.ag/swap/v1"), // pricing quotes at checkout; /swap executes ONLY the acceptance-time hedge
     treasuryUsdcAta: env("TREASURY_USDC_ATA"),           // company treasury USDC account — the protocol-fee leg
     revenueUsdcAta: env("REVENUE_USDC_ATA"),             // company revenue USDC account — the rewards-pool leg (funds dwell payouts)
     treasurySolAccount: env("TREASURY_SOL_ACCOUNT"),     // treasury address for native-SOL fee legs; empty = SOL rail off
@@ -121,7 +125,9 @@ function loadConfig() {
     treasuryDwellAta: env("TREASURY_DWELL_ATA"),         // treasury $DWELL account — the whole $DWELL-rail payment lands here, held (docs/01)
     dwellDecimals: parseInt(env("DWELL_DECIMALS", "6"), 10), // display only — raw DWELL units ÷ 10^decimals for the "≈ pay in $DWELL" figure
     dwellPayBoostBps: parseInt(env("DWELL_PAY_BOOST_BPS", "1000"), 10), // paying in $DWELL boosts a campaign's impressions by this (1000 = +10%)
-    maxSlippageBps: parseInt(env("MAX_SLIPPAGE_BPS", "100"), 10), // slippageBps param on pricing quotes (no swap executes)
+    maxSlippageBps: parseInt(env("MAX_SLIPPAGE_BPS", "100"), 10), // slippageBps param on pricing quotes (checkout never swaps)
+    treasurySignerSecret: env("TREASURY_SIGNER_SECRET"),          // base58 64-byte ed25519 keypair; swap-on-accept + refund-on-reject ONLY
+    swapSlippageBps: parseInt(env("SWAP_SLIPPAGE_BPS", "100"), 10), // execution slippage bound on the acceptance-time hedge swap
     usdcOrderTtlMinutes: parseInt(env("USDC_ORDER_TTL_MINUTES", "30"), 10), // price validity window; each built tx is only ~60s (blockhash)
 
     // ---- brand — the DWELL deployment bills and writes copy under its own name ----
@@ -146,6 +152,23 @@ if ((config.treasurySolAccount || config.revenueSolAccount) && !(config.treasury
 }
 if (config.dwellMint && !config.treasuryDwellAta) {
   throw new Error("DWELL_MINT is set — TREASURY_DWELL_ATA is required for the $DWELL rail");
+}
+// Treasury signer (hedging): swaps/refunds move funds FROM the treasury
+// accounts, so the signer must own them. On the SOL rail both legs land in
+// system accounts we can check offline; the ATA ownership (DWELL/USDC) is a
+// documented going-live requirement (dwell/docs/10).
+if (config.treasurySignerSecret) {
+  const signerPub = signerPubkeyFromSecret(config.treasurySignerSecret); // throws on a malformed secret
+  if (config.treasurySolAccount && signerPub !== config.treasurySolAccount) {
+    throw new Error("TREASURY_SIGNER_SECRET's pubkey must equal TREASURY_SOL_ACCOUNT (swaps/refunds spend from it)");
+  }
+  if (config.revenueSolAccount && signerPub !== config.revenueSolAccount) {
+    // A SOL payment splits across both accounts but swaps/refunds move the
+    // FULL received amount from the signer — keep both legs on its key.
+    console.warn("[dwell] REVENUE_SOL_ACCOUNT differs from the treasury signer — SOL swaps/refunds spend the full received amount from the signer account; sweep the revenue leg to it or set both to the signer's pubkey.");
+  }
+} else if (config.treasurySolAccount || config.treasuryDwellAta) {
+  console.warn("[dwell] SOL/$DWELL rails are configured without TREASURY_SIGNER_SECRET — campaign accepts (hedge swap) and rejects (on-chain refund) on those rails will fail until it is set.");
 }
 // When TOKEN_MODE is set, impressions split three ways into points entries
 // instead of the legacy two-way credit (passed into ingestBatch/redeem/paid).
@@ -1003,42 +1026,163 @@ function createRepo(pool: any) {
       );
       return rows;
     },
+    // Approve. Card/USDC campaigns activate directly (funding already posted at
+    // payment time). SOL/$DWELL campaigns hold their crypto during review, so
+    // approval parks them in pending_swap and hands the held order back to the
+    // caller, which executes the acceptance-time hedge swap and then calls
+    // finalizeAcceptedSwap. Re-approving a pending_swap campaign (a failed
+    // swap) returns the same order — the retry path.
     async approveCampaign(campaignId: string) {
+      return tx(async (c: any) => {
+        const { rows: camp } = await c.query(
+          `select cmp.id, cmp.status, adv.email, cmp.brand, cmp.ad_line, cmp.price_per_block_cents, cmp.blocks, cmp.impressions_total
+             from campaigns cmp join advertisers adv on adv.id = cmp.advertiser_id
+            where cmp.id = $1 for update of cmp`,
+          [campaignId]
+        );
+        if (!camp[0] || !["pending_review", "pending_swap"].includes(camp[0].status)) return null;
+        const info = {
+          email: camp[0].email, brand: camp[0].brand, adLine: camp[0].ad_line,
+          pricePerBlockCents: camp[0].price_per_block_cents, blocks: camp[0].blocks,
+          impressionsTotal: camp[0].impressions_total,
+        };
+        const { rows: ord } = await c.query(
+          `select id, pay_currency, payer_address, received_amount_raw
+             from usdc_orders
+            where campaign_id = $1 and status = 'confirmed' and pay_currency in ('sol', 'dwell')
+            order by created_at desc limit 1`,
+          [campaignId]
+        );
+        if (ord[0]) {
+          await c.query(`update campaigns set status = 'pending_swap' where id = $1`, [campaignId]);
+          return { ...info, needsSwap: true, order: ord[0] };
+        }
+        if (camp[0].status !== "pending_review") return null; // pending_swap with no held order — nothing left to do
+        await c.query(
+          `update campaigns set status = 'active', activated_at = now() where id = $1`,
+          [campaignId]
+        );
+        return { ...info, needsSwap: false };
+      });
+    },
+
+    // Second half of a SOL/$DWELL approval: the hedge swap landed, fund the
+    // campaign from the REALIZED USDC (acceptance-time rate — the effective
+    // CPM/impressions may differ from the checkout quote) and activate it.
+    // Idempotent on the order's confirmed -> swapped transition.
+    async finalizeAcceptedSwap({ orderId, swapSignature, realizedMicroUsdc, tokenSplit, dwellPayBoostBps }: any) {
+      return tx(async (c: any) => {
+        const ord = await c.query(
+          `update usdc_orders set status = 'swapped', swap_signature = $2, realized_micro_usdc = $3
+            where id = $1 and status = 'confirmed'
+            returning campaign_id, pay_currency`,
+          [orderId, swapSignature, realizedMicroUsdc]
+        );
+        if (!ord.rows[0]) return null;
+        const o = ord.rows[0];
+
+        const { rows: camp } = await c.query(
+          `select price_per_block_cents from campaigns where id = $1 for update`,
+          [o.campaign_id]
+        );
+        if (!camp[0]) return null;
+        const realized = BigInt(realizedMicroUsdc);
+        const realizedCents = Number(realized / 10000n);
+        const cpmCents = Number(camp[0].price_per_block_cents);
+        const boostBps = o.pay_currency === "dwell" ? (dwellPayBoostBps || 0) : 0;
+        const baseImpressions = Math.floor((realizedCents * 1000) / cpmCents);
+        const impressions = Math.floor((baseImpressions * (10000 + boostBps)) / 10000);
+        const blocks = Math.max(1, Math.round(impressions / 1000));
+        await c.query(
+          `update campaigns set status = 'active', activated_at = now(),
+                  budget_cents = $2, impressions_total = $3, blocks = $4
+            where id = $1 and status = 'pending_swap'`,
+          [o.campaign_id, realizedCents, impressions, blocks]
+        );
+
+        // Fund with the realized amount, exactly like confirmUsdcOrder does for
+        // the stable rails. USDC micro units -> millicents is /10.
+        const funded = realized / 10n;
+        await c.query(
+          `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+           values ('campaign_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+          [funded.toString(), o.campaign_id,
+           JSON.stringify({ impressions, rail: o.pay_currency, swapTx: swapSignature, settlement: "usdc-at-acceptance" })]
+        );
+        if (tokenSplit) {
+          const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+             values ('reserve_allocation', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+            [tranche.toString(), o.campaign_id,
+             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: o.pay_currency })]
+          );
+        }
+        return { impressionsTotal: impressions, budgetCents: realizedCents };
+      });
+    },
+
+    // The refund landed on-chain — retire the held order.
+    async markOrderRefunded(orderId: string, refundSignature: string) {
       const { rows } = await pool.query(
-        `update campaigns cmp set status = 'active', activated_at = now()
-           from advertisers adv
-          where cmp.id = $1 and cmp.status = 'pending_review'
-            and adv.id = cmp.advertiser_id
-          returning adv.email, cmp.brand, cmp.ad_line, cmp.price_per_block_cents, cmp.blocks, cmp.impressions_total`,
-        [campaignId]
+        `update usdc_orders set status = 'refunded', refund_signature = $2
+          where id = $1 and status = 'confirmed' returning id`,
+        [orderId, refundSignature]
       );
-      const r = rows[0];
-      return r ? { email: r.email, brand: r.brand, adLine: r.ad_line, pricePerBlockCents: r.price_per_block_cents, blocks: r.blocks, impressionsTotal: r.impressions_total } : null;
+      return !!rows[0];
+    },
+
+    // A rejected crypto campaign whose held funds haven't gone back yet — the
+    // admin retry-refund path (e.g. the payer's $DWELL account was missing, or
+    // the RPC hiccuped at reject time).
+    async getRefundableOrder(orderId: string) {
+      const { rows } = await pool.query(
+        `select o.id, o.pay_currency, o.payer_address, o.received_amount_raw
+           from usdc_orders o join campaigns c on c.id = o.campaign_id
+          where o.id = $1 and o.status = 'confirmed'
+            and o.pay_currency in ('sol', 'dwell') and c.status = 'rejected'`,
+        [orderId]
+      );
+      return rows[0] || null;
     },
     async rejectCampaign(campaignId: string, note: string) {
       return tx(async (c: any) => {
+        // pending_swap is rejectable too: an accepted campaign whose hedge swap
+        // never landed still holds its crypto, so it can be reversed in-kind.
         const { rows } = await c.query(
           `update campaigns cmp set status = 'rejected', review_note = $2
              from advertisers adv
-            where cmp.id = $1 and cmp.status = 'pending_review'
+            where cmp.id = $1 and cmp.status in ('pending_review', 'pending_swap')
               and adv.id = cmp.advertiser_id
             returning adv.email, cmp.brand, cmp.ad_line,
                       cmp.price_per_block_cents, cmp.blocks, cmp.budget_cents, cmp.stripe_payment_intent_id`,
           [campaignId, note || null]
         );
         if (!rows[0]) return null;
+        // A held SOL/$DWELL order refunds on-chain (caller executes it) and
+        // never posted ledger funding, so there is nothing to reverse.
+        const { rows: held } = await c.query(
+          `select id, pay_currency, payer_address, received_amount_raw
+             from usdc_orders
+            where campaign_id = $1 and status = 'confirmed' and pay_currency in ('sol', 'dwell')
+            order by created_at desc limit 1`,
+          [campaignId]
+        );
         // Refund the exact amount funded (budget); fall back to price×blocks for
         // pre-budget_cents campaigns.
         const chargeCents = rows[0].budget_cents != null
           ? BigInt(rows[0].budget_cents)
           : BigInt(rows[0].price_per_block_cents) * BigInt(rows[0].blocks);
-        const refund = chargeCents * 1000n;
-        await c.query(
-          `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
-           values ('campaign_refund', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
-          [(-refund).toString(), campaignId, JSON.stringify({ note: note || null })]
-        );
+        if (!held[0]) {
+          const refund = chargeCents * 1000n;
+          await c.query(
+            `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+             values ('campaign_refund', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+            [(-refund).toString(), campaignId, JSON.stringify({ note: note || null })]
+          );
+        }
         return {
+          heldOrder: held[0] || null,
           paymentIntentId: rows[0].stripe_payment_intent_id,
           email: rows[0].email,
           brand: rows[0].brand,
@@ -1713,6 +1857,8 @@ function createRepo(pool: any) {
         `select o.id, o.pay_currency, o.status, o.fail_reason,
                 o.price_micro_usdc, o.pay_total_units, o.pay_fee_units,
                 o.reference_pubkey, o.tx_signature, o.created_at, o.expires_at,
+                o.payer_address, o.received_amount_raw, o.swap_signature,
+                o.realized_micro_usdc, o.refund_signature,
                 c.brand, c.ad_line, a.email as advertiser_email
            from usdc_orders o
            join campaigns c on c.id = o.campaign_id
@@ -1755,13 +1901,14 @@ function createRepo(pool: any) {
     // card payment: campaign_credit for the exact charge plus the rewards-pool
     // earmark. No token machinery — viewers earn dollar-denominated dwells on
     // every rail.
-    async confirmUsdcOrder({ orderId, txSignature, tokenSplit }: any) {
+    async confirmUsdcOrder({ orderId, txSignature, payerAddress, receivedRaw, tokenSplit }: any) {
       return tx(async (c: any) => {
         const ord = await c.query(
-          `update usdc_orders set status = 'confirmed', tx_signature = $2
+          `update usdc_orders set status = 'confirmed', tx_signature = $2,
+                  payer_address = $3, received_amount_raw = $4
             where id = $1 and status = 'awaiting_signature'
             returning campaign_id, price_micro_usdc, fee_micro_usdc, tranche_micro_usdc, pay_currency`,
-          [orderId, txSignature]
+          [orderId, txSignature, payerAddress || null, receivedRaw || null]
         );
         if (!ord.rows[0]) return false; // already confirmed/expired/failed — idempotent no-op
         const o = ord.rows[0];
@@ -1783,21 +1930,26 @@ function createRepo(pool: any) {
         }
 
         // Fund with the EXACT charge. USDC micro units -> millicents is /10.
-        const funded = BigInt(o.price_micro_usdc) / 10n;
-        await c.query(
-          `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
-           values ('campaign_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
-          [funded.toString(), o.campaign_id,
-           JSON.stringify({ impressions: rows[0].impressions_total, rail: o.pay_currency, tx: txSignature })]
-        );
-        if (tokenSplit) {
-          const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+        // SOL/$DWELL rails DEFER funding: the crypto is held during review and
+        // the funded amount is only known after the acceptance-time hedge swap
+        // (finalizeAcceptedSwap posts these entries from the realized USDC).
+        if (!["sol", "dwell"].includes(o.pay_currency)) {
+          const funded = BigInt(o.price_micro_usdc) / 10n;
           await c.query(
             `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
-             values ('reserve_allocation', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
-            [tranche.toString(), o.campaign_id,
-             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: o.pay_currency })]
+             values ('campaign_credit', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+            [funded.toString(), o.campaign_id,
+             JSON.stringify({ impressions: rows[0].impressions_total, rail: o.pay_currency, tx: txSignature })]
           );
+          if (tokenSplit) {
+            const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+            await c.query(
+              `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
+               values ('reserve_allocation', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
+              [tranche.toString(), o.campaign_id,
+               JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: o.pay_currency })]
+            );
+          }
         }
 
         return {
@@ -3540,6 +3692,57 @@ function tokenTransferInstruction({ source, destination, owner, amount, referenc
 function memoInstruction(text: string) {
   return { programId: SOL_MEMO_PROGRAM, accounts: [], data: Buffer.from(text, "utf8").toString("base64") };
 }
+// ── treasury signing (swap-on-accept / refund-on-reject only) ──
+// The secret is a base58 64-byte ed25519 keypair (seed || pubkey), the format
+// solana-keygen and every wallet exports. node:crypto signs ed25519 natively
+// once the 32-byte seed is wrapped in a PKCS8 envelope — no new dependencies.
+const PKCS8_ED25519_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+function signerPubkeyFromSecret(secret: string) {
+  const raw = base58Decode(secret);
+  if (raw.length !== 64) throw new Error("treasury signer secret must be a base58 64-byte ed25519 keypair");
+  return base58Encode(raw.subarray(32));
+}
+function ed25519Sign(seed32: Uint8Array, message: Uint8Array) {
+  const key = crypto.createPrivateKey({
+    key: Buffer.concat([PKCS8_ED25519_PREFIX, seed32]),
+    format: "der",
+    type: "pkcs8",
+  });
+  return crypto.sign(null, message, key);
+}
+// Read a compact-u16 (shortvec) length; returns [value, nextOffset].
+function readCompactU16(buf: Uint8Array, offset: number): [number, number] {
+  let n = 0, shift = 0, o = offset;
+  for (;;) {
+    const b = buf[o++];
+    n |= (b & 0x7f) << shift;
+    if (!(b & 0x80)) break;
+    shift += 7;
+  }
+  return [n, o];
+}
+// Sign a serialized legacy transaction whose fee payer is the treasury signer
+// (our own refunds, and Jupiter /swap responses where userPublicKey is the
+// signer). Fills the fee payer's signature slot; refuses anything whose fee
+// payer isn't the signer, so a hostile transaction can't ride this key.
+function signTransactionBase64(txBase64: string, signerSecret: string) {
+  const buf = Buffer.from(txBase64, "base64");
+  const raw = base58Decode(signerSecret);
+  if (raw.length !== 64) throw new Error("treasury signer secret must be a base58 64-byte ed25519 keypair");
+  const [numSigs, sigOffset] = readCompactU16(buf, 0);
+  if (numSigs < 1) throw new Error("transaction has no signature slots");
+  const message = buf.subarray(sigOffset + 64 * numSigs);
+  let o = 3; // numSigners, numReadonlySigned, numReadonlyUnsigned
+  let numKeys;
+  [numKeys, o] = readCompactU16(message, o);
+  if (numKeys < 1) throw new Error("transaction has no account keys");
+  const feePayer = base58Encode(message.subarray(o, o + 32));
+  const signerPub = base58Encode(raw.subarray(32));
+  if (feePayer !== signerPub) throw new Error(`refusing to sign: fee payer ${feePayer} is not the treasury signer`);
+  const sig = ed25519Sign(raw.subarray(0, 32), message);
+  sig.copy(buf, sigOffset);
+  return buf.toString("base64");
+}
 async function solanaRpc(method: string, params: any[]) {
   const res = await fetch(config.solanaRpcUrl, {
     method: "POST",
@@ -3563,12 +3766,12 @@ async function findTokenAccount(owner: string, mint: string) {
   return accounts[0] || null;
 }
 const findUsdcAccount = (owner: string) => findTokenAccount(owner, config.usdcMint);
-async function jupiterQuote({ inputMint, outputMint, amount }: any) {
+async function jupiterQuote({ inputMint, outputMint, amount, slippageBps }: any) {
   const q = new URLSearchParams({
     inputMint,
     outputMint,
     amount: String(amount),
-    slippageBps: String(config.maxSlippageBps),
+    slippageBps: String(slippageBps ?? config.maxSlippageBps),
     swapMode: "ExactIn",
     asLegacyTransaction: "true", // no ALTs -> the legacy encoder above suffices
   });
@@ -3596,7 +3799,7 @@ async function priceOrderInDwell(priceMicroUsdc: string) {
   return { totalDwell: BigInt(pricing.outAmount), quote: pricing };
 }
 // One atomic unsigned transaction for an order (tokenomics v2 — plain
-// transfers, nothing is ever swapped and no leg buys $DWELL):
+// transfers, checkout never swaps and no leg buys $DWELL):
 //   usdc  — fee leg (USDC -> treasury, with the reference key) + revenue leg
 //           (USDC -> revenue account) + order-id memo;
 //   sol   — the same two legs as native lamport transfers;
@@ -3708,7 +3911,115 @@ async function verifyOrderTransaction({ signature, order }: any) {
     revenuePaid = tokenDelta(config.revenueUsdcAta, config.usdcMint);
     if (revenuePaid === null || revenuePaid < BigInt(order.tranche_micro_usdc)) return { ok: false, reason: "revenue_short" };
   }
-  return { ok: true, feePaid, revenuePaid, slot: txr.slot ?? null, blockTime: txr.blockTime ?? null };
+  // payer (fee payer, the first account key) is the refund destination on
+  // reject; receivedRaw is the actual on-chain amount held (both legs), the
+  // exact quantity swapped on accept or refunded on reject.
+  return {
+    ok: true, feePaid, revenuePaid,
+    payer: keys[0] || null,
+    receivedRaw: (feePaid! + revenuePaid!).toString(),
+    slot: txr.slot ?? null, blockTime: txr.blockTime ?? null,
+  };
+}
+
+// ── treasury hedging (swap-on-accept / refund-on-reject) ──
+// Both paths require TREASURY_SIGNER_SECRET; nothing in checkout does.
+function requireSigner() {
+  if (!config.treasurySignerSecret) {
+    throw Object.assign(new Error("TREASURY_SIGNER_SECRET is not configured"), { code: "NO_SIGNER" });
+  }
+  return { secret: config.treasurySignerSecret, pubkey: signerPubkeyFromSecret(config.treasurySignerSecret) };
+}
+// Broadcast a signed transaction and poll until it finalizes. Bounded: the
+// blockhash expires after ~90s, so a transaction that hasn't finalized by
+// then never will.
+async function sendAndConfirmTransaction(signedTxBase64: string, { pollMs = 2000, maxPolls = 45 }: any = {}) {
+  const signature = await solanaRpc("sendTransaction", [
+    signedTxBase64, { encoding: "base64", maxRetries: 3, preflightCommitment: "confirmed" },
+  ]);
+  for (let i = 0; i < maxPolls; i++) {
+    const st = await solanaRpc("getSignatureStatuses", [[signature], { searchTransactionHistory: true }]);
+    const s = st?.value?.[0];
+    if (s?.err) throw new Error(`transaction ${signature} failed on-chain: ${JSON.stringify(s.err)}`);
+    if (s?.confirmationStatus === "finalized") return signature;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  throw new Error(`transaction ${signature} did not finalize in time`);
+}
+// The USDC actually credited to the treasury by a finalized transaction —
+// the runtime's own pre/post balances, never the quote's outAmount.
+async function realizedUsdcDelta(signature: string) {
+  const txr = await solanaRpc("getTransaction", [
+    signature,
+    { encoding: "jsonParsed", commitment: "finalized", maxSupportedTransactionVersion: 0 },
+  ]);
+  if (!txr) throw new Error(`swap ${signature} not found`);
+  if (txr.meta?.err) throw new Error(`swap ${signature} failed on-chain`);
+  const keys = (txr.transaction?.message?.accountKeys || []).map((k: any) => (typeof k === "string" ? k : k.pubkey));
+  const find = (list: any[]) => (list || []).find((b: any) => keys[b.accountIndex] === config.treasuryUsdcAta && b.mint === config.usdcMint);
+  const pre = find(txr.meta?.preTokenBalances);
+  const post = find(txr.meta?.postTokenBalances);
+  const delta = BigInt(post?.uiTokenAmount?.amount || "0") - BigInt(pre?.uiTokenAmount?.amount || "0");
+  if (delta <= 0n) throw new Error(`swap ${signature} produced no USDC for the treasury`);
+  return delta;
+}
+// Hedge: swap the SOL/$DWELL held for an accepted campaign into USDC via a
+// Jupiter swap executed by the treasury signer. The realized USDC (read from
+// the finalized transaction's balance deltas) becomes the campaign's funded
+// dollar amount — the swap rate at acceptance time, not the checkout quote.
+async function executeTreasurySwap({ payCurrency, amountRaw }: any) {
+  const signer = requireSigner();
+  const inputMint = payCurrency === "sol" ? WSOL_MINT : config.dwellMint;
+  const quote = await jupiterQuote({
+    inputMint, outputMint: config.usdcMint,
+    amount: amountRaw, slippageBps: config.swapSlippageBps,
+  });
+  const res = await fetch(`${config.jupiterBaseUrl}/swap`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      quoteResponse: quote,
+      userPublicKey: signer.pubkey,
+      destinationTokenAccount: config.treasuryUsdcAta,
+      wrapAndUnwrapSol: true, // native SOL in the signer account wraps/unwraps in-route
+      asLegacyTransaction: true,
+    }),
+  });
+  if (!res.ok) throw new Error(`jupiter swap: HTTP ${res.status}`);
+  const body = await res.json();
+  if (body.error || !body.swapTransaction) throw new Error(`jupiter swap: ${body.error || "no transaction"}`);
+  const signed = signTransactionBase64(body.swapTransaction, signer.secret);
+  const signature = await sendAndConfirmTransaction(signed);
+  const realized = await realizedUsdcDelta(signature);
+  return { signature, realizedMicroUsdc: realized.toString() };
+}
+// Refund a rejected campaign's held SOL/$DWELL in-kind to the paying wallet.
+// $DWELL refunds need the payer to still hold a $DWELL token account; if
+// they closed it the refund fails with NO_DEST_ACCOUNT and the admin can
+// retry once the advertiser re-creates one.
+async function executeRefund({ payCurrency, destination, amountRaw }: any) {
+  const signer = requireSigner();
+  if (!isPubkey(destination)) throw new Error("refund destination must be a Solana pubkey");
+  let instructions: any[];
+  if (payCurrency === "sol") {
+    instructions = [systemTransferInstruction({ from: signer.pubkey, to: destination, lamports: amountRaw })];
+  } else {
+    const dest = await findTokenAccount(destination, config.dwellMint);
+    if (!dest) {
+      throw Object.assign(new Error("payer has no $DWELL token account to refund into"), { code: "NO_DEST_ACCOUNT" });
+    }
+    instructions = [tokenTransferInstruction({
+      source: config.treasuryDwellAta, destination: dest.pubkey, owner: signer.pubkey, amount: amountRaw,
+    })];
+  }
+  const bh = await solanaRpc("getLatestBlockhash", [{ commitment: "finalized" }]);
+  const value = bh.value || bh;
+  const unsigned = serializeUnsignedTransaction({
+    feePayer: signer.pubkey, recentBlockhash: value.blockhash, instructions,
+  });
+  const signed = signTransactionBase64(unsigned, signer.secret);
+  const signature = await sendAndConfirmTransaction(signed);
+  return { signature };
 }
 
 const usdcCheckoutOff = () =>
@@ -3733,6 +4044,18 @@ const shapeUsdcOrder = (o: any) => ({
   txSignature: o.tx_signature || null,
   failReason: o.fail_reason || null,
   expiresAt: o.expires_at,
+  // SOL/$DWELL settle at ACCEPTANCE: the payment is held during review, then
+  // swapped to USDC when the ad is approved. The realized USDC at that
+  // moment's rate is the funded dollar amount, so the effective CPM and
+  // impression count may differ from the checkout quote.
+  ...(["sol", "dwell"].includes(o.pay_currency) ? {
+    settlement: "usdc-at-acceptance",
+    settlementNote: "Held during review; swapped to USDC when the ad is accepted. The funded dollar amount is the realized USDC at the acceptance-time rate, so effective CPM/impressions may differ from this quote. Rejected ads are refunded in-kind to the paying wallet.",
+    payerAddress: o.payer_address || null,
+    swapSignature: o.swap_signature || null,
+    realizedUsdc: o.realized_micro_usdc != null ? microUsd(o.realized_micro_usdc) : null,
+    refundSignature: o.refund_signature || null,
+  } : {}),
 });
 
 route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
@@ -3841,6 +4164,10 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
       boostBps: config.dwellPayBoostBps,
       boostImpressions: impressions - baseImpressions,
     } : {}),
+    ...(["sol", "dwell"].includes(payCurrency) ? {
+      settlement: "usdc-at-acceptance",
+      settlementNote: "Held during review; swapped to USDC when the ad is accepted. The funded dollar amount is the realized USDC at the acceptance-time rate, so effective CPM/impressions may differ from this quote. Rejected ads are refunded in-kind to the paying wallet.",
+    } : {}),
     expiresAt: order.expires_at,
     // Solana Pay transaction request: wallets GET label/icon then POST
     // {account} to this link and receive the unsigned transaction.
@@ -3886,6 +4213,8 @@ route("GET", "/v1/ads/usdc/orders/:id", async (ctx: any) => {
       const paid = await repo.confirmUsdcOrder({
         orderId: order.id,
         txSignature: signature,
+        payerAddress: v.payer,
+        receivedRaw: v.receivedRaw,
         tokenSplit,
       });
       // Receipt only when the advertiser gave a real address — anonymous
@@ -4834,10 +5163,49 @@ route("GET", "/v1/admin/campaigns", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   return json(200, { campaigns: await repo.pendingReviewCampaigns() });
 });
+// Approve. Card/USDC campaigns activate directly. SOL/$DWELL campaigns held
+// their crypto during review — approval executes the hedge: swap the held
+// amount to USDC at the acceptance-time rate and fund the campaign with the
+// REALIZED USDC (effective CPM/impressions may differ from the checkout
+// quote). A failed swap leaves the campaign in pending_swap; approving again
+// retries it.
 route("POST", "/v1/admin/campaigns/approve", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   const result = await repo.approveCampaign(ctx.body?.campaignId);
   if (!result) return json(404, { ok: false });
+
+  let swapExtras: any = {};
+  let impressionsTotal = (result as any).impressionsTotal;
+  if ((result as any).needsSwap) {
+    if (!config.treasurySignerSecret) {
+      return json(409, { ok: false, retryable: true, error: "TREASURY_SIGNER_SECRET isn't configured — the held funds can't be swapped; campaign stays pending_swap" });
+    }
+    let swap: any;
+    try {
+      swap = await executeTreasurySwap({
+        payCurrency: (result as any).order.pay_currency,
+        amountRaw: String((result as any).order.received_amount_raw),
+      });
+    } catch (err: any) {
+      console.error("[dwell] acceptance hedge swap failed:", err?.message);
+      return json(502, { ok: false, retryable: true, error: "swap failed — campaign stays pending_swap; approve again to retry" });
+    }
+    const fin = await repo.finalizeAcceptedSwap({
+      orderId: (result as any).order.id,
+      swapSignature: swap.signature,
+      realizedMicroUsdc: swap.realizedMicroUsdc,
+      tokenSplit,
+      dwellPayBoostBps: config.dwellPayBoostBps,
+    });
+    impressionsTotal = fin ? fin.impressionsTotal : impressionsTotal;
+    swapExtras = {
+      settlement: "usdc-at-acceptance",
+      swapSignature: swap.signature,
+      realizedUsdc: Number(swap.realizedMicroUsdc) / 1e6,
+      impressionsTotal,
+      budgetCents: fin ? fin.budgetCents : null,
+    };
+  }
   // Tell the advertiser their ad is live. Wrapped so a mail failure never
   // fails the approval (already committed above).
   try {
@@ -4845,12 +5213,32 @@ route("POST", "/v1/admin/campaigns/approve", async (ctx: any) => {
       campaignId: ctx.body?.campaignId,
       brand: (result as any).brand,
       adLine: (result as any).adLine,
-      impressionsTotal: (result as any).impressionsTotal,
+      impressionsTotal,
     });
   } catch (err: any) {
     console.error("[dwell] live email failed:", err.message);
   }
-  return json(200, { ok: true });
+  return json(200, { ok: true, ...swapExtras });
+});
+// Retry the on-chain refund for a rejected crypto campaign whose held funds
+// didn't go back at reject time (RPC hiccup, missing $DWELL account, or the
+// signer wasn't configured yet).
+route("POST", "/v1/admin/orders/refund", async (ctx: any) => {
+  if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
+  const order = await repo.getRefundableOrder(ctx.body?.orderId);
+  if (!order) return json(404, { ok: false, error: "no refundable order (must be a held SOL/$DWELL order on a rejected campaign)" });
+  try {
+    const r = await executeRefund({
+      payCurrency: order.pay_currency,
+      destination: order.payer_address,
+      amountRaw: String(order.received_amount_raw),
+    });
+    await repo.markOrderRefunded(order.id, r.signature);
+    return json(200, { ok: true, refundSignature: r.signature });
+  } catch (err: any) {
+    console.error("[dwell] refund retry failed:", err?.message);
+    return json(502, { ok: false, retryable: true, error: err?.message || "refund failed" });
+  }
 });
 route("POST", "/v1/admin/campaigns/reject", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
@@ -4859,6 +5247,25 @@ route("POST", "/v1/admin/campaigns/reject", async (ctx: any) => {
   if (result.paymentIntentId) {
     try { await stripe.createRefund({ payment_intent: result.paymentIntentId }); }
     catch (err: any) { console.error("[dwell] refund failed:", err.message); }
+  }
+  // Held SOL/$DWELL goes back in-kind on-chain. Two-phase: the campaign is
+  // already rejected; the order stays 'confirmed' until the refund lands, so
+  // a failure here is visible and retryable via /v1/admin/orders/refund.
+  let cryptoRefundSignature: string | null = null, cryptoRefundError: string | null = null;
+  if ((result as any).heldOrder) {
+    const held = (result as any).heldOrder;
+    try {
+      const r = await executeRefund({
+        payCurrency: held.pay_currency,
+        destination: held.payer_address,
+        amountRaw: String(held.received_amount_raw),
+      });
+      await repo.markOrderRefunded(held.id, r.signature);
+      cryptoRefundSignature = r.signature;
+    } catch (err: any) {
+      console.error("[dwell] crypto refund failed (retry via /v1/admin/orders/refund):", err?.message);
+      cryptoRefundError = err?.message || "refund failed";
+    }
   }
   // Tell the advertiser their campaign was rejected + refunded. Wrapped so a
   // mail failure never fails the moderation action (already committed above).
@@ -4873,7 +5280,15 @@ route("POST", "/v1/admin/campaigns/reject", async (ctx: any) => {
   } catch (err: any) {
     console.error("[dwell] rejection email failed:", err.message);
   }
-  return json(200, { ok: true, refunded: !!result.paymentIntentId });
+  return json(200, {
+    ok: true,
+    refunded: !!result.paymentIntentId || !!cryptoRefundSignature,
+    ...((result as any).heldOrder ? {
+      orderId: (result as any).heldOrder.id,
+      refundSignature: cryptoRefundSignature,
+      ...(cryptoRefundError ? { refundError: cryptoRefundError, retryable: true } : {}),
+    } : {}),
+  });
 });
 // ── affiliate review ──
 route("GET", "/v1/admin/affiliates", async (ctx: any) => {

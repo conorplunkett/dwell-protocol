@@ -79,17 +79,21 @@ function loadConfig(env = process.env) {
     reserveTrancheBps: parseInt(env.RESERVE_TRANCHE_BPS || "9000", 10), // slice of gross routed to the token side
 
     // ---- Crypto advertiser checkout (dwell/docs/08, tokenomics v2) ----
-    // Non-custodial, swap-free: no leg of any payment buys $DWELL (docs/01).
-    // USDC/SOL rails are live once the treasury + revenue accounts are set —
-    // no dependency on the token existing. The $DWELL rail (a single transfer
-    // to the treasury at a spot quote, held there) opens at token launch:
-    // DWELL_MINT + TREASURY_DWELL_ATA gate that one rail only. No signing keys
-    // here or anywhere — the backend only builds unsigned transactions and
-    // verifies finalized ones read-only.
+    // Checkout is non-custodial: no leg of any payment buys $DWELL (docs/01),
+    // the backend builds unsigned transactions and verifies finalized ones
+    // read-only. USDC/SOL rails are live once the treasury + revenue accounts
+    // are set — no dependency on the token existing. The $DWELL rail (a single
+    // transfer to the treasury at a spot quote) opens at token launch:
+    // DWELL_MINT + TREASURY_DWELL_ATA gate that one rail only.
+    // SOL/$DWELL payments are HELD during review, then hedged: on admin accept
+    // the treasury signer swaps them to USDC at the acceptance-time rate (the
+    // realized USDC funds the campaign); on reject it refunds the payer
+    // in-kind on-chain. That signer is the only key the backend holds, and it
+    // is used exclusively by those two paths.
     dwellMint: env.DWELL_MINT || "",
     usdcMint: env.USDC_MINT || "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // canonical USDC on Solana mainnet (6 dp)
     solanaRpcUrl: env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
-    jupiterBaseUrl: env.JUPITER_BASE_URL || "https://lite-api.jup.ag/swap/v1", // spot PRICING quotes only (SOL/$DWELL rails) — nothing is ever swapped
+    jupiterBaseUrl: env.JUPITER_BASE_URL || "https://lite-api.jup.ag/swap/v1", // pricing quotes at checkout; /swap executes ONLY the acceptance-time hedge
     treasuryUsdcAta: env.TREASURY_USDC_ATA || "",           // company treasury USDC account — the protocol-fee leg
     revenueUsdcAta: env.REVENUE_USDC_ATA || "",             // company revenue USDC account — the rewards-pool leg (funds dwell payouts)
     treasurySolAccount: env.TREASURY_SOL_ACCOUNT || "",     // treasury address for native-SOL fee legs; empty = SOL rail off
@@ -97,7 +101,9 @@ function loadConfig(env = process.env) {
     treasuryDwellAta: env.TREASURY_DWELL_ATA || "",         // treasury $DWELL account — the whole $DWELL-rail payment lands here, held (docs/01)
     dwellDecimals: parseInt(env.DWELL_DECIMALS || "6", 10), // display only — raw DWELL units ÷ 10^decimals for the "≈ pay in $DWELL" figure
     dwellPayBoostBps: parseInt(env.DWELL_PAY_BOOST_BPS || "1000", 10), // paying in $DWELL boosts a campaign's impressions by this (1000 = +10%)
-    maxSlippageBps: parseInt(env.MAX_SLIPPAGE_BPS || "100", 10), // slippageBps param on pricing quotes (no swap executes)
+    maxSlippageBps: parseInt(env.MAX_SLIPPAGE_BPS || "100", 10), // slippageBps param on pricing quotes (checkout never swaps)
+    treasurySignerSecret: env.TREASURY_SIGNER_SECRET || "",      // base58 64-byte ed25519 keypair; swap-on-accept + refund-on-reject ONLY
+    swapSlippageBps: parseInt(env.SWAP_SLIPPAGE_BPS || "100", 10), // execution slippage bound on the acceptance-time hedge swap
     usdcOrderTtlMinutes: parseInt(env.USDC_ORDER_TTL_MINUTES || "30", 10), // price validity window; each built tx is only ~60s (blockhash)
 
     // ---- brand — the DWELL deployment bills and writes copy under its own name ----
@@ -156,6 +162,24 @@ async function boot(env = process.env) {
   }
   if (config.dwellMint && !config.treasuryDwellAta) {
     throw new Error("DWELL_MINT is set — TREASURY_DWELL_ATA is required for the $DWELL rail");
+  }
+  // Treasury signer (hedging): swaps/refunds move funds FROM the treasury
+  // accounts, so the signer must own them. On the SOL rail both legs land in
+  // system accounts we can check offline; the ATA ownership (DWELL/USDC) is a
+  // documented going-live requirement (dwell/docs/10).
+  if (config.treasurySignerSecret) {
+    const { signerPubkeyFromSecret } = require("./solana");
+    const signerPub = signerPubkeyFromSecret(config.treasurySignerSecret); // throws on a malformed secret
+    if (config.treasurySolAccount && signerPub !== config.treasurySolAccount) {
+      throw new Error("TREASURY_SIGNER_SECRET's pubkey must equal TREASURY_SOL_ACCOUNT (swaps/refunds spend from it)");
+    }
+    if (config.revenueSolAccount && signerPub !== config.revenueSolAccount) {
+      // A SOL payment splits across both accounts but swaps/refunds move the
+      // FULL received amount from the signer — keep both legs on its key.
+      console.warn("[dwell] REVENUE_SOL_ACCOUNT differs from the treasury signer — SOL swaps/refunds spend the full received amount from the signer account; sweep the revenue leg to it or set both to the signer's pubkey.");
+    }
+  } else if (config.treasurySolAccount || config.treasuryDwellAta) {
+    console.warn("[dwell] SOL/$DWELL rails are configured without TREASURY_SIGNER_SECRET — campaign accepts (hedge swap) and rejects (on-chain refund) on those rails will fail until it is set.");
   }
 
   const { Pool } = require("pg");

@@ -88,9 +88,29 @@ supabase functions deploy dwell-api
 
 (Or paste them in the Supabase dashboard → Edge Functions → Secrets.)
 
-**What must never go near the backend: the private keys / seed phrases.** Keep
-them in a hardware wallet, Squads, or a password manager. The design is
-non-custodial; the server has no place to put a key and never asks for one.
+**Checkout stays keyless** — the advertiser's wallet is the only signer on any
+payment, and the treasury/revenue *addresses* are public, not secrets. The one
+key the backend does hold is the **treasury signer** below; keep every other
+private key / seed phrase in a hardware wallet, Squads, or a password manager.
+
+### The treasury signer (hedging: swap-on-accept / refund-on-reject)
+
+SOL/$DWELL payments are held during review, swapped to USDC when the ad is
+accepted (the realized USDC at the acceptance-time rate funds the campaign),
+and refunded in-kind if it's rejected. Both actions are signed server-side:
+
+- **`TREASURY_SIGNER_SECRET`** — base58 64-byte ed25519 keypair (what
+  `solana-keygen` exports). Used ONLY by the accept-swap and reject-refund
+  paths; never by checkout. Treat it like `STRIPE_SECRET_KEY`.
+- Its pubkey **must equal `TREASURY_SOL_ACCOUNT`** (boot refuses otherwise)
+  and must own `TREASURY_USDC_ATA` and `TREASURY_DWELL_ATA`. Set
+  `REVENUE_SOL_ACCOUNT` to the same key — swaps/refunds move the FULL
+  received amount from the signer account.
+- **`SWAP_SLIPPAGE_BPS`** (default 100) — execution slippage bound on the
+  acceptance-time Jupiter swap.
+- Without the signer, SOL/$DWELL rails still take payments, but accepting or
+  rejecting those campaigns fails (loudly, retryably) until it is set — boot
+  warns about this state.
 
 ### Also worth setting
 
@@ -148,6 +168,9 @@ the rail in a broken partial state:
 - `TREASURY_USDC_ATA` and `REVENUE_USDC_ATA` must be set **together** (or neither).
 - `TREASURY_SOL_ACCOUNT` and `REVENUE_SOL_ACCOUNT` must be set **together**.
 - `DWELL_MINT` (post-launch only) requires `TREASURY_DWELL_ATA`.
+- `TREASURY_SIGNER_SECRET`'s pubkey must equal `TREASURY_SOL_ACCOUNT`; SOL or
+  $DWELL rails configured without a signer boot with a loud warning (accepts
+  and rejects on those rails will fail until it's set).
 
 Until the USDC pair is set, the lander's crypto button says "not live here yet"
 and falls back to card. The moment both are set and deployed, it goes live.

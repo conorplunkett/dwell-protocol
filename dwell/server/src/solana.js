@@ -1,11 +1,15 @@
 // Solana helpers for the USDC advertiser checkout (dwell/docs/08).
 //
-// Non-custodial by construction: this module BUILDS unsigned transactions and
-// VERIFIES finalized ones read-only. There are no signing keys anywhere in the
-// API — the advertiser's wallet is the only signer, and the single atomic
-// transaction it signs (a) pays the 10% USDC fee to the treasury and (b)
-// market-buys DWELL via a Jupiter route delivered straight to the distributor
-// vault. Either everything lands or nothing does.
+// Checkout is non-custodial: this module BUILDS unsigned transactions and
+// VERIFIES finalized ones read-only — the advertiser's wallet is the only
+// signer on any payment. The ONE exception to "no keys" is the treasury
+// signer (TREASURY_SIGNER_SECRET), confined to two post-payment paths that
+// hedge the treasury's exposure on the SOL/$DWELL rails:
+//   - executeTreasurySwap: on ad ACCEPT, swap the held SOL/$DWELL to USDC via
+//     Jupiter at the acceptance-time rate (the realized USDC becomes the
+//     campaign's funded dollar amount);
+//   - executeRefund: on ad REJECT, send the held amount back to the payer.
+// The signer never touches checkout, order building, or verification.
 //
 // Dependency-light like the rest of the server: raw fetch against the Solana
 // JSON-RPC and Jupiter swap API, plus a hand-rolled legacy-transaction encoder
@@ -211,6 +215,63 @@ function memoInstruction(text) {
   return { programId: MEMO_PROGRAM, accounts: [], data: Buffer.from(text, "utf8").toString("base64") };
 }
 
+// ---------- treasury signing (swap-on-accept / refund-on-reject only) ----------
+// The secret is a base58 64-byte ed25519 keypair (seed || pubkey), the format
+// solana-keygen and every wallet exports. node:crypto signs ed25519 natively
+// once the 32-byte seed is wrapped in a PKCS8 envelope — no new dependencies.
+const PKCS8_ED25519_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+
+function signerPubkeyFromSecret(secret) {
+  const raw = base58Decode(secret);
+  if (raw.length !== 64) throw new Error("treasury signer secret must be a base58 64-byte ed25519 keypair");
+  return base58Encode(raw.subarray(32));
+}
+
+function ed25519Sign(seed32, message) {
+  const key = crypto.createPrivateKey({
+    key: Buffer.concat([PKCS8_ED25519_PREFIX, seed32]),
+    format: "der",
+    type: "pkcs8",
+  });
+  return crypto.sign(null, message, key);
+}
+
+// Read a compact-u16 (shortvec) length; returns [value, nextOffset].
+function readCompactU16(buf, offset) {
+  let n = 0, shift = 0, o = offset;
+  for (;;) {
+    const b = buf[o++];
+    n |= (b & 0x7f) << shift;
+    if (!(b & 0x80)) break;
+    shift += 7;
+  }
+  return [n, o];
+}
+
+// Sign a serialized legacy transaction whose fee payer is the treasury signer
+// (our own refunds, and Jupiter /swap responses where userPublicKey is the
+// signer). Fills the fee payer's signature slot; refuses anything whose fee
+// payer isn't the signer, so a hostile transaction can't ride this key.
+function signTransactionBase64(txBase64, signerSecret) {
+  const buf = Buffer.from(txBase64, "base64");
+  const raw = base58Decode(signerSecret);
+  if (raw.length !== 64) throw new Error("treasury signer secret must be a base58 64-byte ed25519 keypair");
+  const [numSigs, sigOffset] = readCompactU16(buf, 0);
+  if (numSigs < 1) throw new Error("transaction has no signature slots");
+  const message = buf.subarray(sigOffset + 64 * numSigs);
+  // Fee payer = first account key in the message header.
+  let o = 3; // numSigners, numReadonlySigned, numReadonlyUnsigned
+  let numKeys;
+  [numKeys, o] = readCompactU16(message, o);
+  if (numKeys < 1) throw new Error("transaction has no account keys");
+  const feePayer = base58Encode(message.subarray(o, o + 32));
+  const signerPub = base58Encode(raw.subarray(32));
+  if (feePayer !== signerPub) throw new Error(`refusing to sign: fee payer ${feePayer} is not the treasury signer`);
+  const sig = ed25519Sign(raw.subarray(0, 32), message);
+  sig.copy(buf, sigOffset);
+  return buf.toString("base64");
+}
+
 function createSolana({ config, fetchImpl }) {
   const doFetch = fetchImpl || fetch;
 
@@ -240,12 +301,12 @@ function createSolana({ config, fetchImpl }) {
   }
   const findUsdcAccount = (owner) => findTokenAccount(owner, config.usdcMint);
 
-  async function jupiterQuote({ inputMint, outputMint, amount }) {
+  async function jupiterQuote({ inputMint, outputMint, amount, slippageBps }) {
     const q = new URLSearchParams({
       inputMint,
       outputMint,
       amount: String(amount),
-      slippageBps: String(config.maxSlippageBps),
+      slippageBps: String(slippageBps ?? config.maxSlippageBps),
       swapMode: "ExactIn",
       asLegacyTransaction: "true", // no ALTs -> our legacy encoder suffices
     });
@@ -276,7 +337,7 @@ function createSolana({ config, fetchImpl }) {
   }
 
   // One atomic unsigned transaction for an order (tokenomics v2 — plain
-  // transfers, nothing is ever swapped and no leg buys $DWELL):
+  // transfers, checkout never swaps and no leg buys $DWELL):
   //   usdc  — fee leg (USDC -> treasury, with the reference key) + revenue leg
   //           (USDC -> revenue account) + order-id memo;
   //   sol   — the same two legs as native lamport transfers;
@@ -401,7 +462,120 @@ function createSolana({ config, fetchImpl }) {
       if (revenuePaid === null || revenuePaid < BigInt(order.tranche_micro_usdc)) return { ok: false, reason: "revenue_short" };
     }
 
-    return { ok: true, feePaid, revenuePaid, slot: tx.slot ?? null, blockTime: tx.blockTime ?? null };
+    // payer (fee payer, the first account key) is the refund destination on
+    // reject; receivedRaw is the actual on-chain amount held (both legs), the
+    // exact quantity swapped on accept or refunded on reject.
+    return {
+      ok: true, feePaid, revenuePaid,
+      payer: keys[0] || null,
+      receivedRaw: (feePaid + revenuePaid).toString(),
+      slot: tx.slot ?? null, blockTime: tx.blockTime ?? null,
+    };
+  }
+
+  // ---------- treasury hedging (swap-on-accept / refund-on-reject) ----------
+  // Both paths require TREASURY_SIGNER_SECRET; nothing in checkout does.
+
+  function requireSigner() {
+    if (!config.treasurySignerSecret) {
+      throw Object.assign(new Error("TREASURY_SIGNER_SECRET is not configured"), { code: "NO_SIGNER" });
+    }
+    return { secret: config.treasurySignerSecret, pubkey: signerPubkeyFromSecret(config.treasurySignerSecret) };
+  }
+
+  // Broadcast a signed transaction and poll until it finalizes. Bounded: the
+  // blockhash expires after ~90s, so a transaction that hasn't finalized by
+  // then never will.
+  async function sendAndConfirmTransaction(signedTxBase64, { pollMs = 2000, maxPolls = 45 } = {}) {
+    const signature = await rpc("sendTransaction", [
+      signedTxBase64, { encoding: "base64", maxRetries: 3, preflightCommitment: "confirmed" },
+    ]);
+    for (let i = 0; i < maxPolls; i++) {
+      const st = await rpc("getSignatureStatuses", [[signature], { searchTransactionHistory: true }]);
+      const s = st?.value?.[0];
+      if (s?.err) throw new Error(`transaction ${signature} failed on-chain: ${JSON.stringify(s.err)}`);
+      if (s?.confirmationStatus === "finalized") return signature;
+      await new Promise((r) => setTimeout(r, pollMs));
+    }
+    throw new Error(`transaction ${signature} did not finalize in time`);
+  }
+
+  // The USDC actually credited to the treasury by a finalized transaction —
+  // the runtime's own pre/post balances, never the quote's outAmount.
+  async function realizedUsdcDelta(signature) {
+    const tx = await rpc("getTransaction", [
+      signature,
+      { encoding: "jsonParsed", commitment: "finalized", maxSupportedTransactionVersion: 0 },
+    ]);
+    if (!tx) throw new Error(`swap ${signature} not found`);
+    if (tx.meta?.err) throw new Error(`swap ${signature} failed on-chain`);
+    const keys = (tx.transaction?.message?.accountKeys || []).map((k) => (typeof k === "string" ? k : k.pubkey));
+    const find = (list) => (list || []).find((b) => keys[b.accountIndex] === config.treasuryUsdcAta && b.mint === config.usdcMint);
+    const pre = find(tx.meta?.preTokenBalances);
+    const post = find(tx.meta?.postTokenBalances);
+    const delta = BigInt(post?.uiTokenAmount?.amount || "0") - BigInt(pre?.uiTokenAmount?.amount || "0");
+    if (delta <= 0n) throw new Error(`swap ${signature} produced no USDC for the treasury`);
+    return delta;
+  }
+
+  // Hedge: swap the SOL/$DWELL held for an accepted campaign into USDC via a
+  // Jupiter swap executed by the treasury signer. The realized USDC (read from
+  // the finalized transaction's balance deltas) becomes the campaign's funded
+  // dollar amount — the swap rate at acceptance time, not the checkout quote.
+  async function executeTreasurySwap({ payCurrency, amountRaw }) {
+    const signer = requireSigner();
+    const inputMint = payCurrency === "sol" ? WSOL_MINT : config.dwellMint;
+    const quote = await jupiterQuote({
+      inputMint, outputMint: config.usdcMint,
+      amount: amountRaw, slippageBps: config.swapSlippageBps,
+    });
+    const res = await doFetch(`${config.jupiterBaseUrl}/swap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quoteResponse: quote,
+        userPublicKey: signer.pubkey,
+        destinationTokenAccount: config.treasuryUsdcAta,
+        wrapAndUnwrapSol: true, // native SOL in the signer account wraps/unwraps in-route
+        asLegacyTransaction: true,
+      }),
+    });
+    if (!res.ok) throw new Error(`jupiter swap: HTTP ${res.status}`);
+    const body = await res.json();
+    if (body.error || !body.swapTransaction) throw new Error(`jupiter swap: ${body.error || "no transaction"}`);
+    const signed = signTransactionBase64(body.swapTransaction, signer.secret);
+    const signature = await sendAndConfirmTransaction(signed);
+    const realized = await realizedUsdcDelta(signature);
+    return { signature, realizedMicroUsdc: realized.toString() };
+  }
+
+  // Refund a rejected campaign's held SOL/$DWELL in-kind to the paying wallet.
+  // $DWELL refunds need the payer to still hold a $DWELL token account; if
+  // they closed it the refund fails with NO_DEST_ACCOUNT and the admin can
+  // retry once the advertiser re-creates one.
+  async function executeRefund({ payCurrency, destination, amountRaw }) {
+    const signer = requireSigner();
+    if (!isPubkey(destination)) throw new Error("refund destination must be a Solana pubkey");
+    let instructions;
+    if (payCurrency === "sol") {
+      instructions = [systemTransferInstruction({ from: signer.pubkey, to: destination, lamports: amountRaw })];
+    } else {
+      const sourceAta = config.treasuryDwellAta;
+      const dest = await findTokenAccount(destination, config.dwellMint);
+      if (!dest) {
+        throw Object.assign(new Error("payer has no $DWELL token account to refund into"), { code: "NO_DEST_ACCOUNT" });
+      }
+      instructions = [tokenTransferInstruction({
+        source: sourceAta, destination: dest.pubkey, owner: signer.pubkey, amount: amountRaw,
+      })];
+    }
+    const { value } = await rpc("getLatestBlockhash", [{ commitment: "finalized" }]).then((r) => ({ value: r.value || r }));
+    const unsigned = serializeUnsignedTransaction({
+      feePayer: signer.pubkey, recentBlockhash: value.blockhash, instructions,
+    });
+    const signed = signTransactionBase64(unsigned, signer.secret);
+    const signature = await sendAndConfirmTransaction(signed);
+    return { signature };
   }
 
   return {
@@ -413,6 +587,8 @@ function createSolana({ config, fetchImpl }) {
     buildOrderTransaction,
     findReferenceSignatures,
     verifyOrderTransaction,
+    executeTreasurySwap,
+    executeRefund,
   };
 }
 
@@ -427,6 +603,8 @@ module.exports = {
   tokenTransferInstruction,
   systemTransferInstruction,
   memoInstruction,
+  signerPubkeyFromSecret,
+  signTransactionBase64,
   TOKEN_PROGRAM,
   MEMO_PROGRAM,
   SYSTEM_PROGRAM,
