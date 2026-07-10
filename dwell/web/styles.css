@@ -428,49 +428,33 @@ button.wl-adv { cursor: pointer; }
   font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
 }
 
-/* "Start earning $N USDC while you use AI" — the label reads as a sentence with
-   a physical LCD tally counter dropped inline. Larger + wrappable so the device
-   sits comfortably in the run of text. */
+/* "Start earning $N USDC while you use AI" — a sentence with the live USDC
+   figure dropped inline as green seven-segment digits, sized to the text. */
 .earn-line {
-  flex-wrap: wrap; gap: 10px 12px; font-size: 15px; margin: 44px 0 18px;
+  flex-wrap: wrap; gap: 8px 10px; margin: 40px 0 16px;
 }
 .earn-lead, .earn-trail { line-height: 1; }
 
-/* ── USDC LCD counter ──────────────────────────────────────────────────────
-   A physical seven-segment tally: dark bezel housing a green-on-black glass
-   screen. Sizing is driven by font-size on .usdc-counter — every segment
-   dimension below is in em, so one size knob scales the whole device. */
+/* ── USDC counter ──────────────────────────────────────────────────────────
+   Just the digits + a "$": green seven-segment numerals, no housing. Inline
+   with the label and never taller than the text — digit height is capped near
+   the mono cap-height so it sits in the line. All segment dims are in em, so
+   font-size (inherited from the label) is the single size knob. */
 .usdc-counter {
-  --seg-thick: .15em;         /* segment bar thickness */
-  --digit-w: .66em;           /* one digit cell width */
-  --digit-h: 1.12em;          /* one digit cell height */
-  display: inline-flex; flex-direction: column; align-items: stretch; gap: .22em;
-  font-size: 30px; padding: .2em .26em .16em;
-  border-radius: 7px;
-  background: linear-gradient(180deg, var(--lcd-bezel-a), var(--lcd-bezel-b));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.10),
-    inset 0 -2px 5px rgba(0,0,0,.55),
-    0 4px 10px -3px rgba(0,0,0,.5);
-  transform: translateY(-.02em);
-}
-.usdc-counter-screen {
-  display: flex; align-items: center; gap: .12em;
-  padding: .16em .28em; border-radius: 4px;
-  background:
-    radial-gradient(120% 140% at 50% 0%, rgba(77,255,160,.08), transparent 60%),
-    var(--lcd-screen);
-  box-shadow: inset 0 0 .5em rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.6);
+  --digit-h: .74em;           /* ≈ cap height — keeps it no taller than the text */
+  --digit-w: .44em;           /* one digit cell width */
+  --seg-thick: .09em;         /* segment bar thickness */
+  display: inline-flex; align-items: center; gap: .1em;
+  line-height: 1; vertical-align: -.02em;
 }
 .usdc-sign {
-  font-family: var(--mono); font-weight: 700; font-size: .84em; line-height: 1;
-  color: var(--lcd-on); text-shadow: 0 0 .32em var(--lcd-glow);
-  transform: translateY(-.02em);
+  font-family: var(--mono); font-weight: 700; font-size: var(--digit-h); line-height: 1;
+  color: var(--lcd-on); text-shadow: 0 0 .3em var(--lcd-glow);
 }
 .usdc-digits { display: inline-flex; gap: .12em; }
 
 /* One seven-segment digit. Segments are absolutely-positioned bars toggled via
-   .on (script.js sets it per digit). Unlit bars stay faintly visible = ghosts. */
+   .on (script.js sets it per digit). Unlit bars stay as faint ghosts. */
 .seg7 { position: relative; width: var(--digit-w); height: var(--digit-h); }
 .seg7 > i {
   position: absolute; display: block; border-radius: 1px;
@@ -478,7 +462,7 @@ button.wl-adv { cursor: pointer; }
 }
 .seg7 > i.on {
   background: var(--lcd-on);
-  box-shadow: 0 0 .18em var(--lcd-glow), 0 0 .34em var(--lcd-glow);
+  box-shadow: 0 0 .12em var(--lcd-glow), 0 0 .24em var(--lcd-glow);
 }
 /* Horizontal bars (a top, g middle, d bottom). */
 .seg7 .sa, .seg7 .sg, .seg7 .sd {
@@ -497,13 +481,6 @@ button.wl-adv { cursor: pointer; }
 .seg7 .se { left: 0; bottom: calc(var(--seg-thick) / 2); }
 .seg7 .sc { right: 0; bottom: calc(var(--seg-thick) / 2); }
 
-/* Etched bezel label, echoing the "COUNTER / RESET" markings on the real unit. */
-.usdc-counter-etch {
-  align-self: center; font-family: var(--mono); font-weight: 700;
-  font-size: 7px; letter-spacing: .22em; color: var(--lcd-etch);
-  text-shadow: 0 1px 0 rgba(0,0,0,.6);
-}
-@media (max-width: 520px) { .usdc-counter { font-size: 25px; } }
 @media (prefers-reduced-motion: reduce) { .seg7 > i { transition: none; } }
 
 /* DOWNLOAD CTAs — three quick installs above the surfaces showcase. Chrome +
