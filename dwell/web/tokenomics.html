@@ -12,7 +12,7 @@
   <meta property="og:url" content="https://dwellprotocol.com/tokenomics" />
   <meta property="og:locale" content="en_US" />
   <meta property="og:title" content="DWELL — Tokenomics" />
-  <meta property="og:description" content="Two systems, no bridge: dwells (dollar-denominated rewards, paid in USDC or Claude credits) and $DWELL (a separate token — no revenue flows, no equity)." />
+  <meta property="og:description" content="dwells are dollar-denominated rewards, paid in USDC or Claude credits. $DWELL is a separate token — no revenue flows, no equity." />
   <meta property="og:image" content="https://dwellprotocol.com/og.png?v=20260707" />
   <meta property="og:image:secure_url" content="https://dwellprotocol.com/og.png?v=20260707" />
   <meta property="og:image:type" content="image/png" />
@@ -21,7 +21,7 @@
   <meta property="og:image:alt" content="DWELL — Earn crypto while you use AI." />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="DWELL — Tokenomics" />
-  <meta name="twitter:description" content="Two systems, no bridge: dwells (dollar-denominated rewards, paid in USDC or Claude credits) and $DWELL (a separate token — no revenue flows, no equity)." />
+  <meta name="twitter:description" content="dwells are dollar-denominated rewards, paid in USDC or Claude credits. $DWELL is a separate token — no revenue flows, no equity." />
   <meta name="twitter:image" content="https://dwellprotocol.com/og.png?v=20260707" />
   <meta name="twitter:image:alt" content="DWELL — Earn crypto while you use AI." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -122,6 +122,21 @@
       border: 1px solid rgba(var(--accent-rgb), .3); border-radius: 999px; white-space: nowrap;
     }
 
+    /* Token-facts table: widen the label column so each row's key reads on one line. */
+    .tk-facts td:first-child { width: 190px; white-space: nowrap; }
+
+    /* Inline terms disclosure (the redemption fine print). */
+    .tk-terms { margin: 12px 0 0; border: 1px solid var(--line); border-radius: var(--radius-md); background: #fff; }
+    .tk-terms > summary {
+      cursor: pointer; padding: 12px 16px; font: 700 13px/1.4 var(--sans);
+      color: var(--ink-2); list-style: none;
+    }
+    .tk-terms > summary::-webkit-details-marker { display: none; }
+    .tk-terms > summary::after { content: " ▾"; color: var(--gray); }
+    .tk-terms[open] > summary::after { content: " ▴"; }
+    .tk-terms ul { margin: 0; padding: 0 20px 14px 34px; }
+    .tk-terms li { font-size: 13px; line-height: 1.6; color: var(--gray); margin: 4px 0; }
+
     @media (max-width: 720px) {
       .tk-flow-amt { width: 64px; font-size: 13.5px; }
       .tk-splitbar > div { font-size: 11.5px; }
@@ -147,24 +162,20 @@
     <!-- HERO -->
     <section class="tk-hero">
       <span class="eyebrow">Tokenomics</span>
-      <h1>Two systems.<br />No bridge.</h1>
-      <p class="tk-lead" style="margin-top:14px"><strong>dwells</strong> are what you earn watching ads —
-        dollar-denominated credits paid out in <strong>USDC or Claude credits</strong>.
-        <strong>$DWELL</strong> is a separate token. Ad revenue never buys it, and
-        dwells never convert to it.</p>
+      <h1>Designed for the long term</h1>
     </section>
 
     <!-- TOKEN FACTS -->
     <section class="tk-section" id="token">
-      <h2>Token facts</h2>
+      <h2>$DWELL</h2>
       <div class="tk-tablewrap">
-        <table class="tk-table">
+        <table class="tk-table tk-facts">
           <tbody>
-            <tr><td><strong>Name / symbol</strong></td><td class="num">DWELL <span class="tk-not-live">Token not launched yet</span></td></tr>
-            <tr><td><strong>Chain</strong></td><td>Solana (SPL token, minted by star.fun)</td></tr>
+            <tr><td><strong>Name / symbol</strong></td><td class="num">$DWELL <span class="tk-not-live">Token not launched yet</span></td></tr>
+            <tr><td><strong>Chain</strong></td><td>Solana (SPL token, minted by <a href="https://star.fun" target="_blank" rel="noopener">star.fun</a>)</td></tr>
             <tr><td><strong>Supply</strong></td><td>1,000,000,000 — fixed. No mint authority after launch.</td></tr>
-            <tr><td><strong>Launch</strong></td><td>star.fun curated raise at a <strong>$1M launch valuation</strong>. 5-day deposit window, funds held in escrow; full refund if the raise misses its target.</td></tr>
-            <tr><td><strong>Equity rights</strong></td><td><strong>None.</strong> Holding DWELL confers zero equity rights in the project company. The project adopts the <strong>Bedrock framework</strong>: the independent Bedrock Foundation holds preference equity and a golden share in the company, and founders retain a minimum of 70% ordinary shares — token and equity are structurally separated.</td></tr>
+            <tr><td><strong>Launch</strong></td><td><a href="https://star.fun" target="_blank" rel="noopener">star.fun</a> curated raise at a <strong>$1M launch valuation</strong>. 5-day deposit window, funds held in escrow; full refund if the raise misses its target.</td></tr>
+            <tr><td><strong>Equity rights</strong></td><td>The project adopts the <strong><a href="https://bedrock.meteora.ag/learn" target="_blank" rel="noopener">Bedrock framework</a></strong>. We are on the <strong>July 9, 2026 version</strong> of the Bedrock framework.</td></tr>
             <tr><td><strong>Bedrock buyout</strong></td><td>The only path from token to equity is Bedrock's constitutional buyout: a party demonstrating ≥30% of total token supply may trigger a mandatory buyout of the remaining tokens (7-day TWAP × 1.30). Only a party holding <strong>100% of supply</strong> may then negotiate for the Foundation's preference equity — at the Foundation's discretion, accredited investors passing KYC/AML only. Holding DWELL is not a right to equity.</td></tr>
             <tr><td><strong>Liquidity</strong></td><td>Meteora DWELL/USDC pool seeded with <strong>60% of supply</strong> plus liquidity from the raise proceeds.</td></tr>
           </tbody>
@@ -185,51 +196,54 @@
           <tbody>
             <tr><td><strong>Initial liquidity</strong></td><td class="num">60%</td><td>Seeds the Meteora pool alongside the raised USDC</td></tr>
             <tr><td><strong>Company treasury</strong></td><td class="num">10%</td><td>Disclosed below</td></tr>
-            <tr><td><strong>Structured sell orders</strong></td><td class="num">10%</td><td>Single-sided sells that execute as market cap reaches preset levels</td></tr>
+            <tr><td><strong>Structured sell orders</strong></td><td class="num">10%</td><td>Single-sided sells that execute as market cap reaches preset levels on the <a href="https://star.fun" target="_blank" rel="noopener">star.fun</a> schedule</td></tr>
             <tr><td><strong>Team</strong></td><td class="num">20%</td><td>3-month cliff, 9-month linear vest</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="tk-note"><strong>Treasury disclosure.</strong> The company treasury (this 10%
-        allocation plus any $DWELL received as ad payment) is a company asset. The company
-        may sell treasury tokens — only under a pre-announced schedule, and no
-        “held, never sold” commitment exists or should be implied anywhere.</p>
     </section>
 
 
     <!-- DWELLS — the rewards system -->
     <section class="tk-section" id="dwells">
-      <h2>dwells — what earners get</h2>
+      <h2>dwells: what earners get</h2>
       <p class="tk-sub"><strong>1,000 dwells = $1.00 of earned ad value. Fixed.</strong>
         A dwell is a dollar-denominated ledger credit earned per qualified view.
         dwells are reward credits: non-transferable, not the token, and they never
-        convert to $DWELL. There is no snapshot, no conversion price, and no airdrop claim.</p>
+        convert to $DWELL.</p>
       <div class="tk-tablewrap">
         <table class="tk-table">
           <thead><tr><th>Redemption</th><th>How it settles</th></tr></thead>
           <tbody>
-            <tr><td><strong>USDC to your wallet</strong></td><td>Face value less the <strong>10% protocol fee</strong>, $10 minimum. Transfer executed by licensed partners as counterparty of record.</td></tr>
+            <tr><td><strong>USDC to your wallet</strong></td><td>Face value less the <strong>10% protocol fee</strong>, $100 minimum. Transfer executed by licensed partners as counterparty of record.</td></tr>
             <tr class="tk-hl"><td><strong>Claude credits</strong></td><td>Redeemed at a <strong>10% boost</strong> — your dwells buy Claude subscription time at 110% of face value. Delivered by email, typically within 48 hours.</td></tr>
           </tbody>
         </table>
       </div>
       <p class="tk-note">Outstanding dwells are backed by the earmarked rewards-pool
         dollars on the protocol ledger; the accounting is public.</p>
+      <details class="tk-terms">
+        <summary>Redemption terms</summary>
+        <ul>
+          <li>dwells expire 185 days after they are earned if unclaimed.</li>
+          <li>Dwell reserves the right to withhold payout to any party deemed fraudulent, or for any reason.</li>
+          <li>dwell points are fundamentally arbitrary and are not a currency.</li>
+          <li>Transfer rates of dwells are subject to change at any time.</li>
+        </ul>
+      </details>
     </section>
 
     <!-- THE ADVERTISER DOLLAR -->
     <section class="tk-section" id="dollar">
       <h2>The advertiser dollar</h2>
-      <p class="tk-sub">Advertisers pay a <strong>fixed dollar CPM</strong> by card or USDC.
-        Per $100 of card spend:</p>
+      <p class="tk-sub">Advertisers pay a <strong>fixed dollar CPM</strong> by card, USDC, or Solana.
+        Per $100 of spend:</p>
       <div class="tk-flow">
-        <div class="tk-flow-row"><span class="tk-flow-amt">~$2.50</span><p>Card processing <em>· Stripe</em></p></div>
-        <div class="tk-flow-row major"><span class="tk-flow-amt">$87.75</span><p><strong>Rewards pool.</strong> Earmarked on the ledger and split 60/10/30 below — in dollars.</p></div>
-        <div class="tk-flow-row"><span class="tk-flow-amt">~$9.75</span><p>Business margin <em>· the operating company, in USD</em></p></div>
+        <div class="tk-flow-row major"><span class="tk-flow-amt">$90.00</span><p><strong>Rewards pool.</strong> Earmarked on the ledger and split 60/10/30 below — in USDC.</p></div>
+        <div class="tk-flow-row"><span class="tk-flow-amt">~$2.50</span><p>Card/crypto processing <em>· Stripe or exchanges</em></p></div>
+        <div class="tk-flow-row"><span class="tk-flow-amt">~$2.50</span><p>Buffer for slippage</p></div>
+        <div class="tk-flow-row"><span class="tk-flow-amt">$5.00</span><p>Business margin <em>· the operating company</em></p></div>
       </div>
-      <p class="tk-note">Advertisers paying in USDC skip the card leg; the split is otherwise
-        identical. The company converts revenue to USDC as needed to fund payouts through
-        licensed partners. <strong>No leg of any payment, on any rail, buys $DWELL.</strong></p>
     </section>
 
     <!-- THE SPLIT -->
@@ -237,7 +251,7 @@
       <h2>The pool split — 60 / 10 / 30</h2>
       <p class="tk-sub">Each campaign’s rewards pool splits by dollar value:</p>
       <div class="tk-split">
-        <div class="tk-splitbar" role="img" aria-label="Pool split: viewer 60%, referrer 10%, company 30%">
+        <div class="tk-splitbar" role="img" aria-label="Pool split: viewer 60%, referrer 10%, protocol 30%">
           <div class="tk-seg-viewer">60%</div>
           <div class="tk-seg-ref">10</div>
           <div class="tk-seg-proto">30%</div>
@@ -245,35 +259,14 @@
         <div class="tk-splitkey">
           <span><i style="background:var(--accent)"></i> Viewer — the person who watched the ad</span>
           <span><i style="background:var(--accent-d)"></i> Viewer’s referrer</span>
-          <span><i style="background:var(--ink)"></i> Company</span>
+          <span><i style="background:var(--ink)"></i> Protocol</span>
         </div>
       </div>
       <p class="tk-sub" style="margin-top:14px">
         The referrer share is carved <strong>out of the pool</strong>, not paid on top.
-        When the viewer has no referrer, the unclaimed leg joins the company share
-        (30% → 40%).
       </p>
     </section>
 
-    <!-- $DWELL — the token -->
-    <section class="tk-section" id="token-role">
-      <h2>What $DWELL is — and is not</h2>
-      <p class="tk-sub">The token does exactly two things: it <strong>trades</strong>, and it can
-        <strong>pay for ad campaigns</strong> at the USD campaign price via a spot quote at
-        checkout — tokens received that way go to the company treasury and are held there.
-        A $DWELL-paid campaign is otherwise identical to a USD-paid one: viewers earn
-        dwells, denominated in dollars.</p>
-      <div class="tk-tablewrap">
-        <table class="tk-table">
-          <tbody>
-            <tr><td><strong>Not equity</strong></td><td>$DWELL does not represent any share of, or claim on, the company. The Bedrock structure below is a set of constraints on the founder — it confers zero rights on token holders.</td></tr>
-            <tr><td><strong>No revenue flows</strong></td><td>The company does not buy $DWELL with ad revenue and commits to no buybacks, burns, or distributions.</td></tr>
-            <tr><td><strong>Not redeemable</strong></td><td>$DWELL is not redeemable with the company for cash, USDC, dwells, ads previously purchased, or anything else.</td></tr>
-            <tr><td><strong>No bridge</strong></td><td>dwells never convert to $DWELL.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
     <!-- RISKS -->
     <section class="tk-section" id="risks">
       <h2>Risks</h2>
