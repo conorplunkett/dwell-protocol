@@ -59,10 +59,39 @@ const fakeMailer = {
 // the local server pass straight through to the real fetch. twitterTweets is the
 // controllable "timeline" a verification read sees.
 let twitterTweets = [];
+// A faithful fake of X's OAuth 2.0 token + identity endpoints so the sign-in
+// test exercises the real handshake end to end. The token endpoint ENFORCES
+// PKCE: it only issues a token when S256(code_verifier) equals the
+// code_challenge the test captured from the authorize redirect, and it demands
+// the confidential client's Basic auth — exactly what X validates in production.
+const xOAuth2 = { expectedChallenge: null, calls: [], issuedToken: null };
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts) => {
-  if (/api\.twitter\.com\/2\/users\/.+\/tweets/.test(String(url))) {
+  const u = String(url);
+  if (/api\.twitter\.com\/2\/users\/.+\/tweets/.test(u)) {
     return { ok: true, status: 200, json: async () => ({ data: twitterTweets }) };
+  }
+  if (u === "https://api.x.com/2/oauth2/token") {
+    const params = Object.fromEntries(new URLSearchParams(opts?.body || ""));
+    const call = { auth: opts?.headers?.Authorization || "", params };
+    xOAuth2.calls.push(call);
+    const expectedBasic = "Basic " + Buffer.from("test-x-client:test-x-secret").toString("base64");
+    const hash = crypto.createHash("sha256").update(params.code_verifier || "").digest("base64url");
+    if (call.auth !== expectedBasic) return { ok: false, status: 401, json: async () => ({ error: "unauthorized_client" }) };
+    if (params.grant_type !== "authorization_code" || params.code !== "AUTHCODE9") {
+      return { ok: false, status: 400, json: async () => ({ error: "invalid_request" }) };
+    }
+    if (!xOAuth2.expectedChallenge || hash !== xOAuth2.expectedChallenge) {
+      return { ok: false, status: 400, json: async () => ({ error: "invalid_grant", error_description: "pkce verification failed" }) };
+    }
+    xOAuth2.issuedToken = "xat_" + crypto.randomBytes(8).toString("hex");
+    return { ok: true, status: 200, json: async () => ({ access_token: xOAuth2.issuedToken, token_type: "bearer" }) };
+  }
+  if (u === "https://api.x.com/2/users/me") {
+    if ((opts?.headers?.Authorization || "") !== `Bearer ${xOAuth2.issuedToken}`) {
+      return { ok: false, status: 401, json: async () => ({ title: "Unauthorized" }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ data: { id: "999777", username: "dwelltester" } }) };
   }
   return realFetch(url, opts);
 };
@@ -92,6 +121,7 @@ globalThis.fetch = async (url, opts) => {
     impressionTokenTtlMs: 120000, impressionMinDwellMs: 0, // dwell off for the main suite; a dedicated test exercises it
     logRequests: false, giftFulfillmentEmail: "hello@dwellprotocol.com",
     twitterBearerToken: "test-bearer",
+    twitterClientId: "test-x-client", twitterClientSecret: "test-x-secret",
   };
   const repo = createRepo(poolNs);
   const stripe = createStripe("sk_test_fake", { fetchImpl: fakeFetch });
@@ -833,6 +863,69 @@ globalThis.fetch = async (url, opts) => {
     assert.ok(!("postStatus" in me.body) && !("onboardingPostUrl" in me.body), "verification never leaks to the earner");
 
     twitterTweets = [];
+  });
+
+  await check("X sign-in (OAuth 2.0 + PKCE): authorize redirect → token exchange verifies S256 → session", async () => {
+    xOAuth2.calls.length = 0;
+    xOAuth2.expectedChallenge = null;
+    xOAuth2.issuedToken = null;
+
+    // Kick-off: /v1/auth/twitter 302s to X's authorize page with a signed state
+    // and an S256 PKCE challenge (endpoints per docs.x.com).
+    const start = await api("GET", "/v1/auth/twitter?ref=CREW1");
+    assert.strictEqual(start.status, 302);
+    const authUrl = new URL(start.headers.get("location"));
+    assert.strictEqual(authUrl.origin + authUrl.pathname, "https://x.com/i/oauth2/authorize");
+    assert.strictEqual(authUrl.searchParams.get("response_type"), "code");
+    assert.strictEqual(authUrl.searchParams.get("client_id"), "test-x-client");
+    assert.strictEqual(authUrl.searchParams.get("code_challenge_method"), "S256");
+    assert.strictEqual(authUrl.searchParams.get("scope"), "tweet.read users.read");
+    assert.ok(authUrl.searchParams.get("redirect_uri").endsWith("/v1/auth/twitter/callback"));
+    const state = authUrl.searchParams.get("state");
+    const challenge = authUrl.searchParams.get("code_challenge");
+    assert.ok(state && challenge, "state + PKCE challenge present");
+
+    // Arm the fake X token endpoint with the challenge from the redirect: it
+    // refuses to mint a token unless S256(code_verifier) matches — so this test
+    // fails if the callback ever derives a different verifier than the kickoff.
+    xOAuth2.expectedChallenge = challenge;
+
+    // Callback: X sends the code + our state back; the server exchanges them
+    // (Basic auth + code_verifier), reads /2/users/me, and opens a session.
+    const cb = await api("GET", `/v1/auth/twitter/callback?code=AUTHCODE9&state=${encodeURIComponent(state)}`);
+    assert.strictEqual(cb.status, 302);
+    const loc = cb.headers.get("location");
+    const session = (loc.match(/#session=([^&]+)/) || [])[1];
+    assert.ok(session, `a web session is issued on success (got ${loc})`);
+    assert.strictEqual(xOAuth2.calls.length, 1, "exactly one token exchange");
+    assert.strictEqual(xOAuth2.calls[0].params.redirect_uri, `${base}/v1/auth/twitter/callback`,
+      "token exchange repeats the exact redirect_uri");
+
+    // the account is keyed on the numeric X id, handle captured, no email
+    const u = (await poolNs.query("select twitter_id, twitter_username, email from users where twitter_id = '999777'")).rows[0];
+    assert.ok(u, "account keyed on the X user id");
+    assert.strictEqual(u.twitter_username, "dwelltester");
+    assert.strictEqual(u.email, null, "X login carries no email");
+    // the session actually works against an authed endpoint
+    assert.strictEqual((await api("GET", "/v1/web/me", undefined, { Authorization: `Bearer ${session}` })).status, 200);
+
+    // user pressed cancel on X (error param, no code) → cancelled, not an error
+    const denied = await api("GET", "/v1/auth/twitter/callback?error=access_denied");
+    assert.ok(denied.headers.get("location").includes("login=cancelled"));
+    // a forged/foreign state never reaches the token exchange
+    const before = xOAuth2.calls.length;
+    const bad = await api("GET", "/v1/auth/twitter/callback?code=AUTHCODE9&state=1.deadbeef.X.forged");
+    assert.ok(bad.headers.get("location").includes("login=error"));
+    assert.strictEqual(xOAuth2.calls.length, before, "bad state is rejected before any token call");
+
+    // returning sign-in: same X id reuses the one account (no duplicate)
+    const again = await api("GET", "/v1/auth/twitter");
+    const url2 = new URL(again.headers.get("location"));
+    xOAuth2.expectedChallenge = url2.searchParams.get("code_challenge");
+    await api("GET", `/v1/auth/twitter/callback?code=AUTHCODE9&state=${encodeURIComponent(url2.searchParams.get("state"))}`);
+    assert.strictEqual(
+      (await poolNs.query("select count(*)::int n from users where twitter_id = '999777'")).rows[0].n, 1,
+      "re-login reuses the same X account");
   });
 
   await check("magic-link sends are rate-limited per email (anti-bomb / anti-enumeration)", async () => {
