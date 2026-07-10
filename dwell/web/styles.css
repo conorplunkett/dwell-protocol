@@ -355,6 +355,14 @@ button.wl-adv { cursor: pointer; }
 #boost-toggle.open:hover { background: var(--accent-d); border-color: var(--accent-d); }
 #boost-toggle.open::after { content: " ↑"; }
 
+/* Symmetric arrow flanking the label on BOTH ends, and match a quick-install
+   column's width (the npm install box). Both arrows flip to ↑ while open. */
+#boost-toggle { justify-content: space-between; gap: 14px; width: 364px; max-width: 100%; }
+#boost-toggle::before { content: "↓"; }
+#boost-toggle::after { content: "↓"; white-space: normal; }
+#boost-toggle.open::before,
+#boost-toggle.open::after { content: "↑"; }
+
 /* ── BOOST FOLD — the advertiser card unfolding out of the hero button.
    grid-template-rows 0fr→1fr animates the height; the inner scale/translate
    (transform-origin at the button) makes the card spread + grow out of it.
@@ -1656,9 +1664,9 @@ button.wl-adv { cursor: pointer; }
    becomes the tilting .r3d-card, which leans toward the cursor on a
    critically-damped spring, pops on hover, and casts a grey shadow that
    deepens and shifts as it lifts — so it reads as a solid block rising off the
-   page. A soft white gloss (.r3d-sheen) tracks the pointer across it. Driven
-   by one rAF loop in float3d.js. Honors prefers-reduced-motion (falls back to
-   a simple CSS hover lift, no tilt/gloss). */
+   page. No rainbow, no gloss overlay. Driven by one rAF loop in float3d.js.
+   Honors prefers-reduced-motion (falls back to a simple CSS hover lift, no
+   tilt). */
 .r3d { position: relative; perspective: 1000px; }
 .r3d-card {
   position: relative; z-index: 1;
@@ -1667,19 +1675,12 @@ button.wl-adv { cursor: pointer; }
      here would fight it and lag. */
   transition: none;
 }
-.r3d-sheen {
-  position: absolute; inset: 0; z-index: 5; border-radius: inherit;
-  pointer-events: none; opacity: 0; mix-blend-mode: screen;
-  background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%),
-    rgba(255, 255, 255, .4), rgba(255, 255, 255, 0) 60%);
-}
 @media (prefers-reduced-motion: reduce) {
   .r3d-card { transition: transform .25s ease, box-shadow .25s ease; }
   .r3d:hover .r3d-card {
     transform: translateY(-4px);
     box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .38);
   }
-  .r3d-sheen { display: none; }
 }
 
 /* Safety net: a floating block's hover tilt/scale must never extend the
