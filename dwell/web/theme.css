@@ -79,12 +79,15 @@
   --ov-test-border: rgba(255, 0, 0, 0.4);
   --ov-demo-line: #f1f1f1;      /* landing-page before/after demo line color */
 
-  /* ── LCD tally digits — the "Start earning $N USDC" counter on the lander.
-   * Green seven-segment numerals (JDM11-6H style), inline in the label. These
-   * are intentionally off-palette hardware colors — the only place used. ── */
-  --lcd-on: #16b866;              /* lit segment / sign — green readout */
-  --lcd-off: rgba(15, 15, 15, 0.09); /* ghost (unlit) segment */
-  --lcd-glow: rgba(22, 184, 102, 0.45); /* segment bloom */
+  /* ── LCD tally counter — the "Start earning $N USDC" device on the lander.
+   * A physical green-on-black seven-segment display (JDM11-6H style). These are
+   * intentionally off-palette hardware colors — the only place they're used. ── */
+  --lcd-bezel-a: #24262b;         /* housing top (lit edge) */
+  --lcd-bezel-b: #0c0d10;         /* housing bottom */
+  --lcd-screen: #071108;          /* near-black green-tinted glass */
+  --lcd-on: #4dffa0;              /* lit segment / sign */
+  --lcd-off: rgba(77, 255, 160, 0.07); /* ghost (unlit) segment */
+  --lcd-glow: rgba(77, 255, 160, 0.55); /* segment bloom */
 
   /* ── Semantic status — functional state colors (NOT brand). Success is a
    * functional green; error is the system red (distinct from brand red by
