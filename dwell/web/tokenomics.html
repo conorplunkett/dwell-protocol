@@ -140,6 +140,11 @@
     @media (max-width: 720px) {
       .tk-flow-amt { width: 64px; font-size: 13.5px; }
       .tk-splitbar > div { font-size: 11.5px; }
+      /* Phones: the facts table can't afford a fixed 190px label column or
+         nowrap value cells — let both wrap so the table never exceeds the
+         viewport (the "not launched" pill wraps under the symbol). */
+      .tk-facts td:first-child { width: auto; white-space: normal; }
+      .tk-table td.num { white-space: normal; }
     }
   </style>
 </head>
@@ -152,7 +157,7 @@
     </a>
     <nav class="nav-btns" aria-label="Primary">
       <a href="/products" class="navbtn">Products</a>
-      <a href="/tokenomics" class="navbtn is-active" aria-current="page">Tokenomics</a>
+      <a href="/tokenomics" class="navbtn navbtn-opt is-active" aria-current="page">Tokenomics</a>
       <a href="/portal" class="navbtn"><span class="nav-txt-opt">User </span>Portal</a>
       <a href="/#advertisers" class="navbtn navbtn-cta">Advertise</a>
     </nav>
@@ -219,8 +224,6 @@
           </tbody>
         </table>
       </div>
-      <p class="tk-note">Outstanding dwells are backed by the earmarked rewards-pool
-        dollars on the protocol ledger; the accounting is public.</p>
       <details class="tk-terms">
         <summary>Redemption terms</summary>
         <ul>
@@ -289,7 +292,7 @@
         </div>
         <div class="tk-risk">
           <h4>Reserve adequacy</h4>
-          <p>Outstanding dwells are dollar liabilities. They are backed by the earmarked rewards-pool ledger, published on the public accounting page; redemptions pause if the attestation ever fails to reconcile.</p>
+          <p>Outstanding dwells are dollar liabilities, recorded on the earmarked rewards-pool ledger and published on the public accounting page; redemptions pause if the attestation ever fails to reconcile.</p>
         </div>
       </div>
     </section>

@@ -28,9 +28,10 @@
   <!-- Link previews (OpenGraph + Twitter). This is the page a member's referral
        link (portal?ref=…) points at, and that's how it gets shared — so the
        preview is the invite card (og-referral.png from tools/gen-og.mjs). It
-       promises only what the invited friend actually gets: they earn $DWELL
+       promises only what the invited friend actually gets: they earn USDC
        for watching ads while their AI thinks (the referrer's 10% share is the
-       referrer's business, not the pitch). Crawlers ignore the ?ref query and
+       referrer's business, not the pitch; dwells never convert to $DWELL, so
+       the card never mentions the token). Crawlers ignore the ?ref query and
        don't run JS, so the framing lives here in the static head. -->
   <link rel="canonical" href="https://dwellprotocol.com/portal" />
   <meta name="theme-color" content="#ff0000" />
@@ -38,19 +39,19 @@
   <meta property="og:site_name" content="DWELL" />
   <meta property="og:url" content="https://dwellprotocol.com/portal" />
   <meta property="og:locale" content="en_US" />
-  <meta property="og:title" content="Earn $DWELL while you use AI" />
-  <meta property="og:description" content="A friend invited you to DWELL. One sponsored line shows while ChatGPT, Claude, or Gemini thinks — you earn $DWELL for watching it." />
-  <meta property="og:image" content="https://dwellprotocol.com/og-referral.png?v=20260707" />
-  <meta property="og:image:secure_url" content="https://dwellprotocol.com/og-referral.png?v=20260707" />
+  <meta property="og:title" content="Earn USDC while you use AI" />
+  <meta property="og:description" content="A friend invited you to DWELL. One sponsored line shows while ChatGPT, Claude, or Gemini thinks — you earn USDC for watching it." />
+  <meta property="og:image" content="https://dwellprotocol.com/og-referral.png?v=20260710" />
+  <meta property="og:image:secure_url" content="https://dwellprotocol.com/og-referral.png?v=20260710" />
   <meta property="og:image:type" content="image/png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="A friend invited you — earn $DWELL while you use AI." />
+  <meta property="og:image:alt" content="A friend invited you — earn USDC while you use AI." />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Earn $DWELL while you use AI" />
-  <meta name="twitter:description" content="A friend invited you to DWELL. One sponsored line shows while ChatGPT, Claude, or Gemini thinks — you earn $DWELL for watching it." />
-  <meta name="twitter:image" content="https://dwellprotocol.com/og-referral.png?v=20260707" />
-  <meta name="twitter:image:alt" content="A friend invited you — earn $DWELL while you use AI." />
+  <meta name="twitter:title" content="Earn USDC while you use AI" />
+  <meta name="twitter:description" content="A friend invited you to DWELL. One sponsored line shows while ChatGPT, Claude, or Gemini thinks — you earn USDC for watching it." />
+  <meta name="twitter:image" content="https://dwellprotocol.com/og-referral.png?v=20260710" />
+  <meta name="twitter:image:alt" content="A friend invited you — earn USDC while you use AI." />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -459,7 +460,6 @@
             <option value="all">All entries</option>
             <option value="points_credit">Sponsored lines</option>
             <option value="referral_points_credit">Referral share</option>
-            <option value="token_claim_debit">Token claims</option>
           </select>
           <span class="act-count" id="act-count">0 of 0 rows</span>
         </div>
@@ -485,11 +485,13 @@
         <h2>Redeem your dwells</h2>
 
         <!-- (a) Claude credits — live. Grid rendered by portal.js from
-             GET /v1/giftcards; prices shown in dwells at face + the protocol
-             fee, mirroring exactly what POST /v1/web/redemptions charges. -->
+             GET /v1/giftcards; prices shown in dwells at the 10% redemption
+             boost (dwells buy 110% of face value), mirroring exactly what
+             POST /v1/web/redemptions charges. -->
         <div class="redeem-block" id="gift-block">
           <div class="rb-head">
             <h3 class="rb-title">Claude credits</h3>
+            <span class="rb-badge" id="gift-fee-badge"></span>
           </div>
           <p class="portal-copy">
             Pick a plan and term. The credit is emailed to your account
@@ -528,18 +530,20 @@
           <p class="redeem-result" id="payout-result" hidden></p>
         </div>
 
-        <!-- (c) $DWELL claim — preview until token launch; no live calls. -->
+        <!-- (c) USDC to your wallet — preview until the rail opens; no live
+             calls. Mirrors the tokenomics page: face value less the 10%
+             protocol fee, $100 minimum. Dwells never convert to $DWELL. -->
         <div class="launch-preview">
           <div class="lp-head">
-            <h3 class="lp-title">Claim $DWELL</h3>
-            <span class="lp-badge">Available at token launch</span>
+            <h3 class="lp-title">USDC to your wallet</h3>
+            <span class="lp-badge">Coming soon</span>
           </div>
           <ol class="lp-steps">
-            <li><strong>Claim $DWELL to your wallet.</strong> Your dwells convert to
-              DWELL tokens at the published rate — no fee on the claim; it
-              happens onchain, on Solana, into an external wallet.</li>
-            <li><strong>Hold or sell.</strong> Claimed $DWELL is yours onchain —
-              hold it, swap it, or move it anywhere.</li>
+            <li><strong>Link a Solana wallet.</strong> Redemptions are sent
+              onchain, on Solana, to an external wallet you link.</li>
+            <li><strong>Redeem for USDC.</strong> Face value less the
+              <strong>10% protocol fee</strong>, $100 minimum. Transfers are
+              executed by licensed partners as counterparty of record.</li>
           </ol>
         </div>
 

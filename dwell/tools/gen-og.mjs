@@ -129,9 +129,10 @@ const cardHtml = ({ h1, note, sub }) => `<!doctype html><html><head><meta charse
 // Every link-preview image we ship. The default (og.png) is the homepage card
 // and states the offer in the homepage's own words ("Earn crypto while you use
 // AI"). og-referral.png is the invite card a member's referral link
-// (portal?ref=…) previews as — the friend earns $DWELL for watching ads, the
+// (portal?ref=…) previews as — the friend earns USDC for watching ads, the
 // referrer a 10% share of what the friend earns, so the card promises only
-// what the invited friend actually gets.
+// what the invited friend actually gets. (Never the token: dwells don't
+// convert to $DWELL — see AGENTS.md.)
 const CARDS = [
   {
     file: "og.png",
@@ -141,7 +142,7 @@ const CARDS = [
   {
     file: "og-referral.png",
     note: "A friend invited you.",
-    h1: `Earn <span class="pop">$DWELL</span> while you use AI.`,
+    h1: `Earn <span class="pop">USDC</span> while you use AI.`,
   },
 ];
 
