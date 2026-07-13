@@ -1,12 +1,15 @@
-# Open forgery surface: `/v1/events` self-reported impressions
+# Closed forgery surface: `/v1/events` self-reported impressions
 
-> **Status: KILLSWITCH READY as of July 10 2026.**
-> The server-authoritative impression-token path is live and the official clients
-> use it. The legacy `/v1/events` credit path still credits by default during the
-> client transition, but the killswitch that closes the hole is now implemented:
-> set **`LEGACY_EVENTS_CREDIT=0`** (Node server and the `dwell-api` edge
-> function) and a forged batch credits nothing. This file tracks the remaining
-> step: watching adoption and flipping the flag.
+> **Status: CLOSED as of July 13 2026.**
+> `LEGACY_EVENTS_CREDIT=0` is set on the production `dwell-api` deployment and
+> verified live: a forged self-reported batch (fresh anonymous device, 500
+> claimed impressions) is acknowledged but returns
+> `creditedMillicents: 0, legacyCreditDisabled: true` — no ledger entry, no
+> campaign budget spent, balance stays $0. The server-authoritative
+> impression-token path (serve → dwell → redeem) is the only way to earn.
+> The rest of this file is kept as the record of what the hole was and how it
+> was closed. **Keep the flag set:** any deployment that unsets
+> `LEGACY_EVENTS_CREDIT` (or sets it to anything but `0`) reopens the hole.
 
 ## Where the hole comes from
 
