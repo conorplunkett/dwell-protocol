@@ -73,7 +73,7 @@ business: Stripe handles KYC, bank accounts, and tax forms (1099s).
 2. Stripe fires **`account.updated`** webhooks as onboarding progresses; we
    flip `users.payouts_enabled` when `charges_enabled && payouts_enabled`.
 3. The payout sweep (`POST /v1/admin/payouts`, or `npm run payouts` on a cron)
-   finds every enabled user at/over the threshold (default $10) and calls
+   finds every enabled user at/over the threshold (default $100) and calls
    **`POST /v1/transfers`** with `amount=<whole cents>`, `currency=usd`,
    `destination=<acct_...>`. A `payout_debit` ledger entry + `payouts` row
    record it; sub-cent dust stays on the balance.
@@ -122,7 +122,7 @@ built in:
 - **No double-spend on redeem** — concurrent gift redemptions serialize on a
   per-balance advisory lock, so the in-transaction balance check can't be raced
   into an overdraft.
-- **Held payouts** — the $10 threshold + weekly sweep gives a review window.
+- **Held payouts** — the $100 threshold + weekly sweep gives a review window.
 - Next (not built): only count impressions while a real agent process is
   attached; device attestation / proof-of-work to price up bulk device minting.
 

@@ -1613,7 +1613,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
   });
 
   // Tokenomics v2: the payout rail. Debit-first (same double-spend guard as
-  // the Stripe path), 10% fee, $10 minimum; the payouts row is queued
+  // the Stripe path), 10% fee, $100 minimum; the payouts row is queued
   // 'pending' with the user's linked wallet as destination, and a licensed
   // partner executes the USDC transfer (ops marks it paid with the transfer
   // signature via /v1/admin/payouts/usdc/:id/paid). The company never holds

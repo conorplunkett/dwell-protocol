@@ -174,7 +174,7 @@ function mockGet(path) {
   if (p === "/v1/web/payouts") {
     return {
       payoutsEnabled: true, hasStripeAccount: true,
-      thresholdUsd: 10, payoutFeeBps: 1000,
+      thresholdUsd: 100, payoutFeeBps: 1000,
       balanceUsd: MOCK.summary.balancePoints / 1000,
       payouts: [{ amountUsd: 8.1, status: "paid", createdAt: "2026-06-28T15:00:00Z" }],
     };
@@ -1020,7 +1020,7 @@ function renderPayoutCard() {
     const grossCents = Math.floor(balDwells / 10);
     const feeCents = Math.ceil((grossCents * info.payoutFeeBps) / 10000);
     const netCents = grossCents - feeCents;
-    const under = grossCents < Math.round((info.thresholdUsd || 10) * 100);
+    const under = grossCents < Math.round((info.thresholdUsd || 100) * 100);
     el.innerHTML =
       `<div class="payout-state">` +
       `<p>${under

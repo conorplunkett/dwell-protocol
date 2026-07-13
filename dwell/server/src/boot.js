@@ -30,7 +30,7 @@ function loadConfig(env = process.env) {
     legacyEventsCredit: env.LEGACY_EVENTS_CREDIT !== "0",
     dailyClickCap: parseInt(env.DAILY_CLICK_CAP || "100", 10), // verified clicks per device per UTC day
     leadDailyCap: parseInt(env.LEAD_IP_DAILY_CAP || "100", 10), // bare-email waitlist captures per source IP per UTC day; 0 disables
-    payoutThresholdCents: parseInt(env.PAYOUT_THRESHOLD_CENTS || "1000", 10), // $10
+    payoutThresholdCents: parseInt(env.PAYOUT_THRESHOLD_CENTS || "10000", 10), // $100
     payoutFeeBps: parseInt(env.PAYOUT_FEE_BPS || "1000", 10), // protocol's cut of a cash payout, basis points (1000 = 10%)
     redemptionFeeBps: parseInt(env.REDEMPTION_FEE_BPS || "1000", 10), // legacy fee-on-top for Claude-credit redemptions; superseded by redemptionBoostBps when set
     redemptionBoostBps: parseInt(env.REDEMPTION_BOOST_BPS || "1000", 10), // tokenomics v2: dwells buy Claude credits at a boost (1000 = your balance is worth 110% on this path); replaces the fee when > 0

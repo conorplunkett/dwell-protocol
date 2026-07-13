@@ -56,7 +56,7 @@ function loadConfig() {
     legacyEventsCredit: env("LEGACY_EVENTS_CREDIT") !== "0",
     dailyClickCap: parseInt(env("DAILY_CLICK_CAP", "100"), 10),
     leadDailyCap: parseInt(env("LEAD_IP_DAILY_CAP", "100"), 10), // bare-email waitlist captures per source IP per UTC day; 0 disables
-    payoutThresholdCents: parseInt(env("PAYOUT_THRESHOLD_CENTS", "1000"), 10),
+    payoutThresholdCents: parseInt(env("PAYOUT_THRESHOLD_CENTS", "10000"), 10), // $100
     payoutFeeBps: parseInt(env("PAYOUT_FEE_BPS", "1000"), 10), // protocol's cut of a cash payout, basis points (1000 = 10%)
     redemptionFeeBps: parseInt(env("REDEMPTION_FEE_BPS", "1000"), 10), // legacy fee-on-top for Claude-credit redemptions; superseded by redemptionBoostBps when set
     redemptionBoostBps: parseInt(env("REDEMPTION_BOOST_BPS", "1000"), 10), // tokenomics v2: dwells buy Claude credits at a boost (1000 = balance worth 110% on this path)
@@ -5088,7 +5088,7 @@ route("GET", "/v1/web/payouts", async (ctx: any) => {
 // One attempt per user per minute, in-process. Belt-and-braces only (edge
 // isolates don't share this map) — the debit-first transaction in
 // recordPayoutRequest is the real double-spend guard.
-// Tokenomics v2: the payout rail. Debit-first, 10% fee, $10 minimum; the
+// Tokenomics v2: the payout rail. Debit-first, 10% fee, $100 minimum; the
 // payouts row is queued 'pending' with the linked wallet as destination and a
 // licensed partner executes the USDC transfer (ops marks it paid with the
 // transfer signature). The company never holds or transmits the funds itself.

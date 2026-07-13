@@ -60,16 +60,15 @@ share plus the 10% redemption fee are the business's revenue, in dollars.
   [04-backend-adaptation.md](04-backend-adaptation.md)).
 - Redemption, two paths:
   - **USDC to a linked wallet** — face value less the **10% protocol fee**,
-    $10 minimum. The offramp/transfer leg always belongs to licensed
+    $100 minimum. The offramp/transfer leg always belongs to licensed
     partners as counterparty of record
     ([05-legal-structure.md](05-legal-structure.md)).
   - **Claude credits** — redeemed at a **10% boost**: dwells buy Claude
     subscription time at 110% of their face value (the boost replaces the
     fee on this path; it is the closed-loop option and we make it the
     better deal on purpose).
-- Outstanding dwells are backed by the earmarked rewards-pool dollars on the
-  ledger; the public accounting page shows earmarked total vs. outstanding
-  dwells.
+- Outstanding dwells are unsecured obligations of the company. They are not
+  backed by a segregated reserve, escrow, or any dedicated pool of assets.
 - dwells are closed-loop reward credits until redeemed. They are not
   transferable between users, they are not $DWELL, and they never convert
   to $DWELL. There is no snapshot, no conversion price, and no airdrop
