@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dwell Protocol — Earn from ChatGPT, Claude & Gemini",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Earn dwells while you use AI. One sponsored line appears while AI thinks; earnings are yours to redeem.",
   "icons": {
     "16": "icons/icon16.png",
