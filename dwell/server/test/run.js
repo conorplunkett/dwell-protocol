@@ -2326,8 +2326,8 @@ globalThis.fetch = async (url, opts) => {
     assert.strictEqual(apprD.body.realizedUsdc, 101);
     assert.strictEqual(apprD.body.impressionsTotal, 7406, "floor($101 at $15 CPM) +10% boost");
     const ledD = await campLedger(r.body.campaignId);
-    assert.strictEqual(ledD.campaign_credit.sum, 10_100_000, "funded with the realized $101 (boost is reach, not pool)");
-    assert.strictEqual(ledD.reserve_allocation.sum, 9_090_000, "90% earmark of the realized amount");
+    assert.strictEqual(ledD.campaign_credit.sum, 10_100_000, "funded with the realized $101");
+    assert.strictEqual(ledD.reserve_allocation.sum, 9_999_000, "99% earmark: the 90% tranche scaled by the 110% boost, so boosted impressions stay fully earmarked");
 
     // Underpaid -> payment_short.
     const r2 = await apiU("POST", "/v1/ads/usdc/orders", { ...usdcAd, currency: "dwell" });

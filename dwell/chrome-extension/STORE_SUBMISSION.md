@@ -59,21 +59,23 @@ manifest and pre-fills name, version, and icons. Then complete the tabs below.
 | **Category** | Productivity |
 | **Language** | English |
 | **Official website** | `https://dwellprotocol.com` |
-| **Support / contact** | `hello@dwell.example` |
+| **Support / contact** | `support@contact.freeai.fyi` (no `@dwellprotocol.com` mailbox exists — email stays on the verified freeai.fyi domain) |
 | **Privacy policy URL** | `https://dwellprotocol.com/privacy` |
 
 **Detailed description** (paste into the description box):
 
 ```
 DWELL turns the AI "thinking" spinner into a tiny ad marketplace and pays
-the person watching, in dwells (token-denominated; they convert to $DWELL at token launch and their value floats with the market).
+the person watching in dwells — dollar-denominated reward credits
+(1,000 dwells = $1.00 of earned ad value).
 
 While ChatGPT, Claude, or Gemini is generating an answer, instead of sitting
 idle, DWELL shows a sponsored line right by the reply. That's it. When the
-model finishes, it goes away. You receive 60% of each campaign's pool — 90%
-of every ad dollar goes to the earn side — credited to you as dwells. Redeem
-them in the web portal: $DWELL tokens at launch, Claude credits, or cash
-via Stripe (10% protocol fee on Claude credits and cash).
+model finishes, it goes away. You receive 60% of each campaign's rewards
+pool, credited to you as dwells. Redeem them in the web portal: USDC to
+your linked wallet (10% protocol fee, $100 minimum) or Claude credits at a
+10% boost (your dwells buy Claude subscription time at 110% of face value).
+dwells are reward credits, not the $DWELL token, and do not convert to it.
 
 WHAT IT DOES
 • Shows a sponsored line only while the assistant is thinking.
@@ -103,9 +105,9 @@ the #1 cause of rejection. Answer it to match what the code actually does
 
 - **Single purpose** (paste):
   > DWELL displays a sponsored line of text while an AI assistant is generating a
-  > response, and credits the user their share of that ad revenue as dwells
-  > (token-denominated; value floats with the market), redeemable in the DWELL web portal
-  > for $DWELL tokens at launch, Claude credits, or cash.
+  > response, and credits the user their share of that ad revenue as dwells —
+  > dollar-denominated reward credits (1,000 dwells = $1.00) — redeemable in the
+  > DWELL web portal for USDC to a linked wallet or Claude credits.
 
 - **Data usage disclosures** — check honestly. In the "What user data do you
   collect?" checklist, **tick exactly these** (and nothing else):

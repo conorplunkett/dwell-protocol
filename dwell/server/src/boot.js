@@ -30,7 +30,7 @@ function loadConfig(env = process.env) {
     legacyEventsCredit: env.LEGACY_EVENTS_CREDIT !== "0",
     dailyClickCap: parseInt(env.DAILY_CLICK_CAP || "100", 10), // verified clicks per device per UTC day
     leadDailyCap: parseInt(env.LEAD_IP_DAILY_CAP || "100", 10), // bare-email waitlist captures per source IP per UTC day; 0 disables
-    payoutThresholdCents: parseInt(env.PAYOUT_THRESHOLD_CENTS || "1000", 10), // $10
+    payoutThresholdCents: parseInt(env.PAYOUT_THRESHOLD_CENTS || "10000", 10), // $100
     payoutFeeBps: parseInt(env.PAYOUT_FEE_BPS || "1000", 10), // protocol's cut of a cash payout, basis points (1000 = 10%)
     redemptionFeeBps: parseInt(env.REDEMPTION_FEE_BPS || "1000", 10), // legacy fee-on-top for Claude-credit redemptions; superseded by redemptionBoostBps when set
     redemptionBoostBps: parseInt(env.REDEMPTION_BOOST_BPS || "1000", 10), // tokenomics v2: dwells buy Claude credits at a boost (1000 = your balance is worth 110% on this path); replaces the fee when > 0
@@ -39,7 +39,7 @@ function loadConfig(env = process.env) {
     referralCap: parseInt(env.REFERRAL_CAP || "10", 10), // max rewarded referrals per user
     affiliateRewardBps: parseInt(env.AFFILIATE_REWARD_BPS || "1000", 10), // affiliate's cut of an affiliated user's earnings, basis points (1000 = 10%)
     affiliateCapPeople: parseInt(env.AFFILIATE_CAP_PEOPLE || "10", 10), // max attributed friends per affiliate (dollar earnings uncapped)
-    giftFulfillmentEmail: env.GIFT_FULFILLMENT_EMAIL || "hello@dwellprotocol.com", // manual gift card fulfillment inbox
+    giftFulfillmentEmail: env.GIFT_FULFILLMENT_EMAIL || "hello@contact.freeai.fyi", // manual gift card fulfillment inbox (no @dwellprotocol.com mailbox exists)
     emailTokenTtlMs: parseInt(env.EMAIL_TOKEN_TTL_MS || "1800000", 10), // 30 min
     emailCooldownMs: parseInt(env.EMAIL_COOLDOWN_MS || "60000", 10), // min gap between magic-link sends per email; 0 disables
     emailIpDailyCap: parseInt(env.EMAIL_IP_DAILY_CAP || "50", 10), // magic-link/login email sends per source IP per UTC day; 0 disables (shared-NAT/CGNAT)

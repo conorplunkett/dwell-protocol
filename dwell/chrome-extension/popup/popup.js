@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 const setText = (id, val) => { const el = $(id); if (el) el.textContent = val; };
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-// Viewers earn dwells (token-denominated; dollar figures shown are estimates). The backend
+// Viewers earn dwells (dollar-denominated: 1,000 dwells = $1.00). The backend
 // stays dollar-denominated (balanceUsd etc.); we convert at the display edge
 // only.
 

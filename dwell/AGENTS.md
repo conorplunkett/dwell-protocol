@@ -76,6 +76,12 @@ reference to the frozen root product's brand (CI greps for it).
   `supabase/functions/dwell-api/index.ts`. Recipients seeing `freeai.fyi` in the
   From address is expected and intentional (see the products-page FAQ); the
   brand is DWELL but the verified sending domain is still freeai.fyi.
+  **The same goes for receiving: no `@dwellprotocol.com` mailbox exists at
+  all.** Public contact addresses (site footer, terms, privacy, store
+  listings) and the gift-fulfillment inbox stay on `contact.freeai.fyi`
+  (`support@` for user contact, `hello@` for the fulfillment inbox). Never
+  write a `@dwellprotocol.com` email address anywhere — docs, copy, config
+  defaults — until that domain's mail is actually set up.
 - **Shared-database isolation**: DWELL lives in its own Postgres schema
   (`DB_SCHEMA`, default `dwell`) so it can share a database server with other
   products while staying isolated at the top level. Every connection pins

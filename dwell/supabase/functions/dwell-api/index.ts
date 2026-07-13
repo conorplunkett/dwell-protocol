@@ -56,7 +56,7 @@ function loadConfig() {
     legacyEventsCredit: env("LEGACY_EVENTS_CREDIT") !== "0",
     dailyClickCap: parseInt(env("DAILY_CLICK_CAP", "100"), 10),
     leadDailyCap: parseInt(env("LEAD_IP_DAILY_CAP", "100"), 10), // bare-email waitlist captures per source IP per UTC day; 0 disables
-    payoutThresholdCents: parseInt(env("PAYOUT_THRESHOLD_CENTS", "1000"), 10),
+    payoutThresholdCents: parseInt(env("PAYOUT_THRESHOLD_CENTS", "10000"), 10), // $100
     payoutFeeBps: parseInt(env("PAYOUT_FEE_BPS", "1000"), 10), // protocol's cut of a cash payout, basis points (1000 = 10%)
     redemptionFeeBps: parseInt(env("REDEMPTION_FEE_BPS", "1000"), 10), // legacy fee-on-top for Claude-credit redemptions; superseded by redemptionBoostBps when set
     redemptionBoostBps: parseInt(env("REDEMPTION_BOOST_BPS", "1000"), 10), // tokenomics v2: dwells buy Claude credits at a boost (1000 = balance worth 110% on this path)
@@ -65,7 +65,7 @@ function loadConfig() {
     referralCap: parseInt(env("REFERRAL_CAP", "10"), 10),
     affiliateRewardBps: parseInt(env("AFFILIATE_REWARD_BPS", "1000"), 10), // affiliate's cut, basis points (1000 = 10%)
     affiliateCapPeople: parseInt(env("AFFILIATE_CAP_PEOPLE", "1000"), 10), // max attributed friends per affiliate (dollar earnings uncapped)
-    giftFulfillmentEmail: env("GIFT_FULFILLMENT_EMAIL", "hello@dwellprotocol.com"),
+    giftFulfillmentEmail: env("GIFT_FULFILLMENT_EMAIL", "hello@contact.freeai.fyi"), // no @dwellprotocol.com mailbox exists
     emailTokenTtlMs: parseInt(env("EMAIL_TOKEN_TTL_MS", "1800000"), 10),
     emailCooldownMs: parseInt(env("EMAIL_COOLDOWN_MS", "60000"), 10), // min gap between magic-link sends per email; 0 disables. DB-backed, so it holds even though the in-memory rate limiter is dropped here.
     emailIpDailyCap: parseInt(env("EMAIL_IP_DAILY_CAP", "50"), 10), // magic-link/login email sends per source IP per UTC day; 0 disables (shared-NAT/CGNAT). DB-backed replacement for the dropped per-IP limiter.
@@ -1139,12 +1139,15 @@ function createRepo(pool: any) {
            JSON.stringify({ impressions, rail: o.pay_currency, swapTx: swapSignature, settlement: "usdc-at-acceptance" })]
         );
         if (tokenSplit) {
-          const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+          // Boosted impressions bill the full per-view rate, so the earmark
+          // scales by the same boost — the extra reach is funded out of the
+          // business share, and accrued pool legs can never exceed the tranche.
+          const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps) * BigInt(10000 + boostBps)) / 100000000n;
           await c.query(
             `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
              values ('reserve_allocation', $1, $2, ($3::jsonb #>> '{}')::jsonb)`,
             [tranche.toString(), o.campaign_id,
-             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: o.pay_currency })]
+             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, boostBps, rail: o.pay_currency })]
           );
         }
         return { impressionsTotal: impressions, budgetCents: realizedCents };
@@ -4181,9 +4184,10 @@ route("POST", "/v1/ads/usdc/orders", async (ctx: any) => {
     return json(400, { error: `budget must be $${(P.minBudgetCents / 100).toFixed(0)}–$${(P.maxBudgetCents / 100).toLocaleString("en-US")}` });
   }
   // Paying in $DWELL boosts the campaign's impressions (docs/08) — same
-  // spend, +DWELL_PAY_BOOST_BPS more reach. Impressions only; the rewards
-  // pool stays sized to the USD price, so the boost is extra reach, not a
-  // bigger viewer pool.
+  // spend, +DWELL_PAY_BOOST_BPS more reach. Every boosted impression bills
+  // the full per-view rate, so the rewards-pool earmark scales by the same
+  // boost at funding time (finalizeAcceptedSwap); the extra reach is funded
+  // out of the business share.
   const boostBps = payCurrency === "dwell" ? config.dwellPayBoostBps : 0;
   const baseImpressions = Math.floor((budgetCents * 1000) / cpmCents);
   const impressions = Math.floor(baseImpressions * (10000 + boostBps) / 10000);
@@ -5147,7 +5151,7 @@ route("GET", "/v1/web/payouts", async (ctx: any) => {
 // One attempt per user per minute, in-process. Belt-and-braces only (edge
 // isolates don't share this map) — the debit-first transaction in
 // recordPayoutRequest is the real double-spend guard.
-// Tokenomics v2: the payout rail. Debit-first, 10% fee, $10 minimum; the
+// Tokenomics v2: the payout rail. Debit-first, 10% fee, $100 minimum; the
 // payouts row is queued 'pending' with the linked wallet as destination and a
 // licensed partner executes the USDC transfer (ops marks it paid with the
 // transfer signature). The company never holds or transmits the funds itself.

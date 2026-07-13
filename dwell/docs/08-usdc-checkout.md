@@ -135,11 +135,12 @@ which is exact — a direct transfer has no slippage).
 
 The perk — the **"10% boost"** on the tab — is **+10% impressions for the same
 spend** (`DWELL_PAY_BOOST_BPS`, default 1000): a $DWELL-paid campaign buys 10%
-more reach. It applies to `impressions_total` only; the 90% rewards pool stays
-sized to the actual $DWELL paid, so viewers collectively earn the same pool
-over more impressions (a lower per-view locked rate) — pure extra reach, not a
-subsidy of the viewer pool. Needs `TREASURY_DWELL_ATA` configured; unset
-disables the rail (400) while USDC/SOL keep working.
+more reach. Every boosted impression bills the full per-view rate, so the
+`reserve_allocation` earmark is scaled by the same boost at funding time
+(90% × 110% = 99% of realized USDC at the defaults) — the extra reach is
+funded out of the business share, and accrued pool legs can never exceed the
+earmark. Needs `TREASURY_DWELL_ATA` configured; unset disables the rail (400)
+while USDC/SOL keep working.
 
 The lander presents all three rails as a segmented slider in order — **Pay
 with USDC/SOL** (default), **Pay with $DWELL** (badged "10% boost"), **Credit
