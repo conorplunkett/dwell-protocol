@@ -426,14 +426,20 @@ async function renderTransactions(view) {
   const railBadge = (r) => h("span", { class: "badge " + (r || "") }, r === "dwell" ? "$DWELL" : (r || "—").toUpperCase());
 
   // ── Crypto orders (USDC / SOL / $DWELL) ──
-  view.append(h("div", { class: "card" },
+  const cryptoRows = d.crypto || [];
+  const cryptoCard = h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, "Crypto orders"),
-      h("p", { class: "hint" }, d.crypto.length + " order" + (d.crypto.length === 1 ? "" : "s") +
-        " — USDC & SOL settle on-chain into your treasury/rewards wallets. Every attempt is logged: awaiting → confirmed / expired / failed.")),
-    table([
+      h("p", { class: "hint" }, d.cryptoError
+        ? "USDC, SOL & $DWELL orders — every attempt is logged: awaiting → confirmed / expired / failed."
+        : cryptoRows.length + " order" + (cryptoRows.length === 1 ? "" : "s") +
+          " — USDC & SOL settle on-chain into your treasury/rewards wallets. Every attempt is logged: awaiting → confirmed / expired / failed.")));
+  if (d.cryptoError) {
+    cryptoCard.append(h("div", { class: "empty" }, d.cryptoError));
+  } else {
+    cryptoCard.append(table([
       { label: "When" }, { label: "Rail" }, { label: "Advertiser" }, { label: "Ad" },
       { label: "Amount", num: true }, { label: "Status" }, { label: "On-chain" },
-    ], d.crypto, (o) => [
+    ], cryptoRows, (o) => [
       dt(o.createdAt),
       td(railBadge(o.rail)),
       o.advertiserEmail ? h("span", { class: "mono" }, o.advertiserEmail) : h("span", { class: "muted" }, "anon"),
@@ -445,7 +451,9 @@ async function renderTransactions(view) {
       td(o.txSignature
         ? h("a", { href: "https://solscan.io/tx/" + encodeURIComponent(o.txSignature), target: "_blank", rel: "noopener", class: "mono" }, short(o.txSignature, 8))
         : h("span", { class: "muted" }, "—")),
-    ])));
+    ]));
+  }
+  view.append(cryptoCard);
 
   // ── Card charges (pulled live from Stripe) ──
   const cardCard = h("div", { class: "card" },
