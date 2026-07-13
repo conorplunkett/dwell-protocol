@@ -102,8 +102,8 @@ and refunded in-kind if it's rejected. Both actions are signed server-side:
 - **`TREASURY_SIGNER_SECRET`** — base58 64-byte ed25519 keypair (what
   `solana-keygen` exports). Used ONLY by the accept-swap and reject-refund
   paths; never by checkout. Treat it like `STRIPE_SECRET_KEY`.
-- Its pubkey **must equal `TREASURY_SOL_ACCOUNT`** (boot refuses otherwise)
-  and must own `TREASURY_USDC_ATA` and `TREASURY_DWELL_ATA`. Set
+- Its pubkey **must equal `TREASURY_SOL_ACCOUNT`** (a mismatch disables the
+  hedging path — see §4) and must own `TREASURY_USDC_ATA` and `TREASURY_DWELL_ATA`. Set
   `REVENUE_SOL_ACCOUNT` to the same key — swaps/refunds move the FULL
   received amount from the signer account.
 - **`SWAP_SLIPPAGE_BPS`** (default 100) — execution slippage bound on the
@@ -162,15 +162,33 @@ checkout) returns `401`.
 
 ## 4. Boot-time safety rails
 
-`server/src/boot.js` will refuse to start half-configured, so you can't leave
-the rail in a broken partial state:
+A half-configured crypto rail can't go live. These are the pairings the backend
+checks at boot:
 
 - `TREASURY_USDC_ATA` and `REVENUE_USDC_ATA` must be set **together** (or neither).
 - `TREASURY_SOL_ACCOUNT` and `REVENUE_SOL_ACCOUNT` must be set **together**.
 - `DWELL_MINT` (post-launch only) requires `TREASURY_DWELL_ATA`.
-- `TREASURY_SIGNER_SECRET`'s pubkey must equal `TREASURY_SOL_ACCOUNT`; SOL or
-  $DWELL rails configured without a signer boot with a loud warning (accepts
-  and rejects on those rails will fail until it's set).
+- `TREASURY_SIGNER_SECRET`'s pubkey must equal `TREASURY_SOL_ACCOUNT` (and it must
+  be a valid base58 64-byte keypair); SOL or $DWELL rails configured without a
+  signer boot with a loud warning (accepts and rejects on those rails will fail
+  until it's set).
+
+A mistake here is treated as a config error in an **optional** feature, not a
+reason to take the whole service down: boot logs `crypto config error (SOL/USDC/
+DWELL rails disabled until fixed)` and records it as `config.cryptoConfigError`,
+then keeps serving. Only `requireSigner()` — the one code path that actually
+spends from the treasury (hedge swaps / refunds) — refuses, with that message,
+until it's fixed. Checkout, login, ads, and every other route stay up. This
+holds for **both** the Node server (`server/src/boot.js`) and the `dwell-api`
+edge function.
+
+> This is deliberate, and it's here because of a real outage: a `dwell-api`
+> secret was edited to set `DWELL_MINT` without `TREASURY_DWELL_ATA`, the boot
+> check threw at module load, and — because edge-function secrets are edited in
+> the dashboard with no deploy step — **every** route (device register, ads,
+> auth) started returning `WORKER_ERROR` 500s, breaking terminal sign-in for new
+> users. After editing crypto secrets, grep the function logs for `crypto config
+> error` to confirm the rail is happy.
 
 Until the USDC pair is set, the lander's crypto button says "not live here yet"
 and falls back to card. The moment both are set and deployed, it goes live.
