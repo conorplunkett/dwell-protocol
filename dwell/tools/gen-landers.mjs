@@ -414,18 +414,9 @@ function buildAdvertisersPage() {
     /<meta property="og:description" content="[\s\S]*?" \/>/,
     `<meta property="og:description" content="${description}" />`,
   );
-  out = sub(
-    out,
-    "twitter:title",
-    /<meta name="twitter:title" content="[\s\S]*?" \/>/,
-    `<meta name="twitter:title" content="${title}" />`,
-  );
-  out = sub(
-    out,
-    "twitter:description",
-    /<meta name="twitter:description" content="[\s\S]*?" \/>/,
-    `<meta name="twitter:description" content="${description}" />`,
-  );
+  // No twitter:title/description to rewrite — the head carries only
+  // twitter:card, and Twitter/X derives the title, description, and image from
+  // the og:* tags above.
   out = sub(
     out,
     "og:url",
@@ -490,19 +481,9 @@ for (const l of LANDERS) {
     /<meta property="og:description" content="[\s\S]*?" \/>/,
     `<meta property="og:description" content="${l.ogDescription}" />`,
   );
-  // Twitter title/description mirror the OG copy (the share image is shared).
-  out = sub(
-    out,
-    "twitter:title",
-    /<meta name="twitter:title" content="[\s\S]*?" \/>/,
-    `<meta name="twitter:title" content="${l.ogTitle}" />`,
-  );
-  out = sub(
-    out,
-    "twitter:description",
-    /<meta name="twitter:description" content="[\s\S]*?" \/>/,
-    `<meta name="twitter:description" content="${l.ogDescription}" />`,
-  );
+  // No twitter:title/description to rewrite — the head carries only
+  // twitter:card, and Twitter/X derives the title, description, and image from
+  // the og:* tags above (the share image is shared across landers regardless).
   // Point og:url + the canonical at this lander's short campaign URL, so shares
   // and search both resolve to /chatgpt rather than the homepage.
   out = sub(
