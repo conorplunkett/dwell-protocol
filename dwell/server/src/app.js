@@ -467,9 +467,10 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
       return json(res, 400, { error: `budget must be $${(P.minBudgetCents / 100).toFixed(0)}–$${(P.maxBudgetCents / 100).toLocaleString("en-US")}` });
     }
     // Paying in $DWELL boosts the campaign's impressions (docs/08) — same
-    // spend, +DWELL_PAY_BOOST_BPS more reach. Impressions only; the rewards
-    // pool stays sized to the USD price, so the boost is extra reach, not a
-    // bigger viewer pool.
+    // spend, +DWELL_PAY_BOOST_BPS more reach. Every boosted impression bills
+    // the full per-view rate, so the rewards-pool earmark scales by the same
+    // boost at funding time (finalizeAcceptedSwap); the extra reach is funded
+    // out of the business share.
     const boostBps = payCurrency === "dwell" ? config.dwellPayBoostBps : 0;
     const baseImpressions = Math.floor((budgetCents * 1000) / cpmCents);
     const impressions = Math.floor(baseImpressions * (10000 + boostBps) / 10000);

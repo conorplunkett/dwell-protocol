@@ -30,9 +30,11 @@ retired) and **all development happens in `dwell/`**. Accepted interim
 deviations from the Separation list below, to launch now: (1) **shared
 Supabase project** — the `dwell-api` function and the `dwell` Postgres schema
 live in the legacy project (`DB_SCHEMA=dwell` isolation); migrate to an own
-project/org later, before scale. (2) **Email still sends from the legacy
-Resend account/domain** (env-level `MAIL_FROM`), until DWELL's own sending
-domain is verified. (3) The **existing Chrome Web Store listing is rebranded
+project/org later, before scale. (2) **Email stays entirely on the legacy
+freeai.fyi domain — sending and receiving** (env-level `MAIL_FROM`; contact
+and fulfillment inboxes on `contact.freeai.fyi`), until DWELL's own sending
+domain is verified and mailboxes exist. **No `@dwellprotocol.com` mailbox
+exists — never publish one** (see AGENTS.md). (3) The **existing Chrome Web Store listing is rebranded
 in place** (v0.7.0) instead of a new listing. Canonical domain:
 **dwellprotocol.com** (owned, live on the `dwell-protocol` Vercel project).
 

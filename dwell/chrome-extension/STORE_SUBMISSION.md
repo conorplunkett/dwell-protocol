@@ -59,7 +59,7 @@ manifest and pre-fills name, version, and icons. Then complete the tabs below.
 | **Category** | Productivity |
 | **Language** | English |
 | **Official website** | `https://dwellprotocol.com` |
-| **Support / contact** | `hello@dwellprotocol.com` |
+| **Support / contact** | `support@contact.freeai.fyi` (no `@dwellprotocol.com` mailbox exists — email stays on the verified freeai.fyi domain) |
 | **Privacy policy URL** | `https://dwellprotocol.com/privacy` |
 
 **Detailed description** (paste into the description box):

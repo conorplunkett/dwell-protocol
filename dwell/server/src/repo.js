@@ -692,12 +692,15 @@ function createRepo(pool) {
            JSON.stringify({ impressions, rail: o.pay_currency, swapTx: swapSignature, settlement: "usdc-at-acceptance" })]
         );
         if (tokenSplit) {
-          const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps)) / 10000n;
+          // Boosted impressions bill the full per-view rate, so the earmark
+          // scales by the same boost — the extra reach is funded out of the
+          // business share, and accrued pool legs can never exceed the tranche.
+          const tranche = (funded * BigInt(tokenSplit.reserveTrancheBps) * BigInt(10000 + boostBps)) / 100000000n;
           await c.query(
             `insert into ledger (entry_type, amount_millicents, campaign_id, meta)
              values ('reserve_allocation', $1, $2, $3)`,
             [tranche.toString(), o.campaign_id,
-             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, rail: o.pay_currency })]
+             JSON.stringify({ trancheBps: tokenSplit.reserveTrancheBps, boostBps, rail: o.pay_currency })]
           );
         }
         return { impressionsTotal: impressions, budgetCents: realizedCents };

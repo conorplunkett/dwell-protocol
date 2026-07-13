@@ -123,9 +123,8 @@ Florida LLC (opco)               Florida LLC or DE C-corp (opco)
 
 **dwells (always):** described as what they are — dollar-denominated earned
 reward credits (1,000 dwells = $1.00), redeemable for USDC (10% fee) or
-Claude credits (10% boost). Never described as "backed" — they are unsecured
-obligations of the company, not claims on a segregated reserve. No
-token ticker anywhere near earn copy; dwells never convert to $DWELL.
+Claude credits (10% boost). No token ticker anywhere near earn copy; dwells
+never convert to $DWELL.
 
 **$DWELL surfaces (tokenomics page, raise page):** facts only — supply,
 allocation, Bedrock constraints, what the token is not. Never "ownership,"
