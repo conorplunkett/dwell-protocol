@@ -5605,16 +5605,25 @@ route("GET", "/v1/admin/transactions", async (ctx: any) => {
   if (!adminOk(ctx)) return json(401, { error: "bad admin key" });
   const limit = ctx.query.get("limit");
 
-  const orders = await repo.listCryptoOrders({ limit, status: ctx.query.get("status") || null });
+  // Each rail is fetched independently and its failure is confined to its own
+  // table — one broken rail must never blank the whole transactions view. (A
+  // missing usdc_orders column once 500'd the entire page; see the
+  // usdc_orders_payment_verifier_columns migration.)
   const realEmail = (e: any) => (e && !e.endsWith("@wallet.invalid") ? e : null);
-  const cryptoTx = orders.map((o: any) => ({
-    id: o.id, rail: o.pay_currency, status: o.status, failReason: o.fail_reason,
-    priceUsd: Number(o.price_micro_usdc) / 1e6,
-    payTotalUnits: o.pay_total_units, payFeeUnits: o.pay_fee_units,
-    reference: o.reference_pubkey, txSignature: o.tx_signature,
-    brand: o.brand, adLine: o.ad_line, advertiserEmail: realEmail(o.advertiser_email),
-    createdAt: o.created_at, expiresAt: o.expires_at,
-  }));
+  let cryptoTx: any[] = [], cryptoError: string | null = null;
+  try {
+    const orders = await repo.listCryptoOrders({ limit, status: ctx.query.get("status") || null });
+    cryptoTx = orders.map((o: any) => ({
+      id: o.id, rail: o.pay_currency, status: o.status, failReason: o.fail_reason,
+      priceUsd: Number(o.price_micro_usdc) / 1e6,
+      payTotalUnits: o.pay_total_units, payFeeUnits: o.pay_fee_units,
+      reference: o.reference_pubkey, txSignature: o.tx_signature,
+      brand: o.brand, adLine: o.ad_line, advertiserEmail: realEmail(o.advertiser_email),
+      createdAt: o.created_at, expiresAt: o.expires_at,
+    }));
+  } catch (err: any) {
+    cryptoError = "couldn't load crypto orders: " + (err?.message || "unknown error");
+  }
 
   const stripeLive = !!config.stripeSecretKey && config.stripeSecretKey !== "sk_test_devnet";
   let card: any[] = [], cardError: string | null = null;
@@ -5635,7 +5644,7 @@ route("GET", "/v1/admin/transactions", async (ctx: any) => {
       cardError = "couldn't reach Stripe: " + (err?.message || "unknown error");
     }
   }
-  return json(200, { crypto: cryptoTx, card, cardError, stripeLive });
+  return json(200, { crypto: cryptoTx, cryptoError, card, cardError, stripeLive });
 });
 
 // ── completion-receipt preview (no stamp) + manual once-only send (+ force resend) ──
