@@ -8,6 +8,7 @@ const { verifyWebhookSignature } = require("./stripe");
 const { GIFT_PLANS, GIFT_MONTHS, giftPriceCents } = require("./giftcards");
 const { runPayouts } = require("./payouts");
 const { escapeHtml, isCleanAdLine, normalizeHexColor, normalizeTimescale, resolveChangePct } = require("./util");
+const { createTicker } = require("./ticker");
 
 // Crew = the affiliate "earn with your friends" panel in the extension popup.
 // Ten slots: each is a joined friend, a pending invite, or an open invite form.
@@ -197,6 +198,12 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     const rows = await repo.leaderboard();
     json(res, 200, { leaderboard: rows.map((r, i) => ({ rank: i + 1, brand: r.brand, line: r.ad_line, change: resolveChangePct(r.changes, r.change_timescale) ?? undefined })) });
   });
+
+  // Live %-change data for the lander's ticker badges — cached DexScreener
+  // proxy (see ticker.js). { tokens: [] } when unconfigured or the feed is
+  // down; the frontend then keeps its built-in demo values.
+  const ticker = createTicker(config);
+  route("GET", "/v1/ticker", async (req, res) => json(res, 200, await ticker.getTicker()));
 
   // ---------- devices & events ----------
   route("POST", "/v1/devices/register", async (req, res) => {
