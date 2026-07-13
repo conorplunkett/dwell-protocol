@@ -25,8 +25,8 @@ import { Buffer } from "node:buffer";
 import postgres from "npm:postgres@3.4.4";
 
 // Crew = the affiliate "earn with your friends" panel in the extension popup.
-// Five slots: each is a joined friend, a pending invite, or an open invite form.
-const CREW_SIZE = 5;
+// Ten slots: each is a joined friend, a pending invite, or an open invite form.
+const CREW_SIZE = 10;
 
 // ───────────────────────────── config ──────────────────────────────────────
 const env = (k: string, d = "") => Deno.env.get(k) ?? d;

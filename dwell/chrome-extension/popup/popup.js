@@ -57,9 +57,14 @@ function paintHero() {
     if (!lastLinked) {
       progress.innerHTML = "<b>Connect your account</b> to start earning";
     } else {
-      progress.innerHTML = `≈ ${money(earnings)} of earned ad value <span class="muted">(estimate)</span>`;
+      progress.innerHTML = `≈ ${money(earnings)} USDC`;
     }
   }
+
+  // Redeem CTA doubles as the connect prompt: there's nothing to redeem while
+  // the device isn't linked to an account (the portal link still gets them there).
+  const cta = $("redeem-cta");
+  if (cta) cta.textContent = lastLinked ? "Redeem dwells →" : "Account disconnected →";
 
   // Stats
   // "ads watched" = distinct ads seen (adViews), NOT the 2s billing ticks in

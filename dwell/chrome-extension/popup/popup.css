@@ -249,7 +249,7 @@ body {
   padding: 11px 18px; border-top: 1px solid var(--line);
 }
 .account-status .acct-dot {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--gray-2); flex: 0 0 auto;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--err-fg); flex: 0 0 auto;
 }
 .account-status.connected .acct-dot { background: var(--ok-fg); }
 .account-status .acct-text {
