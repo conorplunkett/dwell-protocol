@@ -36,8 +36,9 @@ function changeBadgeHtml(src) {
 }
 
 // --- Live ticker (top banner) ---
-// Seeded with mock winning bids. When the API is wired, the leaderboard feed
-// can populate this the same way loadLeaderboard() fills the board below.
+// Seeded with mock winning bids; the `changes` maps are demo fallbacks that
+// loadTicker() (below, near loadLeaderboard) overwrites with live market data
+// from /v1/ticker when the API is reachable.
 // Each entry carries a little brand logo chip (initial + brand color) shown
 // before the name in the moving banner, plus a recent-change % badge.
 const TICKER_ADS = [
@@ -47,7 +48,9 @@ const TICKER_ADS = [
   { brand: "$fwog", img: "assets/tokens/fwog.png", color: "#7fae6e", text: "Just a little fwog", timescale: "auto", changes: { "5m": 3, "15m": 7, "1h": 15, "4h": 33, "1d": 88 } },
   { brand: "$chillguy", img: "assets/tokens/chillguy.png", color: "#8c9a76", text: "Just a chill guy", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } },
 ];
-(function buildTicker() {
+// Named (not an IIFE) so loadTicker() below can rebuild the banner once live
+// %-change data lands; called immediately so the demo values paint first.
+function buildTicker() {
   const track = document.getElementById("ticker-track");
   if (!track) return;
   const cell = (ad) =>
@@ -59,7 +62,8 @@ const TICKER_ADS = [
   // Duplicate the run so the -50% scroll loops seamlessly.
   const run = TICKER_ADS.map(cell).join("");
   track.innerHTML = run + run;
-})();
+}
+buildTicker();
 
 // --- Stock-side spinner word rotation (the "before" card) ---
 const STOCK_WORDS = [
@@ -82,11 +86,11 @@ if (wordStock) {
 // Keep each line short — it must fit ONE line in the demo card at both desktop
 // and mobile widths (verified per-ad; see styles.css .brand-line).
 const ADS = [
-  { img: "assets/tokens/ansem.png", color: "#0a0a0a", text: "$ansem · The black bull", timescale: "auto", changes: { "5m": 4.2, "15m": 12, "1h": 38, "4h": 96, "1d": 235 } },
-  { img: "assets/tokens/troll.png", color: "#f2f2f2", text: "$troll · Troll szn", timescale: "auto", changes: { "5m": 2.1, "15m": 9, "1h": 21, "4h": -7, "1d": 64 } },
-  { img: "assets/tokens/pepe.png", color: "#4c9a2a", text: "$pepe · Feels good man", timescale: "5m", changes: { "5m": 1.3, "15m": 3, "1h": 8, "4h": 19, "1d": 47 } },
-  { img: "assets/tokens/fwog.png", color: "#7fae6e", text: "$fwog · Just a little fwog", timescale: "auto", changes: { "5m": 3, "15m": 7, "1h": 15, "4h": 33, "1d": 88 } },
-  { img: "assets/tokens/chillguy.png", color: "#8c9a76", text: "$chillguy · Just a chill guy", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } },
+  { brand: "$ansem", img: "assets/tokens/ansem.png", color: "#0a0a0a", text: "$ansem · The black bull", timescale: "auto", changes: { "5m": 4.2, "15m": 12, "1h": 38, "4h": 96, "1d": 235 } },
+  { brand: "$troll", img: "assets/tokens/troll.png", color: "#f2f2f2", text: "$troll · Troll szn", timescale: "auto", changes: { "5m": 2.1, "15m": 9, "1h": 21, "4h": -7, "1d": 64 } },
+  { brand: "$pepe", img: "assets/tokens/pepe.png", color: "#4c9a2a", text: "$pepe · Feels good man", timescale: "5m", changes: { "5m": 1.3, "15m": 3, "1h": 8, "4h": 19, "1d": 47 } },
+  { brand: "$fwog", img: "assets/tokens/fwog.png", color: "#7fae6e", text: "$fwog · Just a little fwog", timescale: "auto", changes: { "5m": 3, "15m": 7, "1h": 15, "4h": 33, "1d": 88 } },
+  { brand: "$chillguy", img: "assets/tokens/chillguy.png", color: "#8c9a76", text: "$chillguy · Just a chill guy", timescale: "auto", changes: { "5m": -1, "15m": -3, "1h": -2, "4h": -8, "1d": -5 } },
 ];
 // Warm the cache so the rotating chip swaps its background-image instantly and
 // never flashes the previous token's logo mid-transition.
@@ -493,6 +497,40 @@ function getConfig() {
   if (!_cfgPromise) _cfgPromise = fetch(`${API_BASE}/v1/config`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   return _cfgPromise;
 }
+
+// Live %-change data for the ticker + rotator badges (/v1/ticker — a cached
+// DexScreener proxy). Merges live `changes` into TICKER_ADS/ADS by $symbol and
+// repaints; per-entry `timescale` and copy stay as-authored. Any miss — dev
+// mode, endpoint unconfigured ({tokens: []}), fetch failure — leaves the
+// built-in demo values in place, so the badges never go blank. The live feed
+// serves the "5m"/"1h"/"1d" windows (DexScreener has no 15m/4h);
+// resolveChangePct already skips missing windows.
+async function loadTicker() {
+  if (!API_BASE) return; // ?dev=1 mock mode: no network, demo values stand
+  try {
+    const res = await fetch(`${API_BASE}/v1/ticker`);
+    if (!res.ok) return;
+    const { tokens } = await res.json();
+    if (!Array.isArray(tokens) || !tokens.length) return;
+    const bySymbol = {};
+    for (const t of tokens) {
+      if (t && t.symbol && t.changes) bySymbol[t.symbol.toLowerCase()] = t.changes;
+    }
+    const apply = (ad) => {
+      const changes = ad.brand && bySymbol[ad.brand.toLowerCase()];
+      if (changes) ad.changes = changes;
+    };
+    TICKER_ADS.forEach(apply);
+    ADS.forEach(apply);
+    buildTicker(); // rebuild the banner with live badges
+    paintBrandChange(ADS[ai]); // repaint the currently shown rotator badge
+  } catch (_) {
+    /* offline — demo values stand */
+  }
+}
+loadTicker();
+// Keep long-lived tabs fresh; the server caches upstream, so this is cheap.
+if (API_BASE) setInterval(loadTicker, 60000);
 
 // Pull the live bid market into the leaderboard (escaped — advertiser text).
 // The whole section is hidden by default; it's only revealed when the admin has

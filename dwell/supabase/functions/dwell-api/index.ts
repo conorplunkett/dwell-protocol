@@ -85,6 +85,14 @@ function loadConfig() {
     twitterClientId: env("TWITTER_CLIENT_ID"),
     twitterClientSecret: env("TWITTER_CLIENT_SECRET"),
     twitterBearerToken: env("TWITTER_BEARER_TOKEN"),
+    // Live ticker badges (/v1/ticker): symbol=solana-mint pairs proxied via
+    // DexScreener. Empty/missing mints → the endpoint serves { tokens: [] }
+    // and the lander keeps its built-in demo numbers.
+    tickerTokens: String(env("TICKER_TOKENS"))
+      .split(",").map((s) => s.trim()).filter(Boolean)
+      .map((pair) => { const i = pair.indexOf("="); return i < 1 ? null : { symbol: pair.slice(0, i).trim(), mint: pair.slice(i + 1).trim() }; })
+      .filter((t) => t && t.symbol),
+    tickerCacheTtlMs: parseInt(env("TICKER_CACHE_TTL_MS", "60000"), 10),
     mailProvider: env("MAIL_PROVIDER", "console"),
     resendApiKey: env("RESEND_API_KEY"),
     mailFrom: env("MAIL_FROM"),
@@ -3380,6 +3388,57 @@ route("GET", "/v1/leaderboard", async () => {
   const rows = await repo.leaderboard();
   return json(200, { leaderboard: rows.map((r: any, i: number) => ({ rank: i + 1, brand: r.brand, line: r.ad_line, change: resolveChangePct(r.changes, r.change_timescale) ?? undefined })) });
 });
+
+// Live %-change data for the lander's ticker badges — inline port of
+// server/src/ticker.js: a cached DexScreener proxy (free, keyless).
+// DexScreener supplies m5/h1/h24 windows only, so we serve "5m"/"1h"/"1d"
+// and omit 15m/4h rather than fake them; resolveChangePct skips missing
+// windows. Failure posture: cache (TTL) → stale-on-error → { tokens: [] }
+// (frontend then keeps its built-in demo values). The cache is per-isolate —
+// fine, it only saves duplicate upstream fetches within a warm isolate.
+let tickerCache: any = { at: 0, data: null };
+async function getTicker() {
+  const ttl = config.tickerCacheTtlMs > 0 ? config.tickerCacheTtlMs : 60000;
+  if (tickerCache.data && Date.now() - tickerCache.at < ttl) return tickerCache.data;
+  const tokens = (config.tickerTokens || []).filter((t: any) => t.mint);
+  if (!tokens.length) return { tokens: [], updatedAt: null };
+  try {
+    const res = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${tokens.map((t: any) => t.mint).join(",")}`);
+    if (!res.ok) throw new Error(`dexscreener ${res.status}`);
+    const pairs = await res.json();
+    // keep the most liquid pair per mint (the deep pool is the honest price)
+    const best = new Map();
+    for (const p of Array.isArray(pairs) ? pairs : []) {
+      const mint = p && p.baseToken && p.baseToken.address;
+      if (!mint) continue;
+      const liq = Number(p.liquidity && p.liquidity.usd) || 0;
+      const cur = best.get(mint);
+      if (!cur || liq > cur.liq) best.set(mint, { liq, pair: p });
+    }
+    const out = tokens
+      .map(({ symbol, mint }: any) => {
+        const hit = best.get(mint);
+        if (!hit) return null;
+        const pc = hit.pair.priceChange || {};
+        const changes: any = {};
+        for (const [from, to] of [["m5", "5m"], ["h1", "1h"], ["h24", "1d"]]) {
+          const raw = pc[from];
+          if (raw == null || raw === "") continue; // Number(null) is 0 — not "no data"
+          const v = Number(raw);
+          if (Number.isFinite(v)) changes[to] = v;
+        }
+        if (!Object.keys(changes).length) return null;
+        return { symbol, changes, priceUsd: hit.pair.priceUsd, url: hit.pair.url };
+      })
+      .filter(Boolean);
+    tickerCache = { at: Date.now(), data: { tokens: out, updatedAt: new Date().toISOString() } };
+    return tickerCache.data;
+  } catch {
+    if (tickerCache.data) return tickerCache.data; // stale beats blank
+    return { tokens: [], updatedAt: null };
+  }
+}
+route("GET", "/v1/ticker", async () => json(200, await getTicker()));
 
 // ── devices & events ──
 route("POST", "/v1/devices/register", async () => json(200, await repo.registerDevice()));

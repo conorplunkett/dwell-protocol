@@ -64,6 +64,11 @@ function loadConfig(env = process.env) {
     // their X timeline (admin payout review only). Absent → verification is a
     // no-op that reports "unconfigured".
     twitterBearerToken: env.TWITTER_BEARER_TOKEN || "",
+    // Live ticker badges (/v1/ticker): symbol=solana-mint pairs proxied via
+    // DexScreener. Empty/missing mints → the endpoint serves { tokens: [] }
+    // and the lander keeps its built-in demo numbers.
+    tickerTokens: require("./ticker").parseTickerTokens(env.TICKER_TOKENS),
+    tickerCacheTtlMs: parseInt(env.TICKER_CACHE_TTL_MS || "60000", 10),
     // mail
     mailProvider: env.MAIL_PROVIDER || "console",
     resendApiKey: env.RESEND_API_KEY,
