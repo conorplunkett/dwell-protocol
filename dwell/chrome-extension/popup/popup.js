@@ -61,12 +61,14 @@ function paintHero() {
     }
   }
 
-  // Placeholder-ad notice: the viewer is linked, has yet to see a real (funded)
-  // ad, and their whole balance is the single dwell the placeholder ad grants.
-  // Nudge them that real inventory pays up to 100 dwells a view.
+  // Placeholder-ad notice: the viewer is linked and has yet to see a real
+  // (funded) ad, so their whole balance is placeholder-ad dwells. Stays up while
+  // adViews is 0 no matter how many placeholder dwells accrue — it's the "never
+  // seen a real ad" state — and clears the moment a real ad is watched. Nudge
+  // them that real inventory pays up to 100 dwells a view.
   const phNotice = $("placeholder-notice");
   if (phNotice) {
-    phNotice.hidden = !(lastLinked && toDwells(earnings) === 1 && (s.adViews || 0) === 0);
+    phNotice.hidden = !(lastLinked && (s.adViews || 0) === 0 && toDwells(earnings) >= 1);
   }
 
   // Redeem CTA doubles as the connect prompt: there's nothing to redeem while
