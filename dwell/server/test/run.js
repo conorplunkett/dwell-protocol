@@ -120,6 +120,7 @@ globalThis.fetch = async (url, opts) => {
     revenueShare: 0.9, dailyImpressionCap: 5000, ipDailyImpressionCap: 0, dailyClickCap: 5, payoutThresholdCents: 1000,
     payoutFeeBps: 1000, redemptionFeeBps: 1000, // the protocol's 10% cut on cash payouts and gift redemptions
     referralRewardCents: 2000, referralCap: 10,
+    signupRewardMillicents: 500, // 5 dwells per new ad-surface waitlist signup
     affiliateRewardBps: 1000, affiliateCapPeople: 1000,
     stripeWebhookSecret: WEBHOOK_SECRET, siteUrl: "https://dwellprotocol.com",
     apiBaseUrl: "", corsOrigin: "https://dwellprotocol.com", adminKey: "test-admin",
@@ -1571,11 +1572,27 @@ globalThis.fetch = async (url, opts) => {
     assert.strictEqual(j1.body.alreadyJoined, false);
     await api("POST", "/v1/web/waitlist", { surface: "vscode_extension" }, { Authorization: `Bearer ${sess}` });
 
+    // each new signup posts a one-time 5-dwell (500 millicent) reward to the ledger
+    const rewardRows = (await poolNs.query(
+      `select amount_millicents, meta from ledger
+        where user_id = $1 and entry_type = 'signup_reward_credit' order by created_at`, [uid]
+    )).rows;
+    assert.strictEqual(rewardRows.length, 2, "one reward per joined surface");
+    assert.ok(rewardRows.every((r) => Number(r.amount_millicents) === 500), "5 dwells = 500 millicents");
+    assert.ok(rewardRows.every((r) => r.meta.description === "signup reward"), 'description is "signup reward"');
+    assert.deepStrictEqual(rewardRows.map((r) => r.meta.surface).sort(), ["desktop", "vscode_extension"]);
+
     // re-joining a surface is a no-op (no duplicate row)
     const dup = await api("POST", "/v1/web/waitlist", { surface: "desktop" }, { Authorization: `Bearer ${sess}` });
     assert.strictEqual(dup.body.alreadyJoined, true);
     const rows = (await poolNs.query("select surface from waitlist_signups where user_id = $1 order by surface", [uid])).rows;
     assert.deepStrictEqual(rows.map((r) => r.surface), ["desktop", "vscode_extension"]);
+
+    // re-joining does not post a second reward — still two, and the balance reflects them
+    assert.strictEqual((await poolNs.query(
+      "select count(*)::int as n from ledger where user_id = $1 and entry_type = 'signup_reward_credit'", [uid]
+    )).rows[0].n, 2, "re-join must not double-credit");
+    assert.strictEqual((await repo.balanceForUser(uid)).balanceMillicents, 1000, "two 5-dwell rewards are spendable");
 
     // catalog now reflects the joined state
     const cat2 = await api("GET", "/v1/web/waitlist", undefined, { Authorization: `Bearer ${sess}` });

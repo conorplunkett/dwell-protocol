@@ -343,6 +343,7 @@ alter table ledger add constraint ledger_entry_type_check check (entry_type in (
   'payout_debit',          -- transferred to developer's bank           (- user)
   'gift_redemption_debit', -- redeemed for a Claude gift card           (- device)
   'referral_credit',       -- $20 bonus for a qualified referral         (+ user)
+  'signup_reward_credit',  -- 5-dwell bonus per new ad-surface waitlist signup (+ user)
   'affiliate_credit',      -- 10% of an affiliated user's earnings       (+ user)
   'admin_credit',          -- manual balance adjustment up   (admin)    (+ user/device)
   'admin_debit',           -- manual balance adjustment down (admin)    (- user/device)
