@@ -1,10 +1,14 @@
 name: Release macOS DMG
 
 # Builds the Dwell Sponsor Overlay (ad-hoc signed, universal) and publishes it
-# as a GitHub Release, which is what the site's /download/mac redirect serves:
-#   https://github.com/conorplunkett/dwell-protocol/releases/latest/download/Dwell.dmg
-# Manual dispatch only — run it whenever the desktop app should ship. Marking
-# the release latest is what flips the download link to the new build.
+# as a GitHub Release on the PUBLIC mirror repo, which is what the site's
+# /download/mac redirect serves:
+#   https://github.com/conorplunkett/dwell-protocol-public/releases/latest/download/Dwell.dmg
+# The source lives here (private); only the release binary is published public so
+# the download works for anyone. Requires the PUBLIC_REPO_TOKEN secret (a PAT with
+# contents:write on dwell-protocol-public) — the default GITHUB_TOKEN can't write
+# to another repo. Manual dispatch only — run it whenever the desktop app should
+# ship. Marking the release latest is what flips the download link to the new build.
 on:
   workflow_dispatch:
     inputs:
@@ -26,11 +30,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build + package (ad-hoc signed, universal)
         run: BUILD_NUMBER="${{ github.run_number }}" DMG_FANCY=0 ./packaging/bundle.sh
-      - name: Create release and upload the DMG
+      - name: Create release and upload the DMG (on the public mirror repo)
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
           gh release create "${{ inputs.tag }}" \
+            --repo conorplunkett/dwell-protocol-public \
             --title "Dwell Sponsor Overlay ${{ inputs.tag }}" \
             --notes "Ad-hoc signed macOS build (Apple silicon + Intel, macOS 13+). First launch: right-click the app → Open. Served at dwellprotocol.com/download/mac." \
             --latest \

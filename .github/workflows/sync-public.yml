@@ -1,0 +1,63 @@
+name: Sync public surfaces
+
+# Mirrors the client-side surfaces (Chrome extension, desktop app, terminal) from
+# this private repo to the PUBLIC repo conorplunkett/dwell-protocol-public. Only
+# these folders are copied — the server, Supabase functions, contracts, and
+# FORGERY-SURFACE.md never leave the private repo.
+#
+# The public repo is what makes the macOS desktop download work for anyone
+# (release assets on a private repo 404 for logged-out visitors). The DMG binary
+# itself is published by release-dmg.yml; this workflow keeps the *source* in sync.
+#
+# Requires the PUBLIC_REPO_TOKEN secret: a Personal Access Token with
+# contents:write on dwell-protocol-public. The default GITHUB_TOKEN is scoped to
+# this repo only and cannot push to another repo.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dwell/chrome-extension/**'
+      - 'dwell/desktop/**'
+      - 'dwell/terminal/**'
+      - '.github/workflows/sync-public.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: sync-public
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+
+      - name: Clone public mirror repo
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/conorplunkett/dwell-protocol-public.git" public
+
+      - name: Copy public surfaces
+        run: |
+          # --delete so files removed in the private repo are removed in the mirror.
+          rsync -a --delete dwell/chrome-extension/ public/chrome-extension/
+          rsync -a --delete dwell/desktop/         public/desktop/
+          rsync -a --delete dwell/terminal/        public/terminal/
+          # Stamp a README so the public repo explains itself. -f keeps it idempotent.
+          cp -f .github/mirror/README-public.md public/README.md
+
+      - name: Commit and push mirror
+        working-directory: public
+        run: |
+          git config user.name "dwell-mirror-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to sync."
+          else
+            git commit -m "Sync public surfaces from private repo @ ${GITHUB_SHA:0:7}"
+            git push
+          fi
