@@ -1186,6 +1186,10 @@ function renderChart(series, window) {
   const buckets = fillSeries(series, window);
   const totalPts = buckets.reduce((s, p) => s + p.points, 0);
   const totalEvents = buckets.reduce((s, p) => s + p.count, 0);
+  // Plot the running total within the window, so the line always climbs and
+  // quiet buckets show as flat stretches instead of drops to zero.
+  let running = 0;
+  for (const b of buckets) b.points = running += b.points;
   $("earn-chart-foot").textContent =
     `${pts(totalPts)} points across ${totalEvents.toLocaleString()} event${totalEvents === 1 ? "" : "s"}`;
 
@@ -1216,7 +1220,7 @@ function renderChart(series, window) {
   }).join("");
 
   const dots = max > 0
-    ? buckets.map((p, i) => p.points > 0
+    ? buckets.map((p, i) => p.count > 0
         ? `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(p.points).toFixed(1)}" r="2.6" class="ec-dot" />`
         : "").join("")
     : "";
