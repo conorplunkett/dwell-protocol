@@ -114,8 +114,12 @@ echo "==> zipping (notarization-friendly)"
 ditto -c -k --keepParent "$APP" "$BUILD_DIR/$PRODUCT_NAME.zip"
 
 echo "==> building .dmg (drag-to-Applications)"
-# Fancy layout (background image + positioned icons) needs Finder scripting,
-# which is unreliable headless — default on for local builds, off in CI.
+# Fancy layout (background image + positioned icons, app beside an
+# Applications drop target). Preferred path is create-dmg, which retries the
+# Finder scripting enough to work headless (CI); without it we fall back to
+# raw AppleScript locally, then to a plain dmg as a last resort. The plain
+# dmg still installs fine (it has the Applications symlink) but opens as a
+# generic folder window instead of the drag-to-install layout.
 DMG_FANCY="${DMG_FANCY:-1}"
 DMG_STAGE="$BUILD_DIR/dmg"
 DMG="$BUILD_DIR/$PRODUCT_NAME.dmg"
@@ -129,6 +133,30 @@ ln -s /Applications "$DMG_STAGE/Applications"   # the drag target
 build_plain_dmg() {
   hdiutil create -volname "$VOL_NAME" -srcfolder "$DMG_STAGE" \
     -fs HFS+ -format UDZO -ov "$DMG" >/dev/null
+}
+
+# create-dmg (https://github.com/create-dmg/create-dmg) adds the Applications
+# link, background, and icon positions itself — feed it a stage containing
+# only the .app.
+build_create_dmg() {
+  local stage="$BUILD_DIR/dmg-create"
+  rm -rf "$stage"
+  mkdir -p "$stage"
+  cp -R "$APP" "$stage/"
+  create-dmg \
+    --volname "$VOL_NAME" \
+    --background packaging/assets/dmg-background.png \
+    --window-pos 200 120 \
+    --window-size 600 400 \
+    --icon-size 128 \
+    --icon "$PRODUCT_NAME.app" 165 175 \
+    --app-drop-link 435 175 \
+    --hide-extension "$PRODUCT_NAME.app" \
+    --hdiutil-quiet \
+    "$DMG" "$stage"
+  local rc=$?
+  rm -rf "$stage"
+  return $rc
 }
 
 build_fancy_dmg() {
@@ -165,12 +193,23 @@ APPLESCRIPT
 
 made_dmg=0
 if [ "$DMG_FANCY" = "1" ]; then
-  if build_fancy_dmg; then
-    made_dmg=1
-  else
-    echo "    (fancy layout failed — falling back to a plain dmg)"
-    hdiutil detach "/Volumes/$VOL_NAME" >/dev/null 2>&1 || true
-    rm -f "$RW_DMG" "$DMG"
+  if command -v create-dmg >/dev/null 2>&1; then
+    if build_create_dmg; then
+      made_dmg=1
+    else
+      echo "    (create-dmg failed — falling back)"
+      hdiutil detach "/Volumes/$VOL_NAME" >/dev/null 2>&1 || true
+      rm -f "$DMG"
+    fi
+  fi
+  if [ "$made_dmg" = "0" ]; then
+    if build_fancy_dmg; then
+      made_dmg=1
+    else
+      echo "    (fancy layout failed — falling back to a plain dmg)"
+      hdiutil detach "/Volumes/$VOL_NAME" >/dev/null 2>&1 || true
+      rm -f "$RW_DMG" "$DMG"
+    fi
   fi
 fi
 [ "$made_dmg" = "1" ] || build_plain_dmg
