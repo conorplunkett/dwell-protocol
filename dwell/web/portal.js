@@ -475,6 +475,25 @@ async function loadServiceActivation() {
   applyServiceActivation(body && body.sources ? body.sources : body);
 }
 
+// A surface flips to "Active" server-side only on its first tagged credit — and
+// right after desktop/terminal onboarding that first credit lands a few seconds
+// AFTER this page is already open (the client links, then earns). A one-shot
+// load on dashboard entry would strand the row on "Inactive" until a manual
+// reload — exactly the "logged in but it never goes active" report. So keep the
+// status fresh: poll it, and re-check the moment the tab regains focus (the
+// common "used the app, came back to the site" path). Idempotent — the guard
+// makes sure only one poller and one set of listeners ever attach.
+let sourceActivationPolling = false;
+function startSourceActivationRefresh() {
+  loadServiceActivation();
+  if (sourceActivationPolling) return;
+  sourceActivationPolling = true;
+  const refresh = () => { if (document.visibilityState !== "hidden") loadServiceActivation(); };
+  setInterval(refresh, 20000);
+  document.addEventListener("visibilitychange", refresh);
+  window.addEventListener("focus", refresh);
+}
+
 // ---- referrals (self-serve: everyone earns the protocol's 10% referrer
 // share; the form is the partner upgrade for uncapped referrals) ----
 async function loadAffiliate() {
@@ -1401,6 +1420,9 @@ async function maybeLinkDevice() {
   if (status === 200) {
     localStorage.removeItem(PENDING_LINK_KEY);
     toast("✓ Desktop app linked to your account", "ok");
+    // The just-linked device may already have anonymous earnings; surface them
+    // now so its logo lights up without waiting for the next poll or a reload.
+    loadServiceActivation();
   } else {
     console.warn("[link] /v1/devices/link failed:", status, body);
     toast("Couldn't link your desktop app — try again from the app's menu.", "err");
@@ -1470,6 +1492,7 @@ function enterDashboard(email) {
   if (rcpt) rcpt.textContent = email || "";
   setBalance(balancePoints); // paint whatever we know now; summary refines it
   loadEarnings("24h");
+  startSourceActivationRefresh(); // keep the per-surface "active" row live, not one-shot
   retrieveActivity();  // auto-load the ledger so it's ready when the tab opens
   loadPointsSummary(); // balance + the points strip
   loadGiftCatalog();   // redeem tab: gift grid prices
