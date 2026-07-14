@@ -1,14 +1,16 @@
 /* Dwell — macOS desktop onboarding.
  *
- * A faithful vanilla-JS port of the Claude Design handoff (onboarding/Onboarding.jsx).
- * Same 5 steps, same DOM/classes, same animations (spinner, ad cross-fade, earnings
- * ring) — but driven by real app state instead of the prototype's fake timers:
+ * A vanilla-JS port of the Claude Design handoff (onboarding/Onboarding.jsx),
+ * same DOM/classes and animations (spinner, ad cross-fade, earnings ring), but
+ * driven by real app state instead of the prototype's fake timers. Six steps:
+ * Welcome → How it works → Grant access → In your menu bar → Save dwells → All set.
  *
- *   • Step 3 "Open System Settings" asks the app to open the Accessibility pane;
- *     the app polls the real permission and pushes it back via dwellBridge.setPermission,
- *     which gates "Continue" exactly like the mock's perm === "ok".
- *   • "Launch at login" registers/unregisters the app (SMAppService) through the bridge.
- *   • Step 4 sign-in opens Dwell's real web sign-in in the browser.
+ *   • "Grant access" — "Open System Settings" asks the app to open the Accessibility
+ *     pane; the app polls the real permission and pushes it back via
+ *     dwellBridge.setPermission, which gates "Continue" exactly like the mock's
+ *     perm === "ok". "Launch at login" registers/unregisters via SMAppService.
+ *   • "In your menu bar" — tells the user where Dwell now lives before we ask to link.
+ *   • "Save dwells" sign-in opens Dwell's real web sign-in in the browser.
  *   • "Open Dwell" closes the window.
  *
  * Swift ↔ JS bridge:
@@ -24,6 +26,7 @@
     { t: "Welcome" },
     { t: "How it works" },
     { t: "Grant access" },
+    { t: "In your menu bar" },
     { t: "Save dwells" },
     { t: "All set" },
   ];
@@ -49,8 +52,13 @@
     return "(" + (v < 0 ? "-" : "+") + body + "%)";
   }
 
-  var NEXT_LABEL = ["Get started", "Continue", "Continue", "Continue", "Open Dwell"];
+  var NEXT_LABEL = ["Get started", "Continue", "Continue", "Continue", "Continue", "Open Dwell"];
   var LAST = STEPS.length - 1;
+
+  // Named step indices — the flow gates on two of them, so reference them by name
+  // rather than magic numbers (keeps the checks correct if the order changes again).
+  var STEP_GRANT = 2;   // "Grant access" — Continue is gated on perm + launch
+  var STEP_LINK  = 4;   // "Save dwells" — sign-in / account link
 
   // ── State ──
   var step = 0;
@@ -227,6 +235,25 @@
       '</div>';
   }
 
+  // Step 4 "In your menu bar" — reassure the user where Dwell now lives, right
+  // after access is granted (the app appears in the menu bar) and before we ask
+  // them to link an account.
+  function paneMenuBar() {
+    return '' +
+      '<div class="fade">' +
+        '<span class="eyebrow">Where to find Dwell</span>' +
+        '<h1 class="h-title">Dwell now lives in your menu bar.</h1>' +
+        '<p class="h-sub">Look to the top-right of your screen for the ' + MENUBAR_WIRE_SVG + ' icon. Click it any time to pause Dwell, reopen this Setup, or check what you\'ve earned.</p>' +
+        '<div class="mbstep">' +
+          '<div class="mbstep-bar">' +
+            '<span class="mbstep-mark">' + MENUBAR_WIRE_SVG + '</span>' +
+          '</div>' +
+          '<div class="mbstep-cap">Your menu bar, top-right</div>' +
+        '</div>' +
+        '<div class="callout">Keep Dwell running here and it earns while your assistant thinks.</div>' +
+      '</div>';
+  }
+
   function paneSignin() {
     var head = '' +
       '<div class="callout callout-top">Come back to Setup via the ' + MENUBAR_WIRE_SVG + ' icon in your menu bar.</div>' +
@@ -312,7 +339,8 @@
       case 0: return paneWelcome();
       case 1: return paneHow();
       case 2: return panePermission();
-      case 3: return paneSignin();
+      case 3: return paneMenuBar();
+      case 4: return paneSignin();
       default: return paneDone();
     }
   }
@@ -340,14 +368,14 @@
 
   function navHTML() {
     // Step 3 (Grant access) needs both Accessibility *and* launch-at-login.
-    var canNext = step !== 2 || (perm === "ok" && launch);
+    var canNext = step !== STEP_GRANT || (perm === "ok" && launch);
     var dots = STEPS.map(function (_, i) {
       var cls = i === step ? "on" : i < step ? "past" : "";
       return '<i class="' + cls + '"></i>';
     }).join("");
     var btns = "";
     if (step > 0 && step < LAST) btns += '<button class="btn-back" data-act="back">Back</button>';
-    if (step === 3 && !sent)     btns += '<button class="btn-skip" data-act="skip">Skip for now</button>';
+    if (step === STEP_LINK && !sent)     btns += '<button class="btn-skip" data-act="skip">Skip for now</button>';
     btns += '<button class="btn-next" data-act="next"' + (canNext ? "" : " disabled") + '>' +
       esc(NEXT_LABEL[step]) + '<span class="arr">→</span></button>';
     return '<div class="nav"><div class="dots">' + dots + '</div><div class="nav-btns">' + btns + '</div></div>';
@@ -374,7 +402,7 @@
   function setLaunch(on) {
     launch = on;                               // optimistic; the app re-syncs the
     native("setLaunchAtLogin", { on: on });    // real registration state via setLaunchState
-    if (step === 2) render();                  // refresh the badge + the Continue gate
+    if (step === STEP_GRANT) render();                  // refresh the badge + the Continue gate
   }
 
   function requestPermission() {
@@ -388,7 +416,7 @@
     if (perm === "off") { perm = "wait"; render(); }
     if (!opened) {
       // Browser preview (no native bridge): simulate the grant like the prototype did.
-      setTimeout(function () { perm = "ok"; if (step === 2) render(); }, 1500);
+      setTimeout(function () { perm = "ok"; if (step === STEP_GRANT) render(); }, 1500);
     }
   }
 
@@ -500,18 +528,18 @@
     setPermission: function (state) {
       if (state === perm) return;
       perm = state;
-      if (step === 2) render();
+      if (step === STEP_GRANT) render();
     },
     setLaunchState: function (on) {
       launch = !!on;
-      if (step === 2) render();
+      if (step === STEP_GRANT) render();
     },
     setLinked: function (state, email) {
       var s = state === "ok" ? "ok" : "off";
       if (s === linked && (email || "") === linkedEmail) return;
       linked = s;
       linkedEmail = email || "";
-      if (step === 3) render();
+      if (step === STEP_LINK) render();
     },
   };
 

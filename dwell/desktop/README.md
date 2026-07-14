@@ -99,8 +99,9 @@ can't be forged), `GET /v1/me/earnings`. Point the app elsewhere with
 ## Onboarding window
 
 The Setup window (shown once on first launch, reopenable from the menu bar
-**Setup** item) is the Claude Design handoff onboarding — a 5-step flow
-(Welcome → How it works → Grant access → Save dwells → All set). It's the
+**Setup** item) is the Claude Design handoff onboarding — a 6-step flow
+(Welcome → How it works → Grant access → In your menu bar → Save dwells → All
+set). It's the
 design's HTML/CSS/JS rendered in a `WKWebView`, living under
 `Sources/SponsorOverlay/Resources/onboarding/`:
 

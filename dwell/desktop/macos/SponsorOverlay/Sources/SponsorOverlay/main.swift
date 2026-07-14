@@ -806,8 +806,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: setup / onboarding window
     //
-    // The 5-step onboarding (Welcome → How it works → Grant access → Save
-    // dwells → All set) is the Claude Design handoff, rendered pixel-for-pixel
+    // The 6-step onboarding (Welcome → How it works → Grant access → In your
+    // menu bar → Save dwells → All set) is the Claude Design handoff, rendered
     // in a WKWebView from the bundled Resources/onboarding/* assets. The web UI
     // is wired to real app state through a JS↔Swift bridge: it opens the
     // Accessibility pane, reflects the live permission, toggles launch-at-login,

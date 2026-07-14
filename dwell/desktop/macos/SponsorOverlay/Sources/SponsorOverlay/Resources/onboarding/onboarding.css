@@ -351,6 +351,34 @@
 }
 .callout .up { font-size: 14px; }
 
+/* ── Step "In your menu bar" ── */
+/* The menu-bar mark set inline in body copy needs an explicit size, or the SVG
+ * expands to fill its line box (the .callout rule below only covers callouts). */
+.h-sub .mb-wire { width: 15px; height: 15px; vertical-align: -3px; margin: 0 2px; }
+/* A small macOS-style menu-bar strip with the Dwell mark pinned to the right,
+ * so the copy's "top-right" has something to point at. */
+.mbstep { margin-top: 22px; }
+.mbstep-bar {
+  height: 34px; border-radius: 9px;
+  background: linear-gradient(180deg, #fbfaf7, #f2efe8);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 12px; gap: 16px;
+}
+.mbstep-mark {
+  color: var(--accent-d);
+  display: inline-flex; align-items: center;
+  padding: 4px; border-radius: 6px;
+  background: rgba(var(--accent-rgb), .1);
+}
+.mbstep-mark .mb-wire { width: 16px; height: 16px; display: block; }
+.mbstep-cap {
+  margin-top: 8px; text-align: right;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em;
+  color: var(--gray-2);
+}
+
 /* ── Footer / nav ── */
 .nav {
   flex: none; height: 68px; display: flex; align-items: center; justify-content: space-between;
