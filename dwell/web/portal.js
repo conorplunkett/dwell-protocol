@@ -215,6 +215,16 @@ function mockPost(path, payload) {
   return {};
 }
 
+// The desktop app's onboarding step opens this page with ?email=… and tells
+// the user in-app that a magic link is "on its way" — so this page must
+// actually send it, not just sit there waiting for the email to be retyped.
+// Captured before captureDeviceLink below, which scrubs the query string.
+let desktopEmail = "";
+(function captureDesktopEmail() {
+  const e = new URLSearchParams(location.search).get("email");
+  if (e) desktopEmail = e;
+})();
+
 // ---- device link + session capture (kept from the shared login flow) ----
 // The desktop app opens this page with its device creds in the fragment
 // (#linkDevice=…&deviceKey=…) so we can link that device to the account once
@@ -617,6 +627,23 @@ async function requestLink(email) {
   if (!API_BASE) { showError("Sign-in is unavailable right now."); return false; }
   const { status } = await apiPost("/v1/web/login", { email, referralCode: getReferralCode() });
   return status === 200;
+}
+
+// Auto-fires the magic link for the desktop app's ?email= handoff — the
+// onboarding step already told the user in-app that the link was sent, so
+// leaving it sitting in the field for them to retype/resubmit means it
+// silently never goes out.
+async function sendDesktopEmailLink() {
+  $("login-email").value = desktopEmail;
+  lastEmail = desktopEmail;
+  const ok = await requestLink(desktopEmail);
+  if (ok) {
+    $("auth-sent-msg").textContent =
+      `We sent a sign-in link to ${desktopEmail}. Check your inbox — it expires in 30 minutes.`;
+    showStep("sent");
+  } else {
+    showError("That didn't work. Double-check your email and try again.");
+  }
 }
 
 $("login-btn").addEventListener("click", async () => {
@@ -1385,7 +1412,11 @@ async function boot() {
     enterDashboard(MOCK.email);
     return;
   }
-  if (!getSession() || !API_BASE) return showLoginPage();
+  if (!getSession() || !API_BASE) {
+    showLoginPage();
+    if (desktopEmail) await sendDesktopEmailLink();
+    return;
+  }
   // Returning user: keep the splash up (login stays hidden) while we confirm
   // the session, so there's no flash of the login form before the dashboard.
   // A dead or revoked token falls back to login below.
