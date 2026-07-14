@@ -1131,7 +1131,9 @@ async function requestPayout() {
 }
 
 // ---- earnings dashboard ----
-let earnWindow = "7d";
+let earnWindow = "24h";
+let earnMode = "cumulative"; // "cumulative" | "period"
+let earnSeries = []; // last-fetched series, kept so mode toggles don't refetch
 
 // A bucket's points: the API may hand back points directly or a USD amount
 // from the shared earnings path — normalize to points (1,000 per dollar).
@@ -1146,12 +1148,12 @@ async function loadEarnings(window = earnWindow) {
   $("earn-today").textContent = pts(toPoints(body, "todayPoints", "todayUsd"));
   $("earn-month").textContent = pts(toPoints(body, "monthPoints", "monthUsd"));
   $("earn-lifetime").textContent = pts(toPoints(body, "lifetimePoints", "lifetimeUsd"));
-  const series = (body.series || []).map((b) => ({
+  earnSeries = (body.series || []).map((b) => ({
     t: b.t,
     points: toPoints(b, "points", "usd"),
     count: b.count || 0,
   }));
-  renderChart(series, window);
+  renderChart(earnSeries, window, earnMode);
   loadServiceActivation(); // light up the "Where you're earning" status row
 }
 
@@ -1181,15 +1183,20 @@ function fillSeries(series, window) {
   return out;
 }
 
-function renderChart(series, window) {
+function renderChart(series, window, mode = earnMode) {
   const host = $("earn-chart");
   const buckets = fillSeries(series, window);
   const totalPts = buckets.reduce((s, p) => s + p.points, 0);
   const totalEvents = buckets.reduce((s, p) => s + p.count, 0);
-  // Plot the running total within the window, so the line always climbs and
-  // quiet buckets show as flat stretches instead of drops to zero.
-  let running = 0;
-  for (const b of buckets) b.points = running += b.points;
+  if (mode === "cumulative") {
+    // Plot the running total within the window, so the line always climbs
+    // and quiet buckets show as flat stretches instead of drops to zero.
+    let running = 0;
+    for (const b of buckets) b.points = running += b.points;
+  }
+  $("earn-chart-sub").textContent = mode === "cumulative"
+    ? "Cumulative points over the selected window."
+    : "Points earned per period.";
   $("earn-chart-foot").textContent =
     `${pts(totalPts)} points across ${totalEvents.toLocaleString()} event${totalEvents === 1 ? "" : "s"}`;
 
@@ -1240,6 +1247,15 @@ $("earn-window").addEventListener("click", (e) => {
   $("earn-window").querySelectorAll(".ew-btn").forEach((b) => b.classList.remove("active"));
   btn.classList.add("active");
   loadEarnings(btn.dataset.window);
+});
+
+$("earn-mode").addEventListener("click", (e) => {
+  const btn = e.target.closest(".em-btn");
+  if (!btn || btn.classList.contains("active")) return;
+  $("earn-mode").querySelectorAll(".em-btn").forEach((b) => b.classList.remove("active"));
+  btn.classList.add("active");
+  earnMode = btn.dataset.mode;
+  renderChart(earnSeries, earnWindow, earnMode); // no refetch — same data, replotted
 });
 
 // ---- activity ledger ----
@@ -1453,7 +1469,7 @@ function enterDashboard(email) {
   const rcpt = $("recipient-email");
   if (rcpt) rcpt.textContent = email || "";
   setBalance(balancePoints); // paint whatever we know now; summary refines it
-  loadEarnings("7d");
+  loadEarnings("24h");
   retrieveActivity();  // auto-load the ledger so it's ready when the tab opens
   loadPointsSummary(); // balance + the points strip
   loadGiftCatalog();   // redeem tab: gift grid prices
