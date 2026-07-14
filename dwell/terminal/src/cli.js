@@ -49,7 +49,6 @@ async function setup(argv) {
   console.log(`We never read or write the contents of your prompts or Claude's replies.`);
   console.log(`real claude: ${realClaudePath}`);
   console.log(`shell rc: ${result.rcPath}`);
-  console.log(`restart your shell or source ${result.rcPath}`);
 
   // Link this machine's device to a DWELL account so Claude Code credits land
   // in the user's portal balance. Required — without it, credits accrue to an
@@ -57,10 +56,17 @@ async function setup(argv) {
   // --no-link flag (for automation/CI); the interactive prompt has no "skip".
   if (flags["no-link"] === true) {
     console.log("Skipped account link (--no-link). Credits won't be claimable until you run `dwell claude link`.");
+    printRestartReminder(result.rcPath);
     return;
   }
   const res = await linkStep({ home, emailArg: flags.email, allowPrompt: true, wait: flags["no-wait"] !== true });
   if (res.error) process.exitCode = 1;
+  // Last thing the user reads: without a shell restart the wrapper isn't live yet.
+  printRestartReminder(result.rcPath);
+}
+
+function printRestartReminder(rcPath) {
+  console.log(`→ Restart your terminal (or run \`source ${rcPath}\`) to finish installation.`);
 }
 
 async function link(argv) {
@@ -113,7 +119,7 @@ async function linkStep({ home, emailArg, allowPrompt, wait = true }) {
       const status = await waitForLink(backend, device, { timeoutMs: 60000 });
       if (status.linked) {
         writeTerminalConfig(home, { ...readTerminalConfig(home), linkedAt: new Date().toISOString() });
-        console.log(`✓ Linked to ${status.email || email}. Claude Code credits now land in your DWELL balance.`);
+        console.log(`✓ Email verified! Linked to ${status.email || email}. Claude Code credits now land in your DWELL balance.`);
         return { linked: true, email: status.email || email };
       }
       console.log("Didn't see a click yet — that's fine, the link still works. Run `dwell claude doctor` to check, or `dwell claude link` to resend.");

@@ -1313,6 +1313,28 @@ document.querySelectorAll(".surfaces .tab").forEach((tab) => {
   });
 })();
 
+// --- Email-verification banner: /v1/auth/verify redirects here with
+// ?verified=1 (success) or ?verified=0 (bad/expired token). Show the outcome,
+// then strip the param so a reload/share doesn't re-announce it. ---
+(function verifiedBanner() {
+  const params = new URLSearchParams(location.search);
+  const verified = params.get("verified");
+  if (verified !== "1" && verified !== "0") return;
+  const ok = verified === "1";
+  const el = document.createElement("div");
+  el.className = "verify-banner" + (ok ? "" : " err");
+  el.setAttribute("role", "status");
+  el.textContent = ok
+    ? "✓ Email verified — your account is linked. You can close this tab and head back to your terminal."
+    : "That verification link didn't work — it may have expired. Run `dwell claude link` to get a new one.";
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  setTimeout(() => el.classList.remove("show"), 8000);
+  params.delete("verified");
+  const qs = params.toString();
+  history.replaceState(null, "", location.pathname + (qs ? `?${qs}` : "") + location.hash);
+})();
+
 // --- Auto-hiding nav: hidden over the full-viewport protocol hero, slides in
 // once the user scrolls past a small threshold (and back out at the top). ---
 (function autoNav() {
