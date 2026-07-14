@@ -1817,3 +1817,28 @@ button.usdc-paylink:disabled { filter: saturate(.4) brightness(.92); cursor: def
 .advertisers { overflow-x: clip; }
 
 /* deploy-trigger: 2026-07-07 rebrand cutover — safe to remove */
+
+/* ── Email-verification banner ──
+   Shown by script.js when /v1/auth/verify redirects back with ?verified=1/0.
+   Fixed bottom-center pill; fades in on mount and back out after a few seconds. */
+.verify-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--ok-line);
+  background: var(--bg-cream);
+  color: var(--ok-fg);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  font-size: 14px;
+  line-height: 1.4;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.verify-banner.show { opacity: 1; }
+.verify-banner.err { border-color: var(--err-line); color: var(--err-fg); }
