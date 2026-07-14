@@ -208,7 +208,7 @@
               // live permission. Read-only: access is granted in System Settings,
               // not from here, so the button below is the actual action.
               '<label class="switch readonly" aria-hidden="true"><input type="checkbox"' + (perm === "ok" ? " checked" : "") + ' disabled><span class="slider"></span></label>' +
-              (perm !== "ok" ? '<button class="btn-sys" data-act="open-settings">Open System Settings</button>' : '') +
+              (perm !== "ok" ? '<button class="btn-sys btn-sys-alert" data-act="open-settings">Open System Settings</button>' : '') +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -378,11 +378,16 @@
   }
 
   function requestPermission() {
-    if (perm !== "off") return;
-    perm = "wait";
-    render();
-    if (!native("openSettings")) {
-      // Browser preview: simulate the grant like the prototype did.
+    // Already granted → nothing to open. Otherwise open the Accessibility pane on
+    // *every* press (first click and any re-click while still waiting), so the
+    // button always does the obvious thing. The first press also flips the badge
+    // to "Waiting…"; the app polls the live permission and pushes "ok" back via
+    // dwellBridge.setPermission, which clears the alert state.
+    if (perm === "ok") return;
+    var opened = native("openSettings");
+    if (perm === "off") { perm = "wait"; render(); }
+    if (!opened) {
+      // Browser preview (no native bridge): simulate the grant like the prototype did.
       setTimeout(function () { perm = "ok"; if (step === 2) render(); }, 1500);
     }
   }

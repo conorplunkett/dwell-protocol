@@ -261,6 +261,25 @@
 .btn-sys:hover { border-color: var(--accent); background: var(--surface-inset); }
 .btn-sys:active { transform: translateY(1px); }
 
+/* Until Accessibility is granted, "Open System Settings" wears a red outline so
+ * it reads as the required next action. The button is only rendered while access
+ * is off, so the alert state clears the moment it's granted (the button is gone).
+ * A soft red halo pulses to draw the eye without shouting. */
+.btn-sys-alert {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .14);
+  animation: sysAlert 1.8s var(--ease-out) infinite;
+}
+.btn-sys-alert:hover {
+  border-color: var(--accent-d);
+  background: rgba(var(--accent-rgb), .05);
+}
+@keyframes sysAlert {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .14); }
+  50%      { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .28); }
+}
+@media (prefers-reduced-motion: reduce) { .btn-sys-alert { animation: none; } }
+
 .toggle-row {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   margin-top: 12px; padding: 13px 16px; border: 1px solid var(--line);
