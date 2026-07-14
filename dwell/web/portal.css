@@ -618,14 +618,17 @@ html.auth-pending #portal-loading { display: flex; }
 .ecc-title { font-size: 16px; font-weight: 800; letter-spacing: -.01em; margin: 0; color: var(--ink); }
 .ecc-sub { font-size: 13px; color: var(--gray-2); margin: 4px 0 0; }
 
-.earn-window { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card-dark); }
-.ew-btn {
+.ecc-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+
+.earn-window, .earn-mode { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card-dark); }
+.ew-btn, .em-btn {
   border: none; background: transparent; cursor: pointer;
   font: 700 13px/1.2 var(--mono); color: var(--gray); padding: 6px 12px; border-radius: var(--radius-sm);
   transition: background .12s, color .12s;
 }
-.ew-btn:hover { color: var(--ink); }
-.ew-btn.active { background: var(--card-dark-2); color: var(--accent); box-shadow: var(--shadow-sm); }
+.ew-btn:hover, .em-btn:hover { color: var(--ink); }
+.ew-btn.active, .em-btn.active { background: var(--card-dark-2); color: var(--accent); box-shadow: var(--shadow-sm); }
+.em-btn { padding: 5px 10px; font-size: 12px; }
 
 .earn-chart { width: 100%; height: 220px; }
 .ec-svg { width: 100%; height: 100%; display: block; }

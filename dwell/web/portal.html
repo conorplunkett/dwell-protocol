@@ -395,12 +395,18 @@
           <div class="ecc-head">
             <div>
               <h3 class="ecc-title">Earnings activity</h3>
-              <p class="ecc-sub">Cumulative points over the selected window.</p>
+              <p class="ecc-sub" id="earn-chart-sub">Cumulative points over the selected window.</p>
             </div>
-            <div class="earn-window" id="earn-window" role="group" aria-label="Chart window">
-              <button class="ew-btn" data-window="24h" type="button">24h</button>
-              <button class="ew-btn active" data-window="7d" type="button">7d</button>
-              <button class="ew-btn" data-window="30d" type="button">30d</button>
+            <div class="ecc-controls">
+              <div class="earn-mode" id="earn-mode" role="group" aria-label="Chart mode">
+                <button class="em-btn active" data-mode="cumulative" type="button">Cumulative</button>
+                <button class="em-btn" data-mode="period" type="button">Per period</button>
+              </div>
+              <div class="earn-window" id="earn-window" role="group" aria-label="Chart window">
+                <button class="ew-btn active" data-window="24h" type="button">24h</button>
+                <button class="ew-btn" data-window="7d" type="button">7d</button>
+                <button class="ew-btn" data-window="30d" type="button">30d</button>
+              </div>
             </div>
           </div>
           <div class="earn-chart" id="earn-chart"><!-- SVG drawn by portal.js --></div>
