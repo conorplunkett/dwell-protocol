@@ -24,8 +24,10 @@ jobs:
         working-directory: dwell/desktop/macos/SponsorOverlay
     steps:
       - uses: actions/checkout@v4
+      - name: Install create-dmg (drag-to-Applications dmg layout)
+        run: brew install create-dmg
       - name: Build + package (ad-hoc signed, universal)
-        run: BUILD_NUMBER="${{ github.run_number }}" DMG_FANCY=0 ./packaging/bundle.sh
+        run: BUILD_NUMBER="${{ github.run_number }}" ./packaging/bundle.sh
       - name: Create release and upload the DMG
         env:
           GH_TOKEN: ${{ github.token }}
