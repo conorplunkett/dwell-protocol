@@ -85,13 +85,20 @@ function buildMock() {
   }
 
   // Chart series — bucket values seeded per window so the shape never changes.
+  // Shape: a gentle rhythm (sine wave) over a steady baseline with mild seeded
+  // noise, so the line rolls instead of spiking to zero between buckets.
   const series = {};
   for (const [win, n] of [["24h", 24], ["7d", 7], ["30d", 30]]) {
     const r = mulberry32(MOCK_SEED + n);
-    series[win] = Array.from({ length: n }, () => {
-      const active = r() > 0.25;
-      const count = active ? 1 + Math.floor(r() * (win === "24h" ? 3 : 14)) : 0;
-      return { points: active ? count * (30 + Math.round(r() * 60)) : 0, count };
+    const perEvent = win === "24h" ? 45 : 60; // avg points per credited dwell
+    series[win] = Array.from({ length: n }, (_, i) => {
+      const wave = Math.sin((i / n) * Math.PI * 2 - Math.PI / 2) * 0.5 + 0.5; // 0..1
+      const drift = i / (n - 1) * 0.25;              // slight upward trend
+      const noise = (r() - 0.5) * 0.3;               // ±15% jitter
+      const level = Math.max(0.15, 0.35 + wave * 0.5 + drift + noise);
+      const scale = win === "24h" ? 3 : 12;          // events per bucket at peak
+      const count = Math.max(1, Math.round(level * scale));
+      return { points: count * (perEvent + Math.round(r() * 20)), count };
     });
   }
 
