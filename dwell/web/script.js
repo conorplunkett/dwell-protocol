@@ -394,13 +394,13 @@ document.querySelectorAll(".copy-btn").forEach((btn) => {
   });
 });
 
-// --- Download-button email capture (Chrome + Mac) -----------------------
-// Neither DWELL's own Chrome extension nor its desktop app is out yet, so
-// clicking either button opens the existing FreeAI listing in a background
-// tab (best-effort — browsers don't let a page reliably suppress the focus
-// switch, but re-focusing the opener right after the tab opens gets close)
-// and, in the same click, swaps the button for an inline email field so we
-// can tell the person when DWELL's own version ships.
+// --- Download-button email capture (Chrome) ------------------------------
+// DWELL's own Chrome extension isn't out yet, so clicking the button opens
+// the existing FreeAI listing in a background tab (best-effort — browsers
+// don't let a page reliably suppress the focus switch, but re-focusing the
+// opener right after the tab opens gets close) and, in the same click,
+// swaps the button for an inline email field so we can tell the person when
+// DWELL's own version ships.
 function wireDownloadCapture(id, source) {
   const btn = document.getElementById(id);
   if (!btn) return;
@@ -450,7 +450,6 @@ function wireDownloadCapture(id, source) {
   });
 }
 wireDownloadCapture("dl-chrome", "chrome");
-wireDownloadCapture("dl-mac", "mac");
 
 // --- API wiring ---------------------------------------------------------
 // In production the leaderboard + advertiser checkout point at the live backend
