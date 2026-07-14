@@ -421,13 +421,13 @@ function buildAdvertisersPage() {
     out,
     "og:url",
     /<meta property="og:url" content="[\s\S]*?" \/>/,
-    `<meta property="og:url" content="https://dwellprotocol.com/advertisers" />`,
+    `<meta property="og:url" content="https://www.dwellprotocol.com/advertisers" />`,
   );
   out = sub(
     out,
     "canonical",
     /<link rel="canonical" href="[\s\S]*?" \/>/,
-    `<link rel="canonical" href="https://dwellprotocol.com/advertisers" />`,
+    `<link rel="canonical" href="https://www.dwellprotocol.com/advertisers" />`,
   );
 
   out = out.replace(/<body>/, `<body data-lander="advertisers">`);
@@ -490,13 +490,13 @@ for (const l of LANDERS) {
     out,
     "og:url",
     /<meta property="og:url" content="[\s\S]*?" \/>/,
-    `<meta property="og:url" content="https://dwellprotocol.com/${l.slug}" />`,
+    `<meta property="og:url" content="https://www.dwellprotocol.com/${l.slug}" />`,
   );
   out = sub(
     out,
     "canonical",
     /<link rel="canonical" href="[\s\S]*?" \/>/,
-    `<link rel="canonical" href="https://dwellprotocol.com/${l.slug}" />`,
+    `<link rel="canonical" href="https://www.dwellprotocol.com/${l.slug}" />`,
   );
   out = sub(out, "hero h1", /<h1>[\s\S]*?<\/h1>/, `<h1>${l.h1}</h1>`);
   out = sub(
