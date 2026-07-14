@@ -61,6 +61,14 @@ function paintHero() {
     }
   }
 
+  // Placeholder-ad notice: the viewer is linked, has yet to see a real (funded)
+  // ad, and their whole balance is the single dwell the placeholder ad grants.
+  // Nudge them that real inventory pays up to 100 dwells a view.
+  const phNotice = $("placeholder-notice");
+  if (phNotice) {
+    phNotice.hidden = !(lastLinked && toDwells(earnings) === 1 && (s.adViews || 0) === 0);
+  }
+
   // Redeem CTA doubles as the connect prompt: there's nothing to redeem while
   // the device isn't linked to an account (the portal link still gets them there).
   const cta = $("redeem-cta");

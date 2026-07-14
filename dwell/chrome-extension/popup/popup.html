@@ -29,6 +29,15 @@
     <span class="notice-text">Out of ad inventory right now - they will be back tomorrow.</span>
   </div>
 
+  <!-- Placeholder-ad notice — shown only while the viewer's whole balance is the
+       single dwell from the non-billable placeholder ad and they've yet to see a
+       real (funded) ad. Sets the expectation that real inventory pays far more.
+       Toggled in paintHero() in popup.js. -->
+  <div class="notice" id="placeholder-notice" hidden>
+    <span class="notice-ico" aria-hidden="true">💡</span>
+    <span class="notice-text">You've only seen the placeholder ad, worth one dwell. Normal ads provide up to 100 dwells per view.</span>
+  </div>
+
   <!-- HERO — the fuel ring is the product: dwells earned
        (dwells are dollar-denominated: 1,000 dwells = $1.00) -->
   <section class="hero">
