@@ -1,0 +1,15 @@
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+script = "script"
+# Reuse the pinned submodules from the reference contracts tree
+# (OZ v5.6.1 @ 5fd1781, forge-std v1.16.2) — no second copy of OZ in the repo.
+libs = ["../../dwell/contracts/lib"]
+solc_version = "0.8.26"
+optimizer = true
+optimizer_runs = 200
+evm_version = "cancun"
+
+[fmt]
+line_length = 100

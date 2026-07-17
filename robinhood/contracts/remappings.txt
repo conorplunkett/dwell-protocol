@@ -1,0 +1,2 @@
+@openzeppelin/contracts/=../../dwell/contracts/lib/openzeppelin-contracts/contracts/
+forge-std/=../../dwell/contracts/lib/forge-std/src/
