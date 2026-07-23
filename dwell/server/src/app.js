@@ -1339,7 +1339,7 @@ function createApp({ repo, stripe, mailer, rateLimiter, config, solana }) {
     if (!surface || !known.some((s) => s.surface === surface)) {
       return json(res, 400, { error: "unknown surface", surfaces: known.map((s) => s.surface) });
     }
-    const created = await repo.joinWaitlist(user.id, surface);
+    const created = await repo.joinWaitlist(user.id, surface, config.signupRewardMillicents);
     json(res, 200, { ok: true, surface, joined: true, alreadyJoined: !created });
   });
 

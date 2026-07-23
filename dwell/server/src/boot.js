@@ -37,6 +37,7 @@ function loadConfig(env = process.env) {
     stripePayoutsEnabled: env.STRIPE_PAYOUTS_ENABLED === "true", // tokenomics v2: cash payouts retired in favor of USDC; legacy Stripe rail is opt-in only
     referralRewardCents: parseInt(env.REFERRAL_REWARD_CENTS || "2000", 10), // $20 to the referrer
     referralCap: parseInt(env.REFERRAL_CAP || "10", 10), // max rewarded referrals per user
+    signupRewardMillicents: parseInt(env.SIGNUP_REWARD_MILLICENTS || "500", 10), // 5 dwells (1,000 dwells = $1) per new ad-surface waitlist signup
     affiliateRewardBps: parseInt(env.AFFILIATE_REWARD_BPS || "1000", 10), // affiliate's cut of an affiliated user's earnings, basis points (1000 = 10%)
     affiliateCapPeople: parseInt(env.AFFILIATE_CAP_PEOPLE || "10", 10), // max attributed friends per affiliate (dollar earnings uncapped)
     giftFulfillmentEmail: env.GIFT_FULFILLMENT_EMAIL || "hello@contact.freeai.fyi", // manual gift card fulfillment inbox (no @dwellprotocol.com mailbox exists)

@@ -917,7 +917,7 @@ function createRepo(pool) {
       // minted) — they move the spendable balance but not lifetime "earned".
       const { rows } = await pool.query(
         `select
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','signup_reward_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
            coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
            coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
@@ -1360,7 +1360,7 @@ function createRepo(pool) {
       // earningsForDevice) without rewriting lifetime "earned".
       const { rows } = await pool.query(
         `select
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','signup_reward_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
            coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
            coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
@@ -1386,9 +1386,9 @@ function createRepo(pool) {
     async earningsForUser(userId) {
       const { rows } = await pool.query(
         `select
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit') and created_at >= date_trunc('day', now())), 0)::bigint as today,
-           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit') and created_at >= date_trunc('month', now())), 0)::bigint as month,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','signup_reward_credit','affiliate_credit','points_credit','referral_points_credit')), 0)::bigint as earned,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','signup_reward_credit','affiliate_credit','points_credit','referral_points_credit') and created_at >= date_trunc('day', now())), 0)::bigint as today,
+           coalesce(sum(amount_millicents) filter (where entry_type in ('impression_credit','click_credit','referral_credit','signup_reward_credit','affiliate_credit','points_credit','referral_points_credit') and created_at >= date_trunc('month', now())), 0)::bigint as month,
            coalesce(sum(amount_millicents) filter (where entry_type = 'payout_debit'), 0)::bigint as paid_out,
            coalesce(sum(amount_millicents) filter (where entry_type = 'gift_redemption_debit'), 0)::bigint as redeemed,
            coalesce(sum(amount_millicents) filter (where entry_type in ('admin_credit','admin_debit')), 0)::bigint as adjusted
@@ -1446,7 +1446,7 @@ function createRepo(pool) {
            from ledger l
            left join campaigns c on c.id = l.campaign_id
           where (l.user_id = $1 or l.device_id in (select id from devices where user_id = $1))
-            and l.entry_type in ('impression_credit','click_credit','referral_credit','affiliate_credit','points_credit','referral_points_credit')
+            and l.entry_type in ('impression_credit','click_credit','referral_credit','signup_reward_credit','affiliate_credit','points_credit','referral_points_credit')
           order by l.created_at desc
           limit $2`,
         [userId, n]
@@ -2410,13 +2410,29 @@ function createRepo(pool) {
     // Record a user's interest in one surface. Idempotent: a repeat signup is a
     // no-op (the unique (user_id, surface) constraint). Returns true when a new
     // row was created, false when the user was already on this waitlist.
-    async joinWaitlist(userId, surface) {
-      const { rows } = await pool.query(
-        `insert into waitlist_signups (user_id, surface) values ($1, $2)
-         on conflict (user_id, surface) do nothing returning id`,
-        [userId, surface]
-      );
-      return !!rows[0];
+    //
+    // On a genuinely new signup we post a one-time reward to the ledger
+    // (rewardMillicents, default 0 = disabled). It rides the same transaction as
+    // the signup insert so the "do nothing" conflict path can never double-credit
+    // a re-join — the reward lands exactly once per (user, surface).
+    async joinWaitlist(userId, surface, rewardMillicents = 0) {
+      return tx(async (client) => {
+        const { rows } = await client.query(
+          `insert into waitlist_signups (user_id, surface) values ($1, $2)
+           on conflict (user_id, surface) do nothing returning id`,
+          [userId, surface]
+        );
+        const created = !!rows[0];
+        if (created && rewardMillicents > 0) {
+          await client.query(
+            `insert into ledger (entry_type, amount_millicents, user_id, meta)
+             values ('signup_reward_credit', $1, $2, $3)`,
+            [String(rewardMillicents), userId,
+             JSON.stringify({ description: "signup reward", surface })]
+          );
+        }
+        return created;
+      });
     },
 
     // The surfaces this user has already joined, oldest first.
